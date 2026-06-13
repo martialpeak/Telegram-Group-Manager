@@ -120,8 +120,11 @@ async def on_feedback_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         if not fb:
             return
         if result["ups"] >= _VOTES_TO_CONFIRM:
+            from bot.core.knowledge_engine import _normalize_question
+            norm_q = _normalize_question(fb["question"])
+            store_q = norm_q if len(norm_q) >= 3 else fb["question"]
             await db.save_knowledge(
-                question=fb["question"], answer=fb["correction"],
+                question=store_q, answer=fb["correction"],
                 chat_id=fb["chat_id"], source="community_verified", score=0.92,
             )
             await query.edit_message_reply_markup(reply_markup=None)

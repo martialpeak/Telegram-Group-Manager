@@ -53,24 +53,54 @@ def _cache_key(question: str) -> str:
     return hashlib.md5(question.strip().lower().encode()).hexdigest()
 
 
+def _normalize_question(text: str) -> str:
+    """حذف کاراکترهای اضافه، علائم و کلمات توقف برای مقایسه بهتر"""
+    import re
+    text = text.strip().lower()
+    # حذف علائم نگارشی و کاراکترهای خاص
+    text = re.sub(r'[،؟!؟.,?!:;"\'\-_()]+', ' ', text)
+    # حذف کلمات توقف فارسی و انگلیسی
+    stop_words = {
+        'سلام', 'خب', 'خوب', 'ببین', 'بگو', 'ممنون', 'مرسی', 'لطفا', 'لطفاً',
+        'hello', 'hi', 'hey', 'please', 'thanks', 'ok', 'okay',
+        'the', 'a', 'an', 'is', 'are', 'was', 'were',
+    }
+    words = [w for w in text.split() if w and w not in stop_words]
+    return ' '.join(words)
+
+
+def _similarity(q1: str, q2: str) -> float:
+    """شباهت بین دو سوال با در نظر گرفتن کلمات مشترک"""
+    w1 = set(_normalize_question(q1).split())
+    w2 = set(_normalize_question(q2).split())
+    if not w1 or not w2:
+        return 0.0
+    common = len(w1 & w2)
+    # Jaccard similarity
+    union = len(w1 | w2)
+    jaccard = common / union if union else 0.0
+    # overlap نسبت به سوال کوتاه‌تر
+    overlap = common / min(len(w1), len(w2))
+    # میانگین وزن‌دار
+    return 0.4 * jaccard + 0.6 * overlap
+
+
 # ─── جستجوی شباهت در پایگاه دانش ────────────────────────────────────────────
 
 async def _search_knowledge(question: str, chat_id: int) -> Optional[dict]:
     items = await db.get_knowledge(chat_id)
     if not items:
         return None
-    q_words = set(question.lower().split())
     best, best_score = None, 0.0
     for item in items:
-        words = set(item["question"].lower().split())
-        if not q_words:
-            continue
-        common = len(q_words & words)
-        score = common / max(len(q_words), 1)
+        score = _similarity(question, item["question"])
         if score > best_score:
             best_score = score
             best = {**item, "score": score}
-    return best if best and best_score >= CACHE_MIN_SCORE else None
+    if best and best_score >= CACHE_MIN_SCORE:
+        logger.info(f"Cache hit (score={best_score:.2f}): '{question[:40]}' ≈ '{best['question'][:40]}'")
+        return best
+    return None
 
 
 async def _search_history(query: str, chat_id: int) -> list[dict]:
@@ -142,10 +172,9 @@ async def answer_question(question: str, chat_id: int) -> dict:
     cached = await _search_knowledge(question, chat_id)
     if cached:
         await db.increment_use(cached["id"])
-        logger.info(f"Cache hit (score={cached['score']:.2f}): {question[:50]}")
         return {
             "answer": cached["answer"],
-            "source": "cache",
+            "source": "knowledge_base",
             "confidence": cached["score"],
         }
 
@@ -166,16 +195,18 @@ async def answer_question(question: str, chat_id: int) -> dict:
         answer = await _generate_gemini(question, context)
         source = "gemini"
 
-    # ۵. ذخیره در cache برای دفعه بعد
+    # ۵. ذخیره در cache با سوال normalize شده برای match بهتر
     if answer:
+        normalized = _normalize_question(question)
+        store_q = normalized if len(normalized) >= 3 else question
         await db.save_knowledge(
-            question=question,
+            question=store_q,
             answer=answer,
             chat_id=chat_id,
             source=source,
             score=0.80,
         )
-        logger.info(f"Answer via {source}, cached for future use")
+        logger.info(f"Answer via {source}, cached: '{store_q[:50]}'")
 
     return {
         "answer": answer or "متاسفم، اطلاعات کافی برای پاسخ به این سوال ندارم.",

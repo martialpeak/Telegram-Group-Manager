@@ -142,6 +142,10 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await _handle_private(update, context)
         return
 
+    # اگه این پیام قبلاً به عنوان تصحیح پردازش شده، skip کن
+    if context.user_data.pop("_correction_handled", False):
+        return
+
     if not _is_admin(user.id):
         blocked = await _check_level_restrictions(message, context.bot)
         if blocked:
@@ -296,6 +300,8 @@ async def on_correction(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(err_msg)
         return
     context.user_data.pop("awaiting_correction")
+    # علامت‌گذاری که این پیام تصحیح بود — on_message باید skip کنه
+    context.user_data["_correction_handled"] = True
     info = _pending_answers.pop(key, None)
     if not info:
         await update.message.reply_text("⚠️ زمان ثبت تصحیح گذشته. دوباره سوال بپرس.")
@@ -313,10 +319,10 @@ async def on_correction(update: Update, context: ContextTypes.DEFAULT_TYPE):
     vote_kb = build_vote_keyboard(fb_id, 0, 0)
     await update.message.reply_text(
         f"📝 تصحیح دریافت شد!\n\n"
-        f"❓ *سوال:* {info['question'][:100]}\n"
-        f"💬 *تصحیح:* {correction[:200]}\n\n"
+        f"❓ <b>سوال:</b> {info['question'][:100]}\n"
+        f"💬 <b>تصحیح:</b> {correction[:200]}\n\n"
         f"دیگران می‌تونن تایید یا رد کنن 👇\n"
-        f"_(نیاز به {_VOTES_TO_CONFIRM} رای موافق)_",
+        f"(نیاز به {_VOTES_TO_CONFIRM} رای موافق)",
         parse_mode="HTML",
         reply_markup=vote_kb,
     )
