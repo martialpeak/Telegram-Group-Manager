@@ -6,6 +6,8 @@ import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
+import bot.db.database as db
+from bot.core.user_levels import get_config
 from bot.utils.helpers import send_and_delete
 from i18n import t
 
@@ -19,6 +21,18 @@ async def on_new_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for member in message.new_chat_members:
         if member.is_bot:
             continue
+
+        # ── ست کردن تگ سطح فعلی کاربر ──────────────────────────────────────
+        level = await db.get_user_level(member.id, message.chat_id)
+        cfg   = get_config(level)
+        tag   = cfg.label if level != "simple" else ""
+        try:
+            await context.bot.set_chat_member_tag(
+                chat_id=message.chat_id, user_id=member.id, tag=tag
+            )
+        except Exception as e:
+            logger.warning(f"set_chat_member_tag on join failed for {member.id}: {e}")
+
         keyboard = InlineKeyboardMarkup([[
             InlineKeyboardButton(t("rules_btn"), callback_data="rules"),
             InlineKeyboardButton(t("rank_btn"),  callback_data=f"myrank_{member.id}"),
