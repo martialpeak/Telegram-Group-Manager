@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# ═══════════════════════════════════════════════════════════════
-#   Telegram Group Manager Bot — Interactive Installer v2.1
-#   Supports: Ubuntu 20.04+ / Debian 11+ / Raspberry Pi OS
+# ===================================================================
+#   Telegram Group Manager Bot -- Interactive Installer v3.0
+#   AI: Google Gemini (free tier, no GPU/RAM needed)
+#   Supports: Ubuntu 20.04+ / Debian 11+
 #   Bilingual: English / Finglish
-# ═══════════════════════════════════════════════════════════════
+# ===================================================================
 
 set -euo pipefail
 
-# ── colors ──────────────────────────────────────────────────
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
 BLUE='\033[0;34m'; CYAN='\033[0;36m'; BOLD='\033[1m'; NC='\033[0m'
 
@@ -16,17 +16,15 @@ success() { echo -e "${GREEN}[ OK ]${NC}  $1"; }
 warn()    { echo -e "${YELLOW}[WARN]${NC}  $1"; }
 error()   { echo -e "${RED}[FAIL]${NC}  $1"; exit 1; }
 ask()     { echo -e "${CYAN}[ ?? ]${NC}  $1"; }
-banner()  { echo -e "\n${BOLD}── $1 ──${NC}"; }
+banner()  { echo -e "\n${BOLD}-- $1 --${NC}"; }
 
 BOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SERVICE_NAME="telegram-bot"
 ENV_FILE="$BOT_DIR/.env"
 LOG_FILE="$BOT_DIR/install.log"
 
-# ── log all output ───────────────────────────────────────────
 exec > >(tee -a "$LOG_FILE") 2>&1
 
-# ── prompt helper ────────────────────────────────────────────
 prompt() {
     local var_name="$1" prompt_text="$2" default_val="${3:-}" secret="${4:-}"
     if [ -n "$default_val" ]; then
@@ -43,13 +41,14 @@ prompt() {
     eval "$var_name='$value'"
 }
 
-# ══════════════════════════════════════════════════════════════
+# ===================================================================
 #  Language Selection
-# ══════════════════════════════════════════════════════════════
+# ===================================================================
 clear
 echo -e "${BOLD}${BLUE}"
 echo "+====================================================+"
-echo "|   Telegram Group Manager Bot -- Installer v2.1    |"
+echo "|   Telegram Group Manager Bot -- Installer v3.0    |"
+echo "|              Powered by Google Gemini              |"
 echo "+====================================================+"
 echo -e "${NC}"
 echo ""
@@ -62,14 +61,13 @@ ask "Choice [1/2]:"
 read -r LANG_CHOICE
 [[ "$LANG_CHOICE" == "2" ]] && LANG="en" || LANG="fa"
 
-# ══════════════════════════════════════════════════════════════
+# ===================================================================
 #  String Table
-# ══════════════════════════════════════════════════════════════
+# ===================================================================
 if [ "$LANG" = "fa" ]; then
     S_STEP1="Marhale 1: Barresi Python"
     S_PY_INSTALL="Python 3 peyda nashod -- dar hal nasb..."
     S_PY_OK="Python %s peyda shod"
-    S_PY_ERR="Python 3.11+ lazem ast (version feli: %s). Dar hal nasb Python 3.11..."
     S_PY_UPGRADE="Python %s peyda shod -- dar hal nasb Python 3.11 az deadsnakes PPA..."
     S_PY_UPGRADE_OK="Python 3.11 ba movafaghiat nasb shod"
     S_PY_UPGRADE_FAIL="Nasb Python 3.11 namovaghagh shod. Dasti upgrade kon va dobbare ejra kon."
@@ -87,14 +85,19 @@ if [ "$LANG" = "fa" ]; then
     S_ADMIN_PROMPT="Shenase admin-ha (chand ta ba comma joda konid)"
     S_ADMIN_ERR="Haddaghal yek shenase admin lazem ast!"
 
-    S_MODEL_TIP="Model Hush Masnoui ra entekhab konid:"
-    S_MODEL_1="1) llama3.1     -- keyfiyat khob      (~4.7 GB RAM)"
-    S_MODEL_2="2) gemma2:2b    -- saboktar           (~1.6 GB RAM)"
-    S_MODEL_3="3) phi3         -- saritar            (~2.3 GB RAM)"
-    S_MODEL_4="4) mistral      -- motavazen          (~4.1 GB RAM)"
-    S_MODEL_5="5) dasti        -- khodet esm benevis"
-    S_MODEL_PROMPT="Shomare model"
-    S_MODEL_CUSTOM="Esm model ra vared kon (masalan llama3.1:8b)"
+    S_GEMINI_TIP="Chetori Gemini API Key begirim (raigan ast):"
+    S_GEMINI_TIP1="  1. Berid be: https://aistudio.google.com/apikey"
+    S_GEMINI_TIP2="  2. Ba hesab Google login konid"
+    S_GEMINI_TIP3="  3. Roye 'Create API Key' click konid"
+    S_GEMINI_TIP4="  4. API Key ra copy va inja paste konid"
+    S_GEMINI_TIP5="  Toze: Gemini 1.5 Flash: 15 darkhast/daghighe, 1500/ruz -- raigan"
+    S_GEMINI_PROMPT="Gemini API Key"
+    S_GEMINI_ERR="Gemini API Key ejbari ast!"
+    S_GEMINI_MODEL_TIP="Model Gemini ra entekhab konid:"
+    S_GEMINI_M1="1) gemini-1.5-flash  -- saritar, raigan (pishnahad)"
+    S_GEMINI_M2="2) gemini-1.5-pro    -- keyfiyat balatr, محدودیت کمتر"
+    S_GEMINI_M3="3) gemini-2.0-flash  -- jadidtarin, saritar"
+    S_GEMINI_MODEL_PROMPT="Shomare model"
 
     S_MOD_HEAD="Tanzimate modiriyat geruh:"
     S_WARN_PROMPT="Haddaksar akhtar ghabl az ban"
@@ -119,20 +122,7 @@ if [ "$LANG" = "fa" ]; then
     S_STEP4="Marhale 4: Zakhire file tanzimate"
     S_ENV_OK="File .env zakhire shod"
 
-    S_STEP5="Marhale 5: Ollama (motor Hush Masnoui mahali)"
-    S_OLL_INSTALL="Dar hal nasb Ollama..."
-    S_OLL_OK="Ollama nasb shod"
-    S_OLL_EXISTS="Ollama az ghabl nasb ast"
-    S_OLL_RUNNING="Servis Ollama dar hal ejrast"
-    S_OLL_START="Servis Ollama ra rahendazi mikonim..."
-    S_MODEL_PULL="Dar hal download model %s (chand daghighe tool mikeshad)..."
-    S_MODEL_OK="Model '%s' amadeh ast"
-    S_MODEL_FAIL="Download '%s' namovaghagh bud. Dasti ejra kon: ollama pull %s"
-    S_EMBED_PULL="Dar hal download model embedding..."
-    S_EMBED_OK="Model embedding amadeh ast"
-    S_EMBED_FAIL="Download embedding namovaghagh. Dasti ejra kon: ollama pull nomic-embed-text"
-
-    S_STEP6="Marhale 6: Servis systemd (ejraye khodkar ba boot)"
+    S_STEP5="Marhale 5: Servis systemd (ejraye khodkar ba boot)"
     S_SVC_OK="Servis robot ba movafaghiat shoroo shod"
     S_SVC_FAIL="Servis shoroo nashod. Log ra barresi kon:"
 
@@ -147,7 +137,6 @@ else
     S_STEP1="Step 1: Python"
     S_PY_INSTALL="python3 not found -- installing..."
     S_PY_OK="Python %s found"
-    S_PY_ERR="Python 3.11+ is required (found: %s). Attempting to install Python 3.11..."
     S_PY_UPGRADE="Python %s found -- installing Python 3.11 from deadsnakes PPA..."
     S_PY_UPGRADE_OK="Python 3.11 installed successfully"
     S_PY_UPGRADE_FAIL="Failed to install Python 3.11. Please upgrade manually and re-run."
@@ -165,14 +154,19 @@ else
     S_ADMIN_PROMPT="Admin Telegram ID(s) -- separate multiple with commas"
     S_ADMIN_ERR="At least one admin ID is required!"
 
-    S_MODEL_TIP="Choose an AI model:"
-    S_MODEL_1="1) llama3.1     -- good quality    (~4.7 GB RAM)"
-    S_MODEL_2="2) gemma2:2b    -- lightweight     (~1.6 GB RAM)"
-    S_MODEL_3="3) phi3         -- fast            (~2.3 GB RAM)"
-    S_MODEL_4="4) mistral      -- balanced        (~4.1 GB RAM)"
-    S_MODEL_5="5) custom       -- enter manually"
-    S_MODEL_PROMPT="Model choice"
-    S_MODEL_CUSTOM="Enter model name (e.g. llama3.1:8b)"
+    S_GEMINI_TIP="How to get a FREE Gemini API Key:"
+    S_GEMINI_TIP1="  1. Go to: https://aistudio.google.com/apikey"
+    S_GEMINI_TIP2="  2. Sign in with your Google account"
+    S_GEMINI_TIP3="  3. Click 'Create API Key'"
+    S_GEMINI_TIP4="  4. Copy the key and paste it below"
+    S_GEMINI_TIP5="  Note: Gemini 1.5 Flash: 15 req/min, 1500/day -- completely FREE"
+    S_GEMINI_PROMPT="Gemini API Key"
+    S_GEMINI_ERR="Gemini API Key is required!"
+    S_GEMINI_MODEL_TIP="Choose Gemini model:"
+    S_GEMINI_M1="1) gemini-1.5-flash  -- fast, free tier (recommended)"
+    S_GEMINI_M2="2) gemini-1.5-pro    -- higher quality, lower limits"
+    S_GEMINI_M3="3) gemini-2.0-flash  -- newest, fastest"
+    S_GEMINI_MODEL_PROMPT="Model choice"
 
     S_MOD_HEAD="Moderation settings:"
     S_WARN_PROMPT="Max warnings before ban"
@@ -197,20 +191,7 @@ else
     S_STEP4="Step 4: Writing configuration file"
     S_ENV_OK="Configuration saved to .env"
 
-    S_STEP5="Step 5: Ollama (local AI engine)"
-    S_OLL_INSTALL="Installing Ollama..."
-    S_OLL_OK="Ollama installed"
-    S_OLL_EXISTS="Ollama already installed"
-    S_OLL_RUNNING="Ollama service is running"
-    S_OLL_START="Starting Ollama service..."
-    S_MODEL_PULL="Pulling model: %s  (this may take several minutes)..."
-    S_MODEL_OK="Model '%s' ready"
-    S_MODEL_FAIL="Failed to pull '%s'. Run manually: ollama pull %s"
-    S_EMBED_PULL="Pulling embedding model: nomic-embed-text..."
-    S_EMBED_OK="Embedding model ready"
-    S_EMBED_FAIL="Failed to pull embedding model. Run: ollama pull nomic-embed-text"
-
-    S_STEP6="Step 6: System service (auto-start on boot)"
+    S_STEP5="Step 5: System service (auto-start on boot)"
     S_SVC_OK="Bot service started successfully"
     S_SVC_FAIL="Service failed to start. Check logs:"
 
@@ -223,9 +204,9 @@ else
     S_DONE_NOTE="Note: restart the bot after editing .env manually"
 fi
 
-# ══════════════════════════════════════════════════════════════
-#  Step 1 — Python
-# ══════════════════════════════════════════════════════════════
+# ===================================================================
+#  Step 1 -- Python
+# ===================================================================
 banner "$S_STEP1"
 
 if ! command -v python3 &>/dev/null; then
@@ -275,11 +256,12 @@ else
     fi
 fi
 
-# ══════════════════════════════════════════════════════════════
-#  Step 2 — Configuration
-# ══════════════════════════════════════════════════════════════
+# ===================================================================
+#  Step 2 -- Configuration
+# ===================================================================
 banner "$S_STEP2"
 
+# -- Telegram Token --
 echo ""
 echo -e "  ${YELLOW}$S_TOKEN_TIP${NC}"
 echo "$S_TOKEN_TIP1"
@@ -289,6 +271,7 @@ echo ""
 prompt BOT_TOKEN "$S_TOKEN_PROMPT" "" "secret"
 [ -z "$BOT_TOKEN" ] && error "$S_TOKEN_ERR"
 
+# -- Admin IDs --
 echo ""
 echo -e "  ${YELLOW}$S_ADMIN_TIP${NC}"
 echo "$S_ADMIN_TIP1"
@@ -300,24 +283,36 @@ if ! echo "$ADMIN_IDS" | grep -qE '^[0-9]+(,[0-9]+)*$'; then
     error "Admin IDs must be numbers separated by commas (e.g. 123456789,987654321)"
 fi
 
+# -- Gemini API Key --
 echo ""
-echo -e "  ${YELLOW}$S_MODEL_TIP${NC}"
-echo "    $S_MODEL_1"
-echo "    $S_MODEL_2"
-echo "    $S_MODEL_3"
-echo "    $S_MODEL_4"
-echo "    $S_MODEL_5"
+echo -e "  ${YELLOW}$S_GEMINI_TIP${NC}"
 echo ""
-prompt MODEL_CHOICE "$S_MODEL_PROMPT" "1" ""
-case "$MODEL_CHOICE" in
-    1) AI_MODEL="llama3.1"  ;;
-    2) AI_MODEL="gemma2:2b" ;;
-    3) AI_MODEL="phi3"      ;;
-    4) AI_MODEL="mistral"   ;;
-    5) prompt AI_MODEL "$S_MODEL_CUSTOM" "llama3.1" "" ;;
-    *) AI_MODEL="$MODEL_CHOICE" ;;
+echo -e "  ${CYAN}$S_GEMINI_TIP1${NC}"
+echo "$S_GEMINI_TIP2"
+echo "$S_GEMINI_TIP3"
+echo "$S_GEMINI_TIP4"
+echo ""
+echo -e "  ${GREEN}$S_GEMINI_TIP5${NC}"
+echo ""
+prompt GEMINI_API_KEY "$S_GEMINI_PROMPT" "" "secret"
+[ -z "$GEMINI_API_KEY" ] && error "$S_GEMINI_ERR"
+
+# -- Gemini Model --
+echo ""
+echo -e "  ${YELLOW}$S_GEMINI_MODEL_TIP${NC}"
+echo "    $S_GEMINI_M1"
+echo "    $S_GEMINI_M2"
+echo "    $S_GEMINI_M3"
+echo ""
+prompt GEMINI_MODEL_CHOICE "$S_GEMINI_MODEL_PROMPT" "1" ""
+case "$GEMINI_MODEL_CHOICE" in
+    1) GEMINI_MODEL="gemini-1.5-flash" ;;
+    2) GEMINI_MODEL="gemini-1.5-pro"   ;;
+    3) GEMINI_MODEL="gemini-2.0-flash" ;;
+    *) GEMINI_MODEL="gemini-1.5-flash" ;;
 esac
 
+# -- Moderation --
 echo ""
 echo -e "  ${YELLOW}$S_MOD_HEAD${NC}"
 prompt MAX_WARNINGS "$S_WARN_PROMPT" "3"    ""
@@ -331,6 +326,7 @@ prompt MIN_CONF     "$S_CONF_PROMPT" "0.60" ""
 "$PY_BIN" -c "v=float('$MIN_CONF'); exit(0 if 0.0<=v<=1.0 else 1)" 2>/dev/null \
     || error "AI confidence must be between 0.0 and 1.0"
 
+# -- Bot Language --
 echo ""
 echo -e "  ${YELLOW}$S_LANG_TIP${NC}"
 echo "    $S_LANG_1"
@@ -342,13 +338,15 @@ case "$BOT_LANG_CHOICE" in
     *) BOT_LANG="fa" ;;
 esac
 
+# -- Summary --
 echo ""
 echo -e "${GREEN}+------------------------------------------------------+${NC}"
-echo -e "${GREEN}|  ${BOLD}$S_SUM_HEAD${NC}${GREEN}"
+echo -e "${GREEN}|  $S_SUM_HEAD${NC}"
 echo -e "${GREEN}+------------------------------------------------------+${NC}"
 printf "${GREEN}|${NC}  Token          : %s...\n"  "${BOT_TOKEN:0:15}"
 printf "${GREEN}|${NC}  Admin IDs      : %s\n"     "$ADMIN_IDS"
-printf "${GREEN}|${NC}  AI Model       : %s\n"     "$AI_MODEL"
+printf "${GREEN}|${NC}  Gemini Model   : %s\n"     "$GEMINI_MODEL"
+printf "${GREEN}|${NC}  Gemini Key     : %s...\n"  "${GEMINI_API_KEY:0:8}"
 printf "${GREEN}|${NC}  Max Warnings   : %s\n"     "$MAX_WARNINGS"
 printf "${GREEN}|${NC}  Spam Window    : %s sec\n" "$SPAM_WINDOW"
 printf "${GREEN}|${NC}  Spam Limit     : %s msg\n" "$SPAM_MAX"
@@ -360,9 +358,9 @@ ask "$S_CONTINUE"
 read -r CONFIRM
 [[ "${CONFIRM:-Y}" =~ ^[Nn] ]] && { echo "$S_ABORT"; exit 0; }
 
-# ══════════════════════════════════════════════════════════════
-#  Step 3 — Python virtual environment
-# ══════════════════════════════════════════════════════════════
+# ===================================================================
+#  Step 3 -- Python virtual environment
+# ===================================================================
 banner "$S_STEP3"
 
 if [ ! -d "$BOT_DIR/venv" ]; then
@@ -377,9 +375,9 @@ pip install --quiet --upgrade pip wheel
 pip install --quiet -r "$BOT_DIR/requirements.txt"
 success "$S_DEPS_OK"
 
-# ══════════════════════════════════════════════════════════════
-#  Step 4 — Write .env
-# ══════════════════════════════════════════════════════════════
+# ===================================================================
+#  Step 4 -- Write .env
+# ===================================================================
 banner "$S_STEP4"
 
 if [ -f "$ENV_FILE" ]; then
@@ -396,10 +394,9 @@ TELEGRAM_BOT_TOKEN=${BOT_TOKEN}
 ADMIN_IDS=${ADMIN_IDS}
 BOT_LANG=${BOT_LANG}
 
-# AI
-AI_MODEL=${AI_MODEL}
-EMBED_MODEL=nomic-embed-text
-OLLAMA_BASE_URL=http://localhost:11434
+# Gemini AI (free tier)
+GEMINI_API_KEY=${GEMINI_API_KEY}
+GEMINI_MODEL=${GEMINI_MODEL}
 
 # Moderation
 MAX_WARNINGS=${MAX_WARNINGS}
@@ -416,51 +413,10 @@ EOF
 chmod 600 "$ENV_FILE"
 success "$S_ENV_OK"
 
-# ══════════════════════════════════════════════════════════════
-#  Step 5 — Ollama
-# ══════════════════════════════════════════════════════════════
+# ===================================================================
+#  Step 5 -- systemd service
+# ===================================================================
 banner "$S_STEP5"
-
-if ! command -v ollama &>/dev/null; then
-    info "$S_OLL_INSTALL"
-    curl -fsSL https://ollama.com/install.sh | sh
-    success "$S_OLL_OK"
-else
-    OLLAMA_VER=$(ollama --version 2>/dev/null | head -1 || echo "unknown")
-    success "$S_OLL_EXISTS ($OLLAMA_VER)"
-fi
-
-if ! pgrep -x ollama &>/dev/null; then
-    info "$S_OLL_START"
-    if systemctl is-enabled ollama &>/dev/null 2>&1; then
-        sudo systemctl start ollama
-    else
-        ollama serve &>/dev/null &
-        sleep 3
-    fi
-fi
-success "$S_OLL_RUNNING"
-
-echo ""
-info "$(printf "$S_MODEL_PULL" "$AI_MODEL")"
-if ollama pull "$AI_MODEL"; then
-    success "$(printf "$S_MODEL_OK" "$AI_MODEL")"
-else
-    warn "$(printf "$S_MODEL_FAIL" "$AI_MODEL" "$AI_MODEL")"
-fi
-
-echo ""
-info "$S_EMBED_PULL"
-if ollama pull nomic-embed-text; then
-    success "$S_EMBED_OK"
-else
-    warn "$S_EMBED_FAIL"
-fi
-
-# ══════════════════════════════════════════════════════════════
-#  Step 6 — systemd service
-# ══════════════════════════════════════════════════════════════
-banner "$S_STEP6"
 
 CURRENT_USER=$(whoami)
 VENV_PYTHON="$BOT_DIR/venv/bin/python"
@@ -468,7 +424,7 @@ VENV_PYTHON="$BOT_DIR/venv/bin/python"
 sudo tee /etc/systemd/system/${SERVICE_NAME}.service > /dev/null <<UNIT
 [Unit]
 Description=Telegram Group Manager Bot
-After=network-online.target ollama.service
+After=network-online.target
 Wants=network-online.target
 
 [Service]
@@ -502,9 +458,9 @@ else
     echo ""
 fi
 
-# ══════════════════════════════════════════════════════════════
+# ===================================================================
 #  Done
-# ══════════════════════════════════════════════════════════════
+# ===================================================================
 echo ""
 echo -e "${GREEN}+======================================================+${NC}"
 echo -e "${GREEN}|   ${BOLD}$S_DONE_HEAD${NC}"
