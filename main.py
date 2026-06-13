@@ -97,7 +97,7 @@ def main():
     media_filter = (
         filters.PHOTO | filters.VIDEO | filters.Document.ALL |
         filters.AUDIO | filters.VOICE | filters.VIDEO_NOTE |
-        filters.STICKER | filters.ANIMATION | filters.FORWARDED
+        filters.Sticker.ALL | filters.ANIMATION | filters.FORWARDED
     )
     app.add_handler(
         MessageHandler(media_filter, handlers.on_media_message),
