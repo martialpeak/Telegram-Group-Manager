@@ -1,14 +1,22 @@
 """
-تحلیل پیام با Ollama — شناسایی توهین / اسپم / درخواست
+تحلیل پیام با Gemini API — شناسایی توهین / اسپم / درخواست
 """
 
 import json
 import re
 import logging
-import httpx
-from config import OLLAMA_BASE_URL, AI_MODEL
+import google.generativeai as genai
+from config import GEMINI_API_KEY, GEMINI_MODEL
 
 logger = logging.getLogger(__name__)
+
+# ── راه‌اندازی Gemini ─────────────────────────────────────────────────────────
+if GEMINI_API_KEY:
+    genai.configure(api_key=GEMINI_API_KEY)
+    _model = genai.GenerativeModel(GEMINI_MODEL)
+else:
+    _model = None
+    logger.warning("GEMINI_API_KEY تنظیم نشده — فقط rule-based کار می‌کنه")
 
 SYSTEM_PROMPT = """تو سیستم هوشمند مدیریت گروه تلگرام هستی. پیام‌های کاربران را تحلیل کن.
 
@@ -16,9 +24,7 @@ SYSTEM_PROMPT = """تو سیستم هوشمند مدیریت گروه تلگرا
 {
   "type": "insult" | "spam" | "request" | "normal",
   "confidence": عدد 0 تا 1,
-  "reason": "توضیح کوتاه فارسی",
-  "request_summary": "خلاصه درخواست یا null",
-  "suggested_response": "پاسخ پیشنهادی یا null"
+  "reason": "توضیح کوتاه فارسی"
 }
 
 قوانین:
@@ -27,46 +33,49 @@ SYSTEM_PROMPT = """تو سیستم هوشمند مدیریت گروه تلگرا
 - request: سوال، درخواست کمک، خواستن اطلاعات
 - normal: مکالمه عادی"""
 
+# ── Rule-based fallback ───────────────────────────────────────────────────────
 INSULT_WORDS = [
-    "احمق", "کودن", "گاو", "خر", "بیشعور", "بی‌شعور", "مادر", "ننه",
-    "بی‌ناموس", "فاحشه", "حرومزاده", "کثیف", "لاشخور", "نره غول",
-    "گوساله", "الاغ",
-    "idiot", "stupid", "fuck", "shit", "bitch", "asshole", "moron", "dumb",
+    "احمق", "کودن", "گاو", "خر", "بیشعور", "بی‌شعور",
+    "بی‌ناموس", "فاحشه", "حرومزاده", "کثیف", "گوساله", "الاغ",
+    "idiot", "stupid", "fuck", "shit", "bitch", "asshole", "moron",
 ]
 SPAM_WORDS = [
-    "تبلیغ", "خرید", "فروش", "درآمد", "پول", "کسب درآمد", "ارز دیجیتال",
-    "سود تضمینی", "عضو شو", "join", "t.me/", "http://", "https://",
+    "تبلیغ", "خرید", "فروش", "کسب درآمد", "ارز دیجیتال",
+    "سود تضمینی", "عضو شو", "join", "t.me/",
 ]
 REQUEST_WORDS = [
-    "لطفاً", "لطفا", "میشه", "می‌شه", "چطور", "چگونه", "کمک", "سوال",
-    "بگو", "توضیح", "راهنما", "چیه", "کجاست", "چی هست",
+    "لطفاً", "لطفا", "میشه", "می‌شه", "چطور", "چگونه", "کمک",
+    "سوال", "بگو", "توضیح", "راهنما", "چیه", "کجاست",
     "please", "help", "how", "what",
 ]
 
 
 async def analyze_message(text: str) -> dict:
-    try:
-        return await _ollama(text)
-    except Exception as e:
-        logger.warning(f"Ollama fallback: {e}")
-        return _rules(text)
+    if _model:
+        try:
+            return await _gemini(text)
+        except Exception as e:
+            logger.warning(f"Gemini fallback: {e}")
+    return _rules(text)
 
 
-async def _ollama(text: str) -> dict:
-    payload = {
-        "model": AI_MODEL,
-        "messages": [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user",   "content": f"پیام: {text}"},
-        ],
-        "stream": False,
-        "format": "json",
-        "options": {"temperature": 0.1, "num_predict": 300},
-    }
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        r = await client.post(f"{OLLAMA_BASE_URL}/api/chat", json=payload)
-        r.raise_for_status()
-    content = r.json()["message"]["content"].strip()
+async def _gemini(text: str) -> dict:
+    import asyncio
+    prompt = f"{SYSTEM_PROMPT}\n\nپیام: {text}"
+    loop = asyncio.get_event_loop()
+    response = await loop.run_in_executor(
+        None,
+        lambda: _model.generate_content(
+            prompt,
+            generation_config=genai.types.GenerationConfig(
+                temperature=0.1,
+                max_output_tokens=200,
+            ),
+        )
+    )
+    content = response.text.strip()
+    # پاک کردن markdown code block اگه بود
+    content = re.sub(r"```json\s*|\s*```", "", content).strip()
     try:
         result = json.loads(content)
     except json.JSONDecodeError:
@@ -91,8 +100,6 @@ def _rules(text: str) -> dict:
             return _normalize({
                 "type": "request", "confidence": 0.65,
                 "reason": "درخواست کاربر",
-                "request_summary": text[:120],
-                "suggested_response": "لطفاً با ادمین‌های گروه در ارتباط باشید.",
             })
     return _normalize({"type": "normal", "confidence": 0.90, "reason": "پیام عادی"})
 

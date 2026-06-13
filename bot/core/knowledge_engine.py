@@ -1,42 +1,91 @@
 """
-موتور دانش و یادگیری — جستجوی semantic در پایگاه دانش و تاریخچه گروه
+موتور دانش و یادگیری — جستجو در پایگاه دانش و تاریخچه گروه + پاسخ با Gemini
 """
 
 import logging
+import asyncio
 from typing import Optional
 
-import httpx
-import numpy as np
+import google.generativeai as genai
 
-from config import (
-    OLLAMA_BASE_URL, AI_MODEL, EMBED_MODEL,
-    SEARCH_TOP_K, LEARNING_MIN_SCORE,
-)
+from config import GEMINI_API_KEY, GEMINI_MODEL, SEARCH_TOP_K, LEARNING_MIN_SCORE
 import bot.db.database as db
 
 logger = logging.getLogger(__name__)
 
+# ── راه‌اندازی Gemini ─────────────────────────────────────────────────────────
+if GEMINI_API_KEY:
+    genai.configure(api_key=GEMINI_API_KEY)
+    _model = genai.GenerativeModel(GEMINI_MODEL)
+else:
+    _model = None
 
-# ─── Embedding با Ollama ──────────────────────────────────────────────────────
 
-async def _embed(text: str) -> Optional[list[float]]:
-    try:
-        async with httpx.AsyncClient(timeout=20.0) as client:
-            r = await client.post(
-                f"{OLLAMA_BASE_URL}/api/embeddings",
-                json={"model": EMBED_MODEL, "prompt": text},
-            )
-            r.raise_for_status()
-            return r.json()["embedding"]
-    except Exception as e:
-        logger.warning(f"Embedding ناموفق: {e}")
+# ─── جستجوی ساده بر اساس کلمه ───────────────────────────────────────────────
+
+async def _search_knowledge(question: str, chat_id: int) -> Optional[dict]:
+    items = await db.get_knowledge(chat_id)
+    if not items:
+        return None
+    q_words = set(question.lower().split())
+    best, best_score = None, 0
+    for item in items:
+        words = set(item["question"].lower().split())
+        common = len(q_words & words)
+        score = common / max(len(q_words), 1)
+        if score > best_score:
+            best_score = score
+            best = {**item, "score": score}
+    return best if best and best_score >= 0.4 else None
+
+
+async def _search_history(query: str, chat_id: int) -> list[dict]:
+    keywords = [w for w in query.split() if len(w) > 2][:5]
+    results, seen = [], set()
+    for kw in keywords:
+        msgs = await db.search_messages(kw, chat_id, limit=5)
+        for m in msgs:
+            if m["text"] not in seen:
+                seen.add(m["text"])
+                results.append(m)
+    return results[:SEARCH_TOP_K]
+
+
+# ─── پاسخ با Gemini ──────────────────────────────────────────────────────────
+
+async def _generate_answer(question: str, context_msgs: list[dict]) -> Optional[str]:
+    if not _model:
         return None
 
+    context = ""
+    if context_msgs:
+        lines = "\n".join(f"- {m['name']}: {m['text']}" for m in context_msgs[:5])
+        context = f"\nاطلاعات مرتبط از گروه:\n{lines}\n"
 
-def _cosine(a: list, b: list) -> float:
-    a, b = np.array(a, dtype=float), np.array(b, dtype=float)
-    denom = np.linalg.norm(a) * np.linalg.norm(b)
-    return float(np.dot(a, b) / denom) if denom > 0 else 0.0
+    prompt = (
+        f"تو دستیار هوشمند یک گروه تلگرامی هستی.{context}\n"
+        f"سوال کاربر: {question}\n\n"
+        "پاسخ کوتاه، مفید و به زبان فارسی بده. "
+        "اگر اطلاعات کافی نداری صادقانه بگو."
+    )
+
+    try:
+        loop = asyncio.get_event_loop()
+        response = await loop.run_in_executor(
+            None,
+            lambda: _model.generate_content(
+                prompt,
+                generation_config=genai.types.GenerationConfig(
+                    temperature=0.3,
+                    max_output_tokens=500,
+                ),
+            )
+        )
+        answer = response.text.strip()
+        return answer if answer and len(answer) > 5 else None
+    except Exception as e:
+        logger.warning(f"Gemini answer generation failed: {e}")
+        return None
 
 
 # ─── پاسخ به سوالات ──────────────────────────────────────────────────────────
@@ -55,101 +104,25 @@ async def answer_question(question: str, chat_id: int) -> dict:
     # ۲. جستجو در تاریخچه گروه
     history_results = await _search_history(question, chat_id)
 
-    # ۳. تولید پاسخ با AI
+    # ۳. پاسخ با Gemini
     answer = await _generate_answer(question, history_results)
 
-    # ۴. ذخیره برای یادگیری آینده
+    # ۴. ذخیره برای یادگیری
     if answer:
         await db.save_knowledge(
             question=question,
             answer=answer,
             chat_id=chat_id,
-            source="ai_generated",
-            score=0.55,
+            source="gemini",
+            score=0.70,
         )
 
     return {
-        "answer": answer or "متاسفم، جواب این سوال رو پیدا نکردم. ادمین‌های گروه می‌تونن کمک کنن.",
-        "source": "ai_generated",
-        "confidence": 0.7 if answer else 0.0,
+        "answer": answer or "متاسفم، اطلاعات کافی برای پاسخ به این سوال ندارم.",
+        "source": "gemini" if answer else "none",
+        "confidence": 0.8 if answer else 0.0,
         "history_used": len(history_results),
     }
-
-async def _search_knowledge(question: str, chat_id: int) -> Optional[dict]:
-    items = await db.get_knowledge(chat_id)
-    if not items:
-        return None
-
-    q_vec = await _embed(question)
-
-    if q_vec:
-        best, best_score = None, -1.0
-        for item in items:
-            i_vec = await _embed(item["question"])
-            if i_vec:
-                score = _cosine(q_vec, i_vec)
-                if score > best_score:
-                    best_score = score
-                    best = {**item, "score": score}
-        return best if best and best_score > 0.6 else None
-    else:
-        # Fallback: جستجوی کلمه‌ای
-        q_words = set(question.lower().split())
-        best, best_score = None, -1
-        for item in items:
-            words = set(item["question"].lower().split())
-            common = len(q_words & words)
-            if common > best_score:
-                best_score = common
-                best = {**item, "score": min(common / max(len(q_words), 1), 1.0)}
-        return best if best and best_score > 0 else None
-
-
-async def _search_history(query: str, chat_id: int) -> list[dict]:
-    keywords = [w for w in query.split() if len(w) > 2][:5]
-    results = []
-    seen = set()
-    for kw in keywords:
-        msgs = await db.search_messages(kw, chat_id, limit=5)
-        for m in msgs:
-            if m["text"] not in seen:
-                seen.add(m["text"])
-                results.append(m)
-    return results[:SEARCH_TOP_K]
-
-
-async def _generate_answer(question: str, context_msgs: list[dict]) -> Optional[str]:
-    context = ""
-    if context_msgs:
-        context = "\n".join(f"- {m['name']}: {m['text']}" for m in context_msgs[:5])
-        context = f"\nاطلاعات مرتبط از گروه:\n{context}\n"
-
-    prompt = (
-        f"یک سوال از یک کاربر گروه تلگرام داری.{context}\n"
-        f"سوال: {question}\n\n"
-        "پاسخ کوتاه، مفید و فارسی بده. اگر نمی‌دانی بگو «اطلاعات کافی ندارم»."
-    )
-
-    try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            r = await client.post(
-                f"{OLLAMA_BASE_URL}/api/chat",
-                json={
-                    "model": AI_MODEL,
-                    "messages": [{"role": "user", "content": prompt}],
-                    "stream": False,
-                    "options": {"temperature": 0.3, "num_predict": 500},
-                },
-            )
-            r.raise_for_status()
-            answer = r.json()["message"]["content"].strip()
-            # فیلتر جواب‌های بی‌معنی
-            if not answer or len(answer) < 5:
-                return None
-            return answer
-    except Exception as e:
-        logger.warning(f"تولید پاسخ ناموفق: {e}")
-        return None
 
 
 # ─── یادگیری از فیدبک ────────────────────────────────────────────────────────
@@ -171,24 +144,3 @@ async def learn_from_feedback() -> int:
             count += 1
     logger.info(f"🧠 {count} مورد از فیدبک یاد گرفته شد.")
     return count
-
-
-async def learn_from_conversation(messages: list[dict], chat_id: int):
-    if len(messages) < 2:
-        return
-    for i in range(len(messages) - 1):
-        curr = messages[i]
-        nxt  = messages[i + 1]
-        is_question = any(
-            w in curr["text"]
-            for w in ["چطور", "چرا", "چیه", "چی", "?", "؟", "کمک", "لطفا", "لطفاً"]
-        )
-        if (is_question and len(nxt["text"]) > 20
-                and curr["user_id"] != nxt["user_id"]):
-            await db.save_knowledge(
-                question=curr["text"],
-                answer=nxt["text"],
-                chat_id=chat_id,
-                source="conversation",
-                score=0.65,
-            )
