@@ -123,6 +123,8 @@ async def on_media_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message
     if not message or not message.from_user:
         return
+    if message.from_user.is_bot:
+        return
     if message.chat.type == ChatType.PRIVATE:
         return
     await _check_level_restrictions(message, context.bot)
@@ -136,6 +138,9 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     user = message.from_user
+    if not user or user.is_bot:
+        return
+
     chat = message.chat
 
     if chat.type == ChatType.PRIVATE:
@@ -193,6 +198,17 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # اگه مستقیم mention شده → جواب بده (صرف‌نظر از نوع AI)
     if is_mentioned:
+        # سوال باید حداقل ۳ کلمه یا ۱۰ کاراکتر داشته باشه
+        # این جلوگیری می‌کنه از اینکه ریپلای‌های کوتاه مثل "خوبی"، "ممنون"، "ok" رو سوال بگیریم
+        clean_q = text.replace(f"@{bot_username}", "").strip()
+        if len(clean_q) < 5 or len(clean_q.split()) < 2:
+            # پیام خیلی کوتاهه — فقط log کن، جواب نده
+            await db.log_message(
+                user.id, chat.id, user.username or "",
+                user.full_name, text, "normal", 1.0,
+            )
+            return
+
         level  = await db.get_user_level(user.id, chat.id)
         config = get_config(level)
         if config.daily_queries != -1:
@@ -211,7 +227,6 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await db.increment_query_count(user.id, chat.id)
 
-        clean_q = text.replace(f"@{bot_username}", "").strip()
         result  = await answer_question(clean_q, chat.id)
         answer_text = t("request_handled", response=result["answer"])
 

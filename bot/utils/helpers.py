@@ -55,16 +55,30 @@ async def send_and_delete(
 
 
 def is_addressing_bot(message: Message, bot_username: str) -> bool:
-    """بررسی اینکه پیام خطاب به ربات هست یا نه — منشن مستقیم یا ریپلای روی پیام ربات"""
+    """
+    بررسی اینکه پیام خطاب به ربات هست یا نه.
+    دو حالت:
+    ۱. mention مستقیم: @botname در متن پیام
+    ۲. ریپلای روی پیام ربات — فقط اگه متن پیام به اندازه کافی طولانی باشه (سوال واقعی)
+    """
     text = message.text or message.caption or ""
+
+    # منشن مستقیم — همیشه فعال
     if f"@{bot_username}" in text:
         return True
+
+    # ریپلای روی پیام ربات — فقط اگه متن کافی داشته باشه
     if (
         message.reply_to_message
         and message.reply_to_message.from_user
         and message.reply_to_message.from_user.username == bot_username
     ):
-        return True
+        # حداقل ۵ کاراکتر و ۲ کلمه لازمه تا سوال بگیریم
+        # این جلوگیری می‌کنه از trigger شدن با "ممنون"، "ok"، "خوبی" و ...
+        clean = text.strip()
+        if len(clean) >= 5 and len(clean.split()) >= 2:
+            return True
+
     return False
 
 
