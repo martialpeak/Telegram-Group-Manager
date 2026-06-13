@@ -2,15 +2,16 @@
 
 <div dir="rtl">
 
-**یک ربات پیشرفته مدیریت گروه تلگرام با هوش مصنوعی کاملاً محلی — بدون نیاز به API خارجی.**
+**یک ربات پیشرفته مدیریت گروه تلگرام با هوش مصنوعی ابری — Groq (primary) + Gemini (fallback)**
 
 </div>
 
-**An advanced Telegram group manager bot powered by fully local AI — no external API required.**
+**An advanced Telegram group manager bot powered by cloud AI — Groq (primary) + Gemini (fallback).**
 
 [![Python](https://img.shields.io/badge/Python-3.11+-blue?logo=python&logoColor=white)](https://python.org)
 [![python-telegram-bot](https://img.shields.io/badge/python--telegram--bot-21.6-blue)](https://python-telegram-bot.org)
-[![Ollama](https://img.shields.io/badge/AI-Ollama-black)](https://ollama.ai)
+[![Groq](https://img.shields.io/badge/AI-Groq-orange)](https://console.groq.com)
+[![Gemini](https://img.shields.io/badge/AI-Gemini-blue)](https://aistudio.google.com)
 [![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
 
 ---
@@ -29,13 +30,13 @@
 
 | Feature | Description |
 |---|---|
-| 🧠 AI Analysis | Detects insult / spam / requests using local Ollama |
-| 📚 Knowledge Base | Semantic search with local embeddings |
-| 🏅 User Levels | 5 tiers with independent permissions |
+| 🧠 AI Analysis | Detects insult / spam / requests — Groq → Gemini → rule-based fallback |
+| 📚 Knowledge Base | Cached Q&A with fuzzy similarity matching |
+| 🏅 User Levels | 5 tiers with independent daily limits |
 | ⬆️ Auto Upgrade | simple → bronze after 50 messages |
-| ⚠️ Escalating Punishments | Progressive mute and ban steps |
-| 📋 Report System | `/report` with admin notification |
-| ⚙️ Settings Panel | Full config from inside Telegram |
+| ⚠️ Escalating Punishments | Progressive mute (10m→30m→3h→24h→48h) and ban steps |
+| 📋 Report System | `/report` with admin PM notification + action buttons |
+| ⚙️ Settings Panel | Full config from inside Telegram via `/settings` |
 | 🌐 Bilingual | Persian and English support |
 | 🗳️ Community Learning | Community-voted answer corrections |
 
@@ -45,9 +46,24 @@
 |---|---|---|
 | OS | Ubuntu 20.04 / Debian 11 | Any modern Linux distro |
 | Python | **3.11+** | `python3 --version` |
-| RAM | **4 GB** (8 GB recommended) | For llama3.1 model |
-| Disk | **8 GB** | For AI models |
-| Internet | — | Only for initial download |
+| RAM | **512 MB** | No local AI model needed |
+| Internet | Required | For Groq / Gemini API calls |
+| Groq API Key | Free | 14,400 requests/day free tier |
+| Gemini API Key | Free (optional) | 1,500 requests/day free tier — used as fallback |
+
+## 🔑 Get API Keys
+
+**Groq (primary — free):**
+1. Go to [console.groq.com](https://console.groq.com)
+2. Sign up and create an API key
+3. Free tier: 14,400 requests/day with `llama-3.1-8b-instant`
+
+**Gemini (fallback — optional but recommended):**
+1. Go to [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey)
+2. Create an API key
+3. Free tier: 1,500 requests/day with `gemini-2.5-flash`
+
+> If only Groq is configured, Gemini fallback is skipped. If neither is set, the bot falls back to a rule-based engine.
 
 ## 🚀 Quick Install (one command)
 
@@ -86,19 +102,7 @@ pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-### Step 3 — Install Ollama
-
-```bash
-curl -fsSL https://ollama.com/install.sh | sh
-
-# Download AI models
-ollama pull llama3.1           # ~4.7 GB — main analysis model
-ollama pull nomic-embed-text   # ~274 MB — semantic search model
-```
-
-> **Low RAM?** Use `gemma2:2b` (~1.6 GB) instead of `llama3.1`.
-
-### Step 4 — Get a bot token
+### Step 3 — Get a bot token
 
 1. Open Telegram and message **[@BotFather](https://t.me/BotFather)**
 2. Send `/newbot`
@@ -107,7 +111,7 @@ ollama pull nomic-embed-text   # ~274 MB — semantic search model
 **Find your Telegram user ID:**
 - Message **[@userinfobot](https://t.me/userinfobot)** — it replies with your numeric ID
 
-### Step 5 — Configure
+### Step 4 — Configure
 
 ```bash
 cp .env.example .env
@@ -120,12 +124,15 @@ Fill in the required values:
 TELEGRAM_BOT_TOKEN=your_token_here
 ADMIN_IDS=123456789,987654321
 BOT_LANG=en
-AI_MODEL=llama3.1
+
+# AI — at least one is required
+GROQ_API_KEY=your_groq_key_here
+GEMINI_API_KEY=your_gemini_key_here   # optional fallback
 ```
 
 > ⚠️ Never commit `.env` to Git!
 
-### Step 6 — Test run
+### Step 5 — Test run
 
 ```bash
 source venv/bin/activate
@@ -140,7 +147,7 @@ Expected output:
 
 Add the bot to your group and send `/start`.
 
-### Step 7 — Run as a system service (auto-start)
+### Step 6 — Run as a system service (auto-start)
 
 ```bash
 sudo nano /etc/systemd/system/telegram-bot.service
@@ -190,13 +197,15 @@ Change settings via `/settings` in Telegram or edit `.env` directly:
 | `TELEGRAM_BOT_TOKEN` | — | Token from @BotFather |
 | `ADMIN_IDS` | — | Admin IDs, comma-separated |
 | `BOT_LANG` | `fa` | Message language: `fa` or `en` |
-| `AI_MODEL` | `llama3.1` | Ollama model name |
-| `EMBED_MODEL` | `nomic-embed-text` | Embedding model |
-| `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama server address |
+| `GROQ_API_KEY` | — | Groq API key (primary AI) |
+| `GROQ_MODEL` | `llama-3.1-8b-instant` | Groq model name |
+| `GEMINI_API_KEY` | — | Gemini API key (fallback AI) |
+| `GEMINI_MODEL` | `gemini-2.5-flash` | Gemini model name |
 | `MAX_WARNINGS` | `3` | Warnings before ban |
 | `SPAM_TIME_WINDOW` | `60` | Spam detection window (seconds) |
 | `SPAM_MAX_MESSAGES` | `5` | Max messages in spam window |
-| `MIN_CONFIDENCE` | `0.60` | Minimum AI confidence threshold |
+| `MIN_CONFIDENCE` | `0.80` | Minimum AI confidence threshold |
+| `CACHE_MIN_SCORE` | `0.75` | Minimum similarity for cache hit |
 | `LEARNING_ENABLED` | `true` | Enable learning from feedback |
 | `LEARNING_MIN_SCORE` | `0.75` | Minimum score to store knowledge |
 
@@ -247,21 +256,32 @@ Change settings via `/settings` in Telegram or edit `.env` directly:
 
 ## 🤖 About the AI
 
-The bot uses **Ollama** to run language models locally on your server:
+The bot uses a **cloud AI chain** — no local installation needed:
 
+1. **Groq** (primary) — ultra-fast inference, free 14,400 req/day
+2. **Gemini** (fallback) — activates if Groq fails or is unavailable
+3. **Rule-based engine** — always available, no API needed
+
+**What AI does:**
 - **Message Analysis** — classifies each message as `insult` / `spam` / `request` / `normal`
-- **Question Answering** — searches knowledge base first, then generates AI response
+- **Question Answering** — checks knowledge cache first, then calls AI
 - **Learning** — users correct wrong answers; community voting approves them
-- **Fallback** — rule-based engine activates if Ollama is unavailable
 
-**Supported models:**
+**Supported Groq models:**
 
-| Model | RAM | Quality | Speed |
-|---|---|---|---|
-| `llama3.1` | ~4.7 GB | ⭐⭐⭐⭐⭐ | Medium |
-| `gemma2:2b` | ~1.6 GB | ⭐⭐⭐ | Fast |
-| `phi3` | ~2.3 GB | ⭐⭐⭐⭐ | Fast |
-| `mistral` | ~4.1 GB | ⭐⭐⭐⭐ | Medium |
+| Model | Speed | Notes |
+|---|---|---|
+| `llama-3.1-8b-instant` | ⚡ Very fast | Default, recommended |
+| `llama-3.3-70b-versatile` | 🚀 Fast | Higher quality |
+| `mixtral-8x7b-32768` | 🚀 Fast | Good for Persian |
+
+**Supported Gemini models:**
+
+| Model | Notes |
+|---|---|
+| `gemini-2.5-flash` | Default fallback, fast |
+| `gemini-2.0-flash` | Stable alternative |
+| `gemini-2.5-pro` | Highest quality |
 
 ## 🐛 Troubleshooting
 
@@ -276,23 +296,15 @@ cat .env
 sudo systemctl restart telegram-bot
 ```
 
-**Ollama not working:**
-```bash
-ollama list
-curl http://localhost:11434/api/tags
-ollama serve   # manual start
-```
+**AI not working (falling back to rules):**
+- Check `GROQ_API_KEY` is set correctly in `.env`
+- Verify key at [console.groq.com](https://console.groq.com)
+- Try lowering `MIN_CONFIDENCE` to `0.60`
+- Check logs for `Groq analyze failed` messages
 
-**Model not downloaded:**
-```bash
-ollama pull llama3.1
-ollama pull nomic-embed-text
-```
-
-**Messages not analyzed (fallback mode active):**
-- Make sure Ollama is running
-- Check `AI_MODEL` in `.env` matches the pulled model name
-- Try lowering `MIN_CONFIDENCE` to `0.40`
+**Rate limit errors:**
+- Groq free tier: 14,400 req/day — set `GEMINI_API_KEY` as fallback
+- If both limits hit, rule-based engine takes over automatically
 
 ---
 
@@ -305,11 +317,11 @@ ollama pull nomic-embed-text
 
 | قابلیت | توضیح |
 |---|---|
-| 🧠 تحلیل هوشمند | شناسایی توهین / اسپم / درخواست با Ollama محلی |
-| 📚 پایگاه دانش | جستجوی معنایی با embedding محلی |
+| 🧠 تحلیل هوشمند | شناسایی توهین / اسپم / درخواست — Groq → Gemini → rule-based |
+| 📚 پایگاه دانش | کش سوال-جواب با جستجوی fuzzy |
 | 🏅 سطح‌بندی کاربران | ۵ سطح با محدودیت‌های مستقل |
 | ⬆️ ارتقاء خودکار | ساده → برنزی بعد از ۵۰ پیام |
-| ⚠️ مجازات پلکانی | میوت و بن با افزایش تدریجی |
+| ⚠️ مجازات پلکانی | میوت (۱۰m→۳۰m→۳h→۲۴h→۴۸h) و بن تدریجی |
 | 📋 سیستم گزارش | `/report` با اطلاع‌رسانی به ادمین‌ها |
 | ⚙️ پنل تنظیمات | تنظیم کامل از داخل تلگرام |
 | 🌐 دو زبانه | پشتیبانی از فارسی و انگلیسی |
@@ -321,9 +333,24 @@ ollama pull nomic-embed-text
 |---|---|---|
 | سیستم‌عامل | Ubuntu 20.04 / Debian 11 | هر توزیع Linux مدرن |
 | Python | **3.11+** | `python3 --version` |
-| RAM | **4 GB** (8 GB توصیه‌شده) | برای مدل llama3.1 |
-| فضای دیسک | **8 GB** | برای مدل‌های AI |
-| اینترنت | — | فقط برای دانلود اولیه |
+| RAM | **512 MB** | نیازی به مدل محلی نیست |
+| اینترنت | ضروری | برای API call به Groq / Gemini |
+| Groq API Key | رایگان | روزانه ۱۴،۴۰۰ درخواست رایگان |
+| Gemini API Key | رایگان (اختیاری) | روزانه ۱،۵۰۰ درخواست — fallback |
+
+## 🔑 دریافت API Key
+
+**Groq (اصلی — رایگان):**
+1. به [console.groq.com](https://console.groq.com) بروید
+2. ثبت‌نام کنید و یک API key بسازید
+3. مدل پیش‌فرض: `llama-3.1-8b-instant`
+
+**Gemini (fallback — اختیاری ولی توصیه‌شده):**
+1. به [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey) بروید
+2. یک API key بسازید
+3. مدل پیش‌فرض: `gemini-2.5-flash`
+
+> اگر هیچ‌کدام تنظیم نشود، ربات با موتور rule-based کار می‌کند.
 
 ## 🚀 نصب سریع (یک دستور)
 
@@ -348,40 +375,25 @@ cd Telegram-Group-Manager
 ### گام ۲ — محیط مجازی پایتون
 
 ```bash
-# بررسی نسخه Python (باید 3.11 یا بالاتر باشد)
-python3 --version
+python3 --version   # باید 3.11 یا بالاتر باشد
 
-# ساخت محیط مجازی
 python3 -m venv venv
 source venv/bin/activate
 
-# نصب وابستگی‌ها
 pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-### گام ۳ — نصب Ollama
-
-```bash
-curl -fsSL https://ollama.com/install.sh | sh
-
-# دانلود مدل‌ها
-ollama pull llama3.1           # ~4.7 GB — مدل اصلی
-ollama pull nomic-embed-text   # ~274 MB — جستجوی معنایی
-```
-
-> **RAM کم دارید؟** به‌جای `llama3.1` از `gemma2:2b` (~1.6 GB) استفاده کنید.
-
-### گام ۴ — ساخت توکن ربات
+### گام ۳ — ساخت توکن ربات
 
 ۱. در تلگرام به **[@BotFather](https://t.me/BotFather)** پیام دهید
 ۲. دستور `/newbot` را ارسال کنید
-۳. مراحل را دنبال کنید و توکن را کپی کنید
+۳. توکن را کپی کنید
 
 **پیدا کردن شناسه تلگرام:**
 - به **[@userinfobot](https://t.me/userinfobot)** پیام دهید
 
-### گام ۵ — پیکربندی
+### گام ۴ — پیکربندی
 
 ```bash
 cp .env.example .env
@@ -394,12 +406,13 @@ nano .env
 TELEGRAM_BOT_TOKEN=توکن-شما-اینجا
 ADMIN_IDS=123456789,987654321
 BOT_LANG=fa
-AI_MODEL=llama3.1
+GROQ_API_KEY=کلید-groq-شما
+GEMINI_API_KEY=کلید-gemini-شما   # اختیاری
 ```
 
 > ⚠️ فایل `.env` را هرگز در Git کامیت نکنید!
 
-### گام ۶ — اجرای آزمایشی
+### گام ۵ — اجرای آزمایشی
 
 ```bash
 source venv/bin/activate
@@ -414,7 +427,7 @@ python main.py
 
 ربات را به گروه اضافه کنید و `/start` بزنید.
 
-### گام ۷ — اجرای دائمی با systemd
+### گام ۶ — اجرای دائمی با systemd
 
 ```bash
 sudo nano /etc/systemd/system/telegram-bot.service
@@ -465,13 +478,15 @@ sudo systemctl status telegram-bot          # وضعیت
 | `TELEGRAM_BOT_TOKEN` | — | توکن از @BotFather |
 | `ADMIN_IDS` | — | شناسه ادمین‌ها با کاما |
 | `BOT_LANG` | `fa` | زبان: `fa` یا `en` |
-| `AI_MODEL` | `llama3.1` | مدل Ollama |
-| `EMBED_MODEL` | `nomic-embed-text` | مدل embedding |
-| `OLLAMA_BASE_URL` | `http://localhost:11434` | آدرس سرور Ollama |
+| `GROQ_API_KEY` | — | کلید API گروک (AI اصلی) |
+| `GROQ_MODEL` | `llama-3.1-8b-instant` | مدل گروک |
+| `GEMINI_API_KEY` | — | کلید API جمینی (fallback) |
+| `GEMINI_MODEL` | `gemini-2.5-flash` | مدل جمینی |
 | `MAX_WARNINGS` | `3` | اخطار قبل از بن |
 | `SPAM_TIME_WINDOW` | `60` | بازه اسپم (ثانیه) |
 | `SPAM_MAX_MESSAGES` | `5` | پیام در بازه اسپم |
-| `MIN_CONFIDENCE` | `0.60` | حداقل اطمینان AI |
+| `MIN_CONFIDENCE` | `0.80` | حداقل اطمینان AI |
+| `CACHE_MIN_SCORE` | `0.75` | حداقل شباهت برای cache |
 | `LEARNING_ENABLED` | `true` | یادگیری از فیدبک |
 
 ## 📖 دستورات
@@ -521,12 +536,27 @@ sudo systemctl status telegram-bot          # وضعیت
 
 ## 🤖 درباره هوش مصنوعی
 
-| مدل | RAM | کیفیت | سرعت |
-|---|---|---|---|
-| `llama3.1` | ~4.7 GB | ⭐⭐⭐⭐⭐ | متوسط |
-| `gemma2:2b` | ~1.6 GB | ⭐⭐⭐ | سریع |
-| `phi3` | ~2.3 GB | ⭐⭐⭐⭐ | سریع |
-| `mistral` | ~4.1 GB | ⭐⭐⭐⭐ | متوسط |
+ربات از یک **زنجیره AI ابری** استفاده می‌کند — نیازی به نصب محلی نیست:
+
+1. **Groq** (اصلی) — سریع‌ترین inference، رایگان ۱۴،۴۰۰ req/day
+2. **Gemini** (fallback) — اگر Groq در دسترس نبود فعال می‌شود
+3. **موتور rule-based** — همیشه در دسترس، بدون نیاز به API
+
+**مدل‌های Groq پشتیبانی‌شده:**
+
+| مدل | سرعت | توضیح |
+|---|---|---|
+| `llama-3.1-8b-instant` | ⚡ خیلی سریع | پیش‌فرض، توصیه‌شده |
+| `llama-3.3-70b-versatile` | 🚀 سریع | کیفیت بالاتر |
+| `mixtral-8x7b-32768` | 🚀 سریع | مناسب فارسی |
+
+**مدل‌های Gemini پشتیبانی‌شده:**
+
+| مدل | توضیح |
+|---|---|
+| `gemini-2.5-flash` | پیش‌فرض fallback، سریع |
+| `gemini-2.0-flash` | جایگزین پایدار |
+| `gemini-2.5-pro` | بالاترین کیفیت |
 
 ## 🐛 رفع مشکلات رایج
 
@@ -541,18 +571,16 @@ cat .env
 sudo systemctl restart telegram-bot
 ```
 
-**Ollama کار نمی‌کند:**
-```bash
-ollama list
-curl http://localhost:11434/api/tags
-ollama serve
-```
+**AI کار نمی‌کند (rule-based فعال است):**
+- `GROQ_API_KEY` را در `.env` بررسی کنید
+- کلید را در [console.groq.com](https://console.groq.com) تأیید کنید
+- `MIN_CONFIDENCE` را به `0.60` کاهش دهید
+- در لاگ دنبال `Groq analyze failed` بگردید
 
-**مدل دانلود نشده:**
-```bash
-ollama pull llama3.1
-ollama pull nomic-embed-text
-```
+**rate limit خوردید:**
+- Groq: روزانه ۱۴،۴۰۰ درخواست رایگان
+- برای fallback، `GEMINI_API_KEY` را هم تنظیم کنید
+- در بدترین حالت، موتور rule-based فعال می‌شود
 
 </div>
 
@@ -568,8 +596,8 @@ Telegram-Group-Manager/
 ├── settings_panel.py          ← /settings Telegram panel
 ├── bot/
 │   ├── core/
-│   │   ├── ai_analyzer.py     ← Ollama message analysis
-│   │   ├── knowledge_engine.py← search & learning
+│   │   ├── ai_analyzer.py     ← Groq/Gemini message analysis
+│   │   ├── knowledge_engine.py← cache, search & learning
 │   │   ├── moderation.py      ← warn, mute, ban
 │   │   └── user_levels.py     ← level definitions
 │   ├── db/
