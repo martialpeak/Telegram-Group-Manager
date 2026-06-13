@@ -24,6 +24,9 @@ logger = logging.getLogger(__name__)
 # ذخیره موقت آخرین پاسخ‌های ربات برای دریافت فیدبک
 _pending_answers: dict[str, dict] = {}
 
+# cache کاربرانی که تگ گرفتن در این session — جلوگیری از API call مکرر
+_tagged_users: set[tuple[int, int]] = set()
+
 _MIN_CORRECTION_LEN = 10
 _MAX_CORRECTION_LEN = 1000
 _MAX_FB_PER_HOUR    = 5
@@ -127,6 +130,18 @@ async def on_media_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     if message.chat.type == ChatType.PRIVATE:
         return
+
+    # auto-tag
+    user = message.from_user
+    tag_key = (user.id, message.chat_id)
+    if tag_key not in _tagged_users:
+        _tagged_users.add(tag_key)
+        level_for_tag = await db.get_user_level(user.id, message.chat_id)
+        from bot.core.moderation import _set_status_tag
+        from bot.core.user_levels import get_config as _get_cfg
+        _cfg = _get_cfg(level_for_tag)
+        await _set_status_tag(context.bot, message.chat_id, user.id, _cfg.tag)
+
     await _check_level_restrictions(message, context.bot)
 
 
@@ -172,6 +187,16 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = message.text.strip()
     if len(text) < 2:
         return
+
+    # ── auto-tag: اولین پیام هر کاربر در این session تگش ست می‌شه ──────────
+    tag_key = (user.id, chat.id)
+    if tag_key not in _tagged_users:
+        _tagged_users.add(tag_key)
+        level_for_tag = await db.get_user_level(user.id, chat.id)
+        from bot.core.moderation import _set_status_tag
+        from bot.core.user_levels import get_config as _get_cfg
+        _cfg = _get_cfg(level_for_tag)
+        await _set_status_tag(context.bot, chat.id, user.id, _cfg.tag)
 
     # ── اسپم سرعتی ───────────────────────────────────────────────────────────
     is_rate_spam = await db.track_spam(user.id, chat.id, SPAM_TIME_WINDOW, SPAM_MAX_MESSAGES)
