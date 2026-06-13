@@ -21,12 +21,12 @@ _STRINGS: dict[str, dict[str, str]] = {
 
     # ── welcome / left ───────────────────────────────
     "welcome": {
-        "fa": "👋 *{name}* عزیز، به گروه خوش اومدی! 🎉\n\n📌 برای صحبت با ربات منشنش کن یا روی پیامش ریپلای بزن.",
-        "en": "👋 Welcome *{name}*! 🎉\n\n📌 Mention the bot or reply to its messages to ask questions.",
+        "fa": "👋 <b>{name}</b> عزیز، به گروه خوش اومدی! 🎉\n\n📌 برای صحبت با ربات منشنش کن یا روی پیامش ریپلای بزن.",
+        "en": "👋 Welcome <b>{name}</b>! 🎉\n\n📌 Mention the bot or reply to its messages to ask questions.",
     },
     "left": {
-        "fa": "👋 *{name}* از گروه خارج شد.",
-        "en": "👋 *{name}* has left the group.",
+        "fa": "👋 <b>{name}</b> از گروه خارج شد.",
+        "en": "👋 <b>{name}</b> has left the group.",
     },
 
     # ── warnings / punishments ───────────────────────
@@ -43,8 +43,8 @@ _STRINGS: dict[str, dict[str, str]] = {
         "en": "🚫 {name} has been removed from the group due to repeated violations.",
     },
     "banned_temp": {
-        "fa": "🚫 *{name}* به مدت *{duration}* از گروه بن شد.\n📌 دلیل: {reason}",
-        "en": "🚫 *{name}* has been banned for *{duration}*.\n📌 Reason: {reason}",
+        "fa": "🚫 <b>{name}</b> به مدت <b>{duration}</b> از گروه بن شد.\n📌 دلیل: {reason}",
+        "en": "🚫 <b>{name}</b> has been banned for <b>{duration}</b>.\n📌 Reason: {reason}",
     },
     "muted": {
         "fa": "🔇 {name} به مدت {duration} دقیقه محدود شد.",

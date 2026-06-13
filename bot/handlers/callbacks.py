@@ -105,7 +105,7 @@ async def on_feedback_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         await query.message.reply_text(
             f"✏️ جواب درست رو بنویس تا یاد بگیرم 👇\n"
             f"_(حداقل {_MIN_CORRECTION_LEN} کاراکتر)_",
-            parse_mode="Markdown",
+            parse_mode="HTML",
         )
 
     # ── رای روی تصحیح ────────────────────────────────────────────────────────
@@ -165,7 +165,7 @@ async def on_report_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await db.update_report_status(report_id, "ignored")
         await query.edit_message_text(
             query.message.text + "\n\n✅ *نادیده گرفته شد*",
-            parse_mode="Markdown",
+            parse_mode="HTML",
         )
         return
 
@@ -211,5 +211,5 @@ async def on_report_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     await query.edit_message_text(
         query.message.text + f"\n\n✅ *اقدام انجام شد: {result_txt}*",
-        parse_mode="Markdown",
+        parse_mode="HTML",
     )

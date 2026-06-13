@@ -180,7 +180,7 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 logger.warning(f"auto-upgrade tag set failed: {e}")
             await chat.send_message(
                 f"🎉 {mention(user)} به سطح {level_label(next_lv)} ارتقاء پیدا کرد!",
-                parse_mode="Markdown",
+                parse_mode="HTML",
             )
 
     # ── تحلیل AI ─────────────────────────────────────────────────────────────
@@ -312,7 +312,7 @@ async def on_correction(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"💬 *تصحیح:* {correction[:200]}\n\n"
         f"دیگران می‌تونن تایید یا رد کنن 👇\n"
         f"_(نیاز به {_VOTES_TO_CONFIRM} رای موافق)_",
-        parse_mode="Markdown",
+        parse_mode="HTML",
         reply_markup=vote_kb,
     )
     await update.message.reply_text(t("learned"))

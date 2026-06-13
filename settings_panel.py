@@ -75,7 +75,7 @@ async def cmd_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "⚙️ *پنل تنظیمات ربات*\n"
         "یک مورد را برای تغییر انتخاب کنید:",
-        parse_mode="Markdown",
+        parse_mode="HTML",
         reply_markup=_main_keyboard(),
     )
 
@@ -97,7 +97,7 @@ async def on_settings_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     if data == "cfg_show":
         await query.edit_message_text(
             _current_settings(),
-            parse_mode="Markdown",
+            parse_mode="HTML",
             reply_markup=_main_keyboard(),
         )
         return
@@ -126,7 +126,7 @@ async def on_settings_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         f"✏️ *تغییر {description}*\n\n"
         f"مقدار فعلی: `{current_val}`\n\n"
         f"مقدار جدید را بنویسید یا /cancel برای انصراف:",
-        parse_mode="Markdown",
+        parse_mode="HTML",
         reply_markup=InlineKeyboardMarkup([[
             InlineKeyboardButton("❌ انصراف", callback_data="cfg_cancel")
         ]]),
@@ -140,7 +140,7 @@ async def on_settings_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE)
     context.user_data.pop("settings_key", None)
     await query.edit_message_text(
         "⚙️ *پنل تنظیمات ربات*\nیک مورد را برای تغییر انتخاب کنید:",
-        parse_mode="Markdown",
+        parse_mode="HTML",
         reply_markup=_main_keyboard(),
     )
     return ConversationHandler.END
@@ -162,7 +162,7 @@ async def on_settings_value(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if error_msg:
         await update.message.reply_text(
             f"❌ {error_msg}\nدوباره مقدار را وارد کنید یا /cancel بزنید:",
-            parse_mode="Markdown",
+            parse_mode="HTML",
         )
         context.user_data["settings_key"] = env_key
         return WAIT_VALUE
@@ -184,7 +184,7 @@ async def on_settings_value(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     "⚙️ پنل تنظیمات:\n"
                     "یک مورد را برای تغییر انتخاب کنید:"
                 ),
-                parse_mode="Markdown",
+                parse_mode="HTML",
                 reply_markup=_main_keyboard(),
             )
     except Exception:
@@ -192,7 +192,7 @@ async def on_settings_value(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"✅ `{env_key}` = `{new_value}` ذخیره شد.\n\n"
             "⚠️ برای اعمال تغییرات ربات باید ری‌استارت شود:\n"
             "`sudo systemctl restart telegram-bot`",
-            parse_mode="Markdown",
+            parse_mode="HTML",
         )
 
     logger.info(f"Setting {env_key} changed to '{new_value}' by user {update.effective_user.id}")

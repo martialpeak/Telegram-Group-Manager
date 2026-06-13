@@ -11,20 +11,21 @@ logger = logging.getLogger(__name__)
 
 def mention(user) -> str:
     """
-    تگ واقعی کاربر:
+    تگ واقعی کاربر — فرمت HTML:
     - اگه username داشت: @username
-    - اگه نداشت: inline mention با markdown
+    - اگه نداشت: inline mention با HTML
     """
     if user.username:
         return f"@{user.username}"
-    return f"[{user.full_name}](tg://user?id={user.id})"
+    name = user.full_name.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    return f'<a href="tg://user?id={user.id}">{name}</a>'
 
 
 async def send_and_delete(
     chat_or_message,
     text: str,
     delay: int = 30,
-    parse_mode: str = "Markdown",
+    parse_mode: str = "HTML",
     reply_markup=None,
 ):
     """

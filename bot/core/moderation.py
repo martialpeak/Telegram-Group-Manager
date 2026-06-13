@@ -26,7 +26,8 @@ BAN_STEPS_DAYS = [1, 3, 7, 30, None]         # None = دائم
 def _mention(user) -> str:
     if user.username:
         return f"@{user.username}"
-    return f"[{user.full_name}](tg://user?id={user.id})"
+    name = user.full_name.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    return f'<a href="tg://user?id={user.id}">{name}</a>'
 
 
 # ─── محاسبه مدت پلکانی ───────────────────────────────────────────────────────
@@ -104,11 +105,11 @@ async def handle_insult(bot: Bot, message, analysis: dict) -> tuple[str, str]:
                                 days * 86400 if days else -1, "repeated insult")
         await db.reset_warnings(user.id, chat_id)
         if days:
-            return t("banned_temp", name=tag, duration=label, reason="repeated insult"), "Markdown"
-        return t("banned", name=tag), "Markdown"
+            return t("banned_temp", name=tag, duration=label, reason="repeated insult"), "HTML"
+        return t("banned", name=tag), "HTML"
 
     await apply_warn_tag(bot, chat_id, user.id, warn_count)
-    return t("warn_insult", name=tag, warn=warn_count, max=MAX_WARNINGS), "Markdown"
+    return t("warn_insult", name=tag, warn=warn_count, max=MAX_WARNINGS), "HTML"
 
 
 async def handle_spam(bot: Bot, message, analysis: dict) -> tuple[str, str]:
@@ -130,8 +131,8 @@ async def handle_spam(bot: Bot, message, analysis: dict) -> tuple[str, str]:
                                 days * 86400 if days else -1, "repeated spam")
         await db.reset_warnings(user.id, chat_id)
         if days:
-            return t("banned_temp", name=tag, duration=label, reason="repeated spam"), "Markdown"
-        return t("banned", name=tag), "Markdown"
+            return t("banned_temp", name=tag, duration=label, reason="repeated spam"), "HTML"
+        return t("banned", name=tag), "HTML"
 
     minutes      = await _next_mute_minutes(user.id, chat_id)
     duration_lbl = _format_minutes(minutes)
@@ -142,8 +143,8 @@ async def handle_spam(bot: Bot, message, analysis: dict) -> tuple[str, str]:
 
     return (
         t("warn_spam", name=tag, warn=warn_count, max=MAX_WARNINGS)
-        + f"\n🔇 *{duration_lbl}*",
-        "Markdown",
+        + f"\n🔇 <b>{duration_lbl}</b>",
+        "HTML",
     )
 
 
@@ -155,8 +156,8 @@ async def handle_level_violation(bot: Bot, message, violation: str) -> tuple[str
     user, chat_id = message.from_user, message.chat_id
     await _delete(bot, chat_id, message.message_id)
     tag  = _mention(user)
-    text = f"ℹ️ {tag}، پیام حذف شد: *{violation}*"
-    sent = await bot.send_message(chat_id, text, parse_mode="Markdown")
+    text = f"ℹ️ {tag}، پیام حذف شد: <b>{violation}</b>"
+    sent = await bot.send_message(chat_id, text, parse_mode="HTML")
 
     asyncio.get_event_loop().call_later(
         8,

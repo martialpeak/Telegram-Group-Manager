@@ -42,17 +42,17 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         level_info = f"\n🏅 سطح شما: {level_label(level)} | سوال روزانه: {q}\n"
 
     await update.message.reply_text(
-        "🤖 *ربات هوشمند مدیریت گروه*\n"
+        "<b>🤖 ربات هوشمند مدیریت گروه</b>\n"
         f"{level_info}\n"
-        "📌 *برای پرسیدن سوال:*\n"
-        f"• منشن: `@{bot_username} سوالت`\n"
+        "<b>📌 برای پرسیدن سوال:</b>\n"
+        f"• منشن: <code>@{bot_username} سوالت</code>\n"
         "• یا ریپلای روی پیام ربات\n\n"
-        "📌 *دستورات:*\n"
+        "<b>📌 دستورات:</b>\n"
         "/myrank — سطح و آمار شما\n"
         "/mystats — آمار روزانه شما\n"
         "/levels — نمایش سطوح\n"
         "/report — گزارش پیام (ریپلای)\n\n"
-        "📌 *دستورات ادمین:*\n"
+        "<b>📌 دستورات ادمین:</b>\n"
         "/setlevel — تغییر سطح کاربر\n"
         "/warn — اخطار دستی (ریپلای)\n"
         "/unwarn — پاک کردن اخطار (ریپلای)\n"
@@ -66,7 +66,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/violations — آمار تخلفات\n"
         "/search [متن] — جستجو در تاریخچه\n"
         "/learn — یادگیری از فیدبک‌ها",
-        parse_mode="Markdown",
+        parse_mode="HTML",
     )
 
 
@@ -108,7 +108,7 @@ async def cmd_myrank(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"💬 کل پیام‌ها: {total_m}\n"
         f"⚠️ اخطار: {warns}/3"
         f"{upgrade_line}",
-        parse_mode="Markdown",
+        parse_mode="HTML",
     )
 
 
@@ -174,14 +174,14 @@ async def cmd_mystats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"  میوت این هفته: {extra['mutes_week']}\n"
         f"  بن کل: {extra['bans_total']}"
         f"{upgrade_line}",
-        parse_mode="Markdown",
+        parse_mode="HTML",
     )
 
 
 # ─── /levels ─────────────────────────────────────────────────────────────────
 
 async def cmd_levels(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(level_summary(), parse_mode="Markdown")
+    await update.message.reply_text(level_summary(), parse_mode="HTML")
 
 
 # ─── /setlevel ───────────────────────────────────────────────────────────────
@@ -227,7 +227,7 @@ async def cmd_setlevel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(
         f"✅ سطح {mention(target)} به {level_label(new_level)} تغییر کرد.{tag_note}",
-        parse_mode="Markdown",
+        parse_mode="HTML",
     )
 
 
@@ -275,13 +275,13 @@ async def cmd_warn(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await mod._ban(context.bot, chat_id, target.id)
         await db.reset_warnings(target.id, chat_id)
         await update.message.reply_text(
-            t("banned", name=mention(target)), parse_mode="Markdown"
+            t("banned", name=mention(target)), parse_mode="HTML"
         )
     else:
         await mod.apply_warn_tag(context.bot, chat_id, target.id, warn_count)
         await update.message.reply_text(
             t("warn_insult", name=mention(target), warn=warn_count, max=MAX_WARNINGS),
-            parse_mode="Markdown",
+            parse_mode="HTML",
         )
 
 
@@ -298,7 +298,7 @@ async def cmd_unwarn(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await db.reset_warnings(target.id, chat_id)
     await mod.apply_warn_tag(context.bot, chat_id, target.id, 0)
     await update.message.reply_text(
-        f"✅ اخطارهای {mention(target)} پاک شد.", parse_mode="Markdown"
+        f"✅ اخطارهای {mention(target)} پاک شد.", parse_mode="HTML"
     )
 
 
@@ -340,7 +340,7 @@ async def cmd_mute(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await mod.apply_mute_tag(context.bot, chat_id, target.id, duration_lbl)
     await update.message.reply_text(
         f"🔇 {mention(target)} به مدت *{duration_lbl}* میوت شد.",
-        parse_mode="Markdown",
+        parse_mode="HTML",
     )
 
 
@@ -369,7 +369,7 @@ async def cmd_unmute(update: Update, context: ContextTypes.DEFAULT_TYPE):
     warns = await db.get_warnings(target.id, chat_id)
     await mod.apply_warn_tag(context.bot, chat_id, target.id, warns)
     await update.message.reply_text(
-        f"🔊 میوت {mention(target)} برداشته شد.", parse_mode="Markdown"
+        f"🔊 میوت {mention(target)} برداشته شد.", parse_mode="HTML"
     )
 
 
@@ -422,11 +422,11 @@ async def cmd_ban(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if until_date:
         await update.message.reply_text(
             t("banned_temp", name=mention(target), duration=duration_txt, reason=reason),
-            parse_mode="Markdown",
+            parse_mode="HTML",
         )
     else:
         await update.message.reply_text(
-            t("banned", name=mention(target)), parse_mode="Markdown"
+            t("banned", name=mention(target)), parse_mode="HTML"
         )
 
 
@@ -483,7 +483,7 @@ async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"  ❓ سوال پاسخ‌داده: {stats.get('request', 0)}\n"
         f"  👥 کاربران اخطارخورده: {stats.get('warned_users', 0)}\n"
         f"  🧠 دانش ذخیره‌شده: {stats.get('knowledge_items', 0)} مورد",
-        parse_mode="Markdown",
+        parse_mode="HTML",
     )
 
 
@@ -518,7 +518,7 @@ async def cmd_violations(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"  🚫 بن: {total.get('bans', 0)}\n\n"
         "🏆 *پرتخلف‌ترین کاربران:*\n"
         f"{top_lines}",
-        parse_mode="Markdown",
+        parse_mode="HTML",
     )
 
 
@@ -596,7 +596,7 @@ async def cmd_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await context.bot.send_message(
                 chat_id=admin_id,
                 text=notify_text,
-                parse_mode="Markdown",
+                parse_mode="HTML",
                 reply_markup=keyboard,
             )
         except Exception:
@@ -634,4 +634,4 @@ async def cmd_reports(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"📌 دلیل: {r['reason']}\n"
             f"💬 پیام: {r['message_text'][:100]}\n\n"
         )
-    await update.message.reply_text(text, parse_mode="Markdown")
+    await update.message.reply_text(text, parse_mode="HTML")
