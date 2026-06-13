@@ -75,7 +75,6 @@ async def answer_question(question: str, chat_id: int) -> dict:
         "history_used": len(history_results),
     }
 
-
 async def _search_knowledge(question: str, chat_id: int) -> Optional[dict]:
     items = await db.get_knowledge(chat_id)
     if not items:
@@ -143,7 +142,11 @@ async def _generate_answer(question: str, context_msgs: list[dict]) -> Optional[
                 },
             )
             r.raise_for_status()
-            return r.json()["message"]["content"].strip()
+            answer = r.json()["message"]["content"].strip()
+            # فیلتر جواب‌های بی‌معنی
+            if not answer or len(answer) < 5:
+                return None
+            return answer
     except Exception as e:
         logger.warning(f"تولید پاسخ ناموفق: {e}")
         return None

@@ -260,52 +260,10 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_text, parse_mode = await mod.handle_spam(context.bot, message, analysis)
 
     elif msg_type == "request" and confidence >= MIN_CONFIDENCE:
-        bot_username = context.bot.username
-        if not is_addressing_bot(message, bot_username):
-            await db.log_message(
-                user.id, chat.id, user.username or "",
-                user.full_name, text, "request_ignored", confidence,
-            )
-            return
-
-        # ── بررسی سهمیه روزانه ───────────────────────────────────────────────
-        level  = await db.get_user_level(user.id, chat.id)
-        config = get_config(level)
-        if config.daily_queries != -1:
-            count = await db.increment_query_count(user.id, chat.id)
-            if count > config.daily_queries:
-                await send_and_delete(
-                    message,
-                    t("query_limit", name=user.full_name, limit=config.daily_queries),
-                    delay=15,
-                )
-                return
-        else:
-            await db.increment_query_count(user.id, chat.id)
-
-        # ── پاسخ ─────────────────────────────────────────────────────────────
-        clean_q = text.replace(f"@{bot_username}", "").strip()
-        result  = await answer_question(clean_q, chat.id)
-        reply_text = t("request_handled", response=result["answer"])
-
-        key = f"{user.id}_{message.message_id}"
-        _pending_answers[key] = {
-            "question": clean_q,
-            "answer":   result["answer"],
-            "user_id":  user.id,
-            "chat_id":  chat.id,
-        }
-        source_label = "📚" if result.get("source") == "knowledge_base" else "🤖"
-        keyboard = InlineKeyboardMarkup([[
-            InlineKeyboardButton("✅ درسته",   callback_data=f"fb_ok_{key}"),
-            InlineKeyboardButton("❌ اشتباهه", callback_data=f"fb_no_{key}"),
-        ]])
-        await message.reply_text(
-            f"{source_label} {reply_text}", reply_markup=keyboard
-        )
+        # mention نشده — فقط log کن
         await db.log_message(
             user.id, chat.id, user.username or "",
-            user.full_name, text, "request", confidence,
+            user.full_name, text, "request_ignored", confidence,
         )
         return
 
