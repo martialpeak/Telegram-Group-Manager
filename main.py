@@ -43,17 +43,7 @@ def main():
     )
 
     # ── پنل تنظیمات ──────────────────────────────────────────────────────────
-    app.add_handler(CommandHandler("settings", settings_panel.cmd_settings))
-    app.add_handler(CallbackQueryHandler(
-        settings_panel.on_settings_callback, pattern=r"^cfg_(?!cancel|close|show)"
-    ))
-    app.add_handler(CallbackQueryHandler(
-        settings_panel.on_settings_cancel, pattern=r"^cfg_cancel$"
-    ))
-    app.add_handler(CallbackQueryHandler(
-        settings_panel.on_settings_callback, pattern=r"^cfg_(close|show)$"
-    ))
-    app.add_handler(settings_panel.build_settings_handler())
+    settings_panel.register(app)
 
     # ── دستورات ──────────────────────────────────────────────────────────────
     app.add_handler(CommandHandler("start",      handlers.cmd_start))
