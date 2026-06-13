@@ -178,7 +178,7 @@ async def handle_level_violation(bot: Bot, message, violation: str) -> tuple[str
         8,
         lambda: asyncio.ensure_future(_delete(bot, chat_id, sent.message_id)),
     )
-    return text, "Markdown"
+    return text, "HTML"
 
 
 # ─── عملیات پایه ─────────────────────────────────────────────────────────────

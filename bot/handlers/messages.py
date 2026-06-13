@@ -198,15 +198,9 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # اگه مستقیم mention شده → جواب بده (صرف‌نظر از نوع AI)
     if is_mentioned:
-        # سوال باید حداقل ۳ کلمه یا ۱۰ کاراکتر داشته باشه
-        # این جلوگیری می‌کنه از اینکه ریپلای‌های کوتاه مثل "خوبی"، "ممنون"، "ok" رو سوال بگیریم
         clean_q = text.replace(f"@{bot_username}", "").strip()
-        if len(clean_q) < 5 or len(clean_q.split()) < 2:
-            # پیام خیلی کوتاهه — فقط log کن، جواب نده
-            await db.log_message(
-                user.id, chat.id, user.username or "",
-                user.full_name, text, "normal", 1.0,
-            )
+        # پیام خیلی کوتاه و بی‌معنی — نادیده بگیر
+        if len(clean_q) < 2:
             return
 
         level  = await db.get_user_level(user.id, chat.id)
