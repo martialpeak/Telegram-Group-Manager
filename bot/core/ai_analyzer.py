@@ -43,10 +43,11 @@ SYSTEM_PROMPT = """You are a Telegram group moderation AI. Analyze the message a
   "reason": "brief explanation in Farsi"
 }
 Rules:
-- insult: offensive language, profanity, personal attacks
-- spam: ads, suspicious links, channel promotion, repeated messages
+- insult: clear offensive language, profanity, direct personal attacks (be strict, only flag obvious cases)
+- spam: unsolicited ads, suspicious links promoting external channels/products, affiliate/scam promotions (do NOT flag normal mentions of buying/selling topics in conversation)
 - request: questions, help requests, information seeking
-- normal: regular conversation"""
+- normal: regular conversation, discussion about topics like commerce, business, daily life — even if words like buy/sell/join appear in natural context
+Be conservative: when in doubt, classify as "normal". Only flag high-confidence violations."""
 
 # ── Rule-based fallback ───────────────────────────────────────────────────────
 INSULT_WORDS = [
@@ -54,9 +55,10 @@ INSULT_WORDS = [
     "بی‌ناموس", "فاحشه", "حرومزاده", "کثیف", "گوساله", "الاغ",
     "idiot", "stupid", "fuck", "shit", "bitch", "asshole", "moron",
 ]
+# فقط الگوهای واضح تبلیغاتی — کلمات عمومی مثل خرید/فروش حذف شدن
 SPAM_WORDS = [
-    "تبلیغ", "خرید", "فروش", "کسب درآمد", "ارز دیجیتال",
-    "سود تضمینی", "عضو شو", "join", "t.me/",
+    "کسب درآمد", "سود تضمینی", "عضو شو و درآمد",
+    "کانال تبلیغ", "لینک دعوت", "t.me/joinchat",
 ]
 REQUEST_WORDS = [
     "لطفاً", "لطفا", "میشه", "می‌شه", "چطور", "چگونه", "کمک",

@@ -31,7 +31,7 @@ CACHE_TTL_HOURS    = int(os.getenv("CACHE_TTL_HOURS", "24"))
 MAX_WARNINGS       = int(os.getenv("MAX_WARNINGS", "3"))
 SPAM_TIME_WINDOW   = int(os.getenv("SPAM_TIME_WINDOW", "60"))
 SPAM_MAX_MESSAGES  = int(os.getenv("SPAM_MAX_MESSAGES", "5"))
-MIN_CONFIDENCE     = float(os.getenv("MIN_CONFIDENCE", "0.60"))
+MIN_CONFIDENCE     = float(os.getenv("MIN_CONFIDENCE", "0.80"))
 
 # ── یادگیری ──────────────────────────────────────────
 LEARNING_ENABLED    = os.getenv("LEARNING_ENABLED", "true").lower() == "true"

@@ -241,9 +241,9 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     if is_rate_spam and msg_type == "normal":
-        msg_type   = "spam"
-        confidence = 0.9
-        analysis.update({"type": "spam", "reason": "ارسال سریع پیام‌های متعدد", "confidence": 0.9})
+        # فقط وقتی پیام‌های متعدد و سریع همزمان با محتوای مشکوک باشه
+        # rate spam به تنهایی بدون تأیید AI اقدام نمی‌کنه
+        logger.info(f"[{chat.title}] {user.full_name}: rate-spam detected but AI said normal — skipping")
 
     # ── اقدام مدیریتی ────────────────────────────────────────────────────────
     reply_text = None
