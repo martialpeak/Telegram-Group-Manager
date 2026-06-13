@@ -1,0 +1,8 @@
+# Force Unix line endings for shell scripts
+*.sh text eol=lf
+
+# Auto-detect for Python and text files
+*.py text=auto
+*.md text=auto
+*.txt text=auto
+*.env text=auto
