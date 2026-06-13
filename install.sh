@@ -440,7 +440,7 @@ VENV_PYTHON="$BOT_DIR/venv/bin/python"
 sudo tee /etc/systemd/system/${SERVICE_NAME}.service > /dev/null <<UNIT
 [Unit]
 Description=Telegram Group Manager Bot
-Documentation=https://github.com/yourusername/telegram-group-manager
+Documentation=https://github.com/martialpeak/Telegram-Group-Manager
 After=network-online.target ollama.service
 Wants=network-online.target
 

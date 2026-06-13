@@ -40,8 +40,8 @@
 ## 🚀 نصب سریع (یک دستور)
 
 ```bash
-git clone https://github.com/yourusername/telegram-group-manager.git
-cd telegram-group-manager
+git clone https://github.com/martialpeak/Telegram-Group-Manager.git
+cd Telegram-Group-Manager
 chmod +x install.sh
 ./install.sh
 ```
@@ -57,8 +57,8 @@ chmod +x install.sh
 ### گام ۱ — دریافت کد
 
 ```bash
-git clone https://github.com/yourusername/telegram-group-manager.git
-cd telegram-group-manager
+git clone https://github.com/martialpeak/Telegram-Group-Manager.git
+cd Telegram-Group-Manager
 ```
 
 ### گام ۲ — Python و محیط مجازی
