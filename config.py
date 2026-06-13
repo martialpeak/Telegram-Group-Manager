@@ -19,7 +19,7 @@ GROQ_MODEL     = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
 
 # Gemini (fallback — 1500 req/day free)
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-GEMINI_MODEL   = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+GEMINI_MODEL   = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 
 # ── Cache ─────────────────────────────────────────────
 # حداقل شباهت برای استفاده از cache

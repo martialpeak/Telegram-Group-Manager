@@ -33,7 +33,9 @@ if GEMINI_API_KEY:
     try:
         import google.generativeai as genai
         genai.configure(api_key=GEMINI_API_KEY)
-        _gemini_model = genai.GenerativeModel(GEMINI_MODEL)
+        # gemini-2.5-flash مدل فعلی پیشنهادی Google
+        _model_name = GEMINI_MODEL if GEMINI_MODEL else "gemini-2.5-flash"
+        _gemini_model = genai.GenerativeModel(_model_name)
     except Exception as e:
         logger.warning(f"Gemini init failed: {e}")
 

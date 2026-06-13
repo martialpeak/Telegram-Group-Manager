@@ -96,7 +96,7 @@ if [ "$LANG" = "fa" ]; then
     S_GROQ_MODEL_TIP="Model Groq ra entekhab konid:"
     S_GROQ_M1="1) llama-3.1-8b-instant   -- saritar, pishnahad (raigan)"
     S_GROQ_M2="2) llama-3.3-70b-versatile -- keyfiyat balatr (raigan)"
-    S_GROQ_M3="3) mixtral-8x7b-32768      -- motavazen (raigan)"
+    S_GROQ_M3="3) gemma2-9b-it            -- motavazen (raigan)"
     S_GROQ_MODEL_PROMPT="Shomare model"
 
     S_GEMINI_HEAD="Gemini API Key (EKHTIYARI -- fallback dar surat khatay Groq):"
@@ -172,7 +172,7 @@ else
     S_GROQ_MODEL_TIP="Choose Groq model:"
     S_GROQ_M1="1) llama-3.1-8b-instant    -- fastest, recommended (free)"
     S_GROQ_M2="2) llama-3.3-70b-versatile -- better quality (free)"
-    S_GROQ_M3="3) mixtral-8x7b-32768      -- balanced (free)"
+    S_GROQ_M3="3) gemma2-9b-it             -- balanced (free)"
     S_GROQ_MODEL_PROMPT="Model choice"
 
     S_GEMINI_HEAD="Gemini API Key (OPTIONAL -- fallback if Groq fails):"
@@ -310,7 +310,7 @@ prompt GROQ_MODEL_CHOICE "$S_GROQ_MODEL_PROMPT" "1" ""
 case "$GROQ_MODEL_CHOICE" in
     1) GROQ_MODEL="llama-3.1-8b-instant"    ;;
     2) GROQ_MODEL="llama-3.3-70b-versatile" ;;
-    3) GROQ_MODEL="mixtral-8x7b-32768"      ;;
+    3) GROQ_MODEL="gemma2-9b-it"            ;;
     *) GROQ_MODEL="llama-3.1-8b-instant"    ;;
 esac
 
@@ -323,10 +323,10 @@ echo ""
 prompt GEMINI_API_KEY "$S_GEMINI_PROMPT" "" "secret"
 if [ -z "$GEMINI_API_KEY" ]; then
     warn "$S_GEMINI_SKIP"
-    GEMINI_MODEL="gemini-1.5-flash"
+    GEMINI_MODEL="gemini-2.5-flash"
 else
     success "$S_GEMINI_OK"
-    GEMINI_MODEL="gemini-1.5-flash"
+    GEMINI_MODEL="gemini-2.5-flash"
 fi
 
 # Moderation settings

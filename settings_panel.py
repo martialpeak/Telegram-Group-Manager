@@ -59,7 +59,7 @@ def _current_settings() -> str:
     key_display = f"{key[:8]}..." if len(key) > 8 else ("تنظیم نشده" if not key else key)
     return (
         "⚙️ *Current Settings:*\n\n"
-        f"🤖 Gemini Model:     `{_get('GEMINI_MODEL', 'gemini-1.5-flash')}`\n"
+        f"🤖 Gemini Model:     `{_get('GEMINI_MODEL', 'gemini-2.5-flash')}`\n"
         f"🔑 Gemini API Key:   `{key_display}`\n"
         f"⚠️ Max Warnings:     `{_get('MAX_WARNINGS')}`\n"
         f"🕐 Spam Window:      `{_get('SPAM_TIME_WINDOW')} sec`\n"
@@ -106,7 +106,7 @@ async def on_settings_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 
     # نگه‌داری کلید در context برای مرحله بعد
     key_map = {
-        "cfg_ai_model":    ("GEMINI_MODEL",   "Gemini model name (e.g. gemini-1.5-flash / gemini-1.5-pro)"),
+        "cfg_ai_model":    ("GEMINI_MODEL",   "Gemini model name (e.g. gemini-2.5-flash / gemini-2.0-flash)"),
         "cfg_gemini_key":  ("GEMINI_API_KEY", "Gemini API Key (from aistudio.google.com)"),
         "cfg_max_warn":    ("MAX_WARNINGS",   "Max warnings before ban (number)"),
         "cfg_spam_window": ("SPAM_TIME_WINDOW", "Spam detection window in seconds"),
@@ -223,7 +223,7 @@ def _validate(key: str, value: str) -> str:
         if len(value) < 10:
             return "API Key معتبر نیست"
     elif key == "GEMINI_MODEL":
-        valid_models = ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-1.0-pro", "gemini-2.0-flash"]
+        valid_models = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-2.5-pro"]
         if value not in valid_models:
             return f"مدل باید یکی از اینها باشد: {', '.join(valid_models)}"
     elif key == "BOT_LANG":
