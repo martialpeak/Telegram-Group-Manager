@@ -61,7 +61,7 @@ def _format_minutes(minutes: int) -> str:
 async def _set_status_tag(bot: Bot, chat_id: int, user_id: int, tag: str):
     try:
         await bot.set_chat_member_tag(chat_id=chat_id, user_id=user_id, tag=tag)
-    except TelegramError as e:
+    except Exception as e:
         logger.warning(f"set_chat_member_tag ناموفق برای {user_id}: {e}")
 
 
