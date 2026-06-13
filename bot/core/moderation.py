@@ -166,16 +166,16 @@ async def handle_spam(bot: Bot, message, analysis: dict) -> tuple[str, str]:
 async def handle_level_violation(bot: Bot, message, violation: str) -> tuple[str, str]:
     """
     تخلف سطحی — پیام حذف و اطلاع‌رسانی می‌شه (بدون اخطار/میوت).
-    پیام اطلاع‌رسانی بعد از ۸ ثانیه پاک میشه.
+    پیام اطلاع‌رسانی بعد از ۵ دقیقه پاک میشه.
     """
     user, chat_id = message.from_user, message.chat_id
     await _delete(bot, chat_id, message.message_id)
     tag  = _mention(user)
-    text = f"ℹ️ {tag}، پیام حذف شد: <b>{violation}</b>"
+    text = f"ℹ️ {tag}، پیام حذف شد: {violation}"
     sent = await bot.send_message(chat_id, text, parse_mode="HTML")
 
     asyncio.get_event_loop().call_later(
-        8,
+        300,  # ۵ دقیقه
         lambda: asyncio.ensure_future(_delete(bot, chat_id, sent.message_id)),
     )
     return text, "HTML"

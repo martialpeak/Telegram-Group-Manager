@@ -70,6 +70,12 @@ def main():
     app.add_handler(CallbackQueryHandler(handlers.on_general_callback, pattern=r"^(rules|myrank_)"))
     app.add_handler(CallbackQueryHandler(handlers.on_feedback_callback, pattern=r"^fb_"))
     app.add_handler(CallbackQueryHandler(handlers.on_feedback_callback, pattern=r"^vote_"))
+    app.add_handler(CallbackQueryHandler(handlers.on_admin_answer_callback, pattern=r"^adm_"))
+    # پاسخ متنی ادمین به سوال — group=9 قبل از settings (group=10)
+    app.add_handler(
+        MessageHandler(filters.TEXT & ~filters.COMMAND, handlers.on_admin_answer_text),
+        group=9,
+    )
 
     # ── پیام متنی ─────────────────────────────────────────────────────────────
     # group=0: تصحیح (باید قبل از on_message اجرا بشه)

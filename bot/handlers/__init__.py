@@ -1,7 +1,7 @@
 # handlers package
 from .messages import on_message, on_media_message, on_correction
 from .members import on_new_member, on_left_member
-from .callbacks import on_feedback_callback, on_report_callback, on_general_callback
+from .callbacks import on_feedback_callback, on_report_callback, on_general_callback, on_admin_answer_callback, on_admin_answer_text
 from .commands import (
     cmd_start, cmd_search, cmd_learn,
     cmd_warn, cmd_unwarn, cmd_warnings,
@@ -17,6 +17,7 @@ __all__ = [
     "on_message", "on_media_message", "on_correction",
     "on_new_member", "on_left_member",
     "on_feedback_callback", "on_report_callback", "on_general_callback",
+    "on_admin_answer_callback", "on_admin_answer_text",
     "cmd_start", "cmd_search", "cmd_learn",
     "cmd_warn", "cmd_unwarn", "cmd_warnings",
     "cmd_ban", "cmd_unban",

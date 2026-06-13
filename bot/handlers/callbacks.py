@@ -28,6 +28,106 @@ def _is_admin(uid: int) -> bool:
     return uid in ADMIN_IDS
 
 
+# ─── callback پاسخ ادمین به سوال بی‌جواب ─────────────────────────────────────
+
+async def on_admin_answer_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    data  = query.data
+
+    if not _is_admin(query.from_user.id):
+        return
+
+    pending = get_pending_answers()
+
+    # ── نادیده گرفتن ─────────────────────────────────────────────────────────
+    if data.startswith("adm_skip_"):
+        key = data[9:]
+        pending.pop(key, None)
+        try:
+            await query.edit_message_text(
+                query.message.text + "\n\n🚫 <i>نادیده گرفته شد.</i>",
+                parse_mode="HTML",
+            )
+        except Exception:
+            pass
+        return
+
+    # ── پاسخ ادمین ───────────────────────────────────────────────────────────
+    if data.startswith("adm_ans_"):
+        key = data[8:]
+        info = pending.get(key)
+        if not info:
+            await query.answer("این سوال دیگه فعال نیست.", show_alert=True)
+            return
+        context.user_data["admin_answering"] = key
+        try:
+            await query.edit_message_text(
+                query.message.text + "\n\n✏️ <i>پاسخ خود را بنویسید:</i>",
+                parse_mode="HTML",
+                reply_markup=None,
+            )
+        except Exception:
+            pass
+        return
+
+
+async def on_admin_answer_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """دریافت متن پاسخ ادمین و ارسال به کاربر + ذخیره در دانش"""
+    if not _is_admin(update.effective_user.id):
+        return
+
+    key = context.user_data.get("admin_answering")
+    if not key:
+        return
+
+    answer_text = update.message.text.strip()
+    if len(answer_text) < 3:
+        await update.message.reply_text("❌ پاسخ خیلی کوتاهه.")
+        return
+
+    context.user_data.pop("admin_answering")
+    pending = get_pending_answers()
+    info    = pending.pop(key, None)
+
+    if not info:
+        await update.message.reply_text("⚠️ زمان پاسخ گذشته یا قبلاً پاسخ داده شده.")
+        return
+
+    # ذخیره در دانش
+    from bot.core.knowledge_engine import _normalize_question
+    from bot.db.database import save_knowledge
+    norm_q  = _normalize_question(info["question"])
+    store_q = norm_q if len(norm_q) >= 3 else info["question"]
+    await save_knowledge(
+        question=store_q,
+        answer=answer_text,
+        chat_id=info["chat_id"],
+        source="admin_answer",
+        score=0.98,
+    )
+
+    # ارسال پاسخ به کاربر در گروه
+    try:
+        await context.bot.send_message(
+            chat_id=info["chat_id"],
+            text=(
+                f"✅ پاسخ سوال شما:\n\n"
+                f"❓ <b>{info['question'][:200]}</b>\n\n"
+                f"💬 {answer_text}"
+            ),
+            parse_mode="HTML",
+        )
+    except Exception as e:
+        logger.warning(f"ارسال پاسخ ادمین به گروه ناموفق: {e}")
+
+    await update.message.reply_text(
+        f"✅ پاسخ ارسال و در دانش ذخیره شد.\n"
+        f"سوال: <code>{info['question'][:100]}</code>",
+        parse_mode="HTML",
+    )
+
+
 # ─── callback عمومی (rules / myrank) ─────────────────────────────────────────
 
 async def on_general_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):

@@ -247,7 +247,7 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await db.increment_query_count(user.id, chat.id)
 
         result  = await answer_question(clean_q, chat.id)
-        answer_text = t("request_handled", response=result["answer"])
+        no_answer = result.get("source") == "none"
 
         key = f"{user.id}_{message.message_id}"
         _pending_answers[key] = {
@@ -255,14 +255,58 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "answer":   result["answer"],
             "user_id":  user.id,
             "chat_id":  chat.id,
+            "msg_id":   message.message_id,
+            "user_name": user.full_name,
+            "chat_title": chat.title or "PV",
         }
-        source_label = "📚" if result.get("source") == "knowledge_base" else "🤖"
-        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-        keyboard = InlineKeyboardMarkup([[
-            InlineKeyboardButton("✅ درسته",   callback_data=f"fb_ok_{key}"),
-            InlineKeyboardButton("❌ اشتباهه", callback_data=f"fb_no_{key}"),
-        ]])
-        await message.reply_text(f"{source_label} {answer_text}", reply_markup=keyboard)
+
+        if no_answer:
+            # ربات جواب نداره — به ادمین اطلاع بده
+            from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+            admin_keyboard = InlineKeyboardMarkup([[
+                InlineKeyboardButton(
+                    "✍️ پاسخ و تأیید",
+                    callback_data=f"adm_ans_{key}"
+                ),
+                InlineKeyboardButton(
+                    "🚫 نادیده",
+                    callback_data=f"adm_skip_{key}"
+                ),
+            ]])
+            admin_text = (
+                f"❓ <b>سوال بی‌جواب</b>\n\n"
+                f"👤 کاربر: {mention(user)}\n"
+                f"💬 گروه: {chat.title or 'PV'}\n\n"
+                f"سوال:\n<code>{clean_q[:300]}</code>\n\n"
+                "پاسخی بنویس تا هم کاربر جواب بگیره هم ربات یاد بگیره:"
+            )
+            for admin_id in ADMIN_IDS:
+                try:
+                    await context.bot.send_message(
+                        chat_id=admin_id,
+                        text=admin_text,
+                        parse_mode="HTML",
+                        reply_markup=admin_keyboard,
+                    )
+                except Exception:
+                    pass
+            # به کاربر پیام موقت بده
+            await send_and_delete(
+                message,
+                f"🤖 سوالت ثبت شد و به ادمین ارسال شد. به زودی جواب می‌گیری!",
+                delay=300,
+            )
+        else:
+            # ربات جواب داره — مستقیم نشون بده
+            answer_text = t("request_handled", response=result["answer"])
+            source_label = "📚" if result.get("source") == "knowledge_base" else "🤖"
+            from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+            keyboard = InlineKeyboardMarkup([[
+                InlineKeyboardButton("✅ درسته",   callback_data=f"fb_ok_{key}"),
+                InlineKeyboardButton("❌ اشتباهه", callback_data=f"fb_no_{key}"),
+            ]])
+            await message.reply_text(f"{source_label} {answer_text}", reply_markup=keyboard)
+
         await db.log_message(
             user.id, chat.id, user.username or "",
             user.full_name, text, "request", 1.0,
@@ -308,7 +352,7 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     if reply_text:
-        await send_and_delete(message, reply_text, delay=45, parse_mode=parse_mode)
+        await send_and_delete(message, reply_text, delay=300, parse_mode=parse_mode)
 
 
 # ─── پیام خصوصی ──────────────────────────────────────────────────────────────
