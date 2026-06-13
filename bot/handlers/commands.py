@@ -216,14 +216,9 @@ async def cmd_setlevel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await db.set_user_level(target.id, chat_id, new_level, update.message.from_user.id)
 
     tag_text = "" if new_level == "simple" else cfg.label
-    try:
-        await context.bot.set_chat_member_tag(
-            chat_id=chat_id, user_id=target.id, tag=tag_text,
-        )
-        tag_note = f" | تگ: {tag_text}" if tag_text else " | تگ حذف شد"
-    except Exception as e:
-        logger.warning(f"setChatMemberTag ناموفق: {e}")
-        tag_note = " (تگ ست نشد — مطمئن شو ربات can_manage_tags داره)"
+    from bot.core.moderation import _set_status_tag
+    await _set_status_tag(context.bot, chat_id, target.id, tag_text)
+    tag_note = f" | تگ: {tag_text}" if tag_text else " | تگ حذف شد"
 
     await update.message.reply_text(
         f"✅ سطح {mention(target)} به {level_label(new_level)} تغییر کرد.{tag_note}",

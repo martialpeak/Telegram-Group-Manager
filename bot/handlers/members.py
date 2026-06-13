@@ -26,12 +26,8 @@ async def on_new_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
         level = await db.get_user_level(member.id, message.chat_id)
         cfg   = get_config(level)
         tag   = cfg.label if level != "simple" else ""
-        try:
-            await context.bot.set_chat_member_tag(
-                chat_id=message.chat_id, user_id=member.id, tag=tag
-            )
-        except Exception as e:
-            logger.warning(f"set_chat_member_tag on join failed for {member.id}: {e}")
+        from bot.core.moderation import _set_status_tag
+        await _set_status_tag(context.bot, message.chat_id, member.id, tag)
 
         keyboard = InlineKeyboardMarkup([[
             InlineKeyboardButton(t("rules_btn"), callback_data="rules"),

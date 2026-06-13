@@ -59,10 +59,25 @@ def _format_minutes(minutes: int) -> str:
 # ─── تگ وضعیت ────────────────────────────────────────────────────────────────
 
 async def _set_status_tag(bot: Bot, chat_id: int, user_id: int, tag: str):
+    """
+    setChatMemberTag — در Bot API 9.0 اضافه شد.
+    python-telegram-bot 21.x هنوز wrapper ندارد، مستقیم HTTP می‌زنیم.
+    """
     try:
-        await bot.set_chat_member_tag(chat_id=chat_id, user_id=user_id, tag=tag)
+        token = bot.token
+        url   = f"https://api.telegram.org/bot{token}/setChatMemberTag"
+        import httpx
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(url, json={
+                "chat_id": chat_id,
+                "user_id": user_id,
+                "tag":     tag,
+            })
+        data = resp.json()
+        if not data.get("ok"):
+            logger.warning(f"setChatMemberTag failed: {data.get('description')}")
     except Exception as e:
-        logger.warning(f"set_chat_member_tag ناموفق برای {user_id}: {e}")
+        logger.warning(f"setChatMemberTag exception برای {user_id}: {e}")
 
 
 async def apply_warn_tag(bot: Bot, chat_id: int, user_id: int, warn_count: int):
