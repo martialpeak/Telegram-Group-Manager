@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ===================================================================
-#   Telegram Group Manager Bot -- Interactive Installer v3.0
-#   AI: Google Gemini (free tier, no GPU/RAM needed)
+#   Telegram Group Manager Bot -- Interactive Installer v3.1
+#   AI: Groq (primary, 14400/day free) + Gemini (optional fallback)
 #   Supports: Ubuntu 20.04+ / Debian 11+
 #   Bilingual: English / Finglish
 # ===================================================================
@@ -47,8 +47,8 @@ prompt() {
 clear
 echo -e "${BOLD}${BLUE}"
 echo "+====================================================+"
-echo "|   Telegram Group Manager Bot -- Installer v3.0    |"
-echo "|              Powered by Google Gemini              |"
+echo "|   Telegram Group Manager Bot -- Installer v3.1    |"
+echo "|   AI: Groq (free) + Gemini (optional fallback)    |"
 echo "+====================================================+"
 echo -e "${NC}"
 echo ""
@@ -68,44 +68,51 @@ if [ "$LANG" = "fa" ]; then
     S_STEP1="Marhale 1: Barresi Python"
     S_PY_INSTALL="Python 3 peyda nashod -- dar hal nasb..."
     S_PY_OK="Python %s peyda shod"
-    S_PY_UPGRADE="Python %s peyda shod -- dar hal nasb Python 3.11 az deadsnakes PPA..."
-    S_PY_UPGRADE_OK="Python 3.11 ba movafaghiat nasb shod"
-    S_PY_UPGRADE_FAIL="Nasb Python 3.11 namovaghagh shod. Dasti upgrade kon va dobbare ejra kon."
+    S_PY_UPGRADE="Python %s peyda shod -- dar hal nasb Python 3.11..."
+    S_PY_UPGRADE_OK="Python 3.11 nasb shod"
+    S_PY_UPGRADE_FAIL="Nasb Python 3.11 namovaghagh shod. Dasti upgrade kon."
 
     S_STEP2="Marhale 2: Pikar-bandi Robot"
     S_TOKEN_TIP="Chetori token begirim:"
     S_TOKEN_TIP1="  1. Dar Telegram be @BotFather payam bedid"
     S_TOKEN_TIP2="  2. Dastur /newbot ra ersal konid"
-    S_TOKEN_TIP3="  3. Token daryafti ra inja vared konid"
+    S_TOKEN_TIP3="  3. Token ra copy va inja paste konid"
     S_TOKEN_PROMPT="Token robot Telegram"
     S_TOKEN_ERR="Token robot ejbari ast!"
 
-    S_ADMIN_TIP="Chetori shenase Telegram khodetono peyda konid:"
-    S_ADMIN_TIP1="  Be @userinfobot payam bedid -- shenase adadi shoma ra barmigardanad"
-    S_ADMIN_PROMPT="Shenase admin-ha (chand ta ba comma joda konid)"
-    S_ADMIN_ERR="Haddaghal yek shenase admin lazem ast!"
+    S_ADMIN_TIP="Chetori ID Telegram peyda konid:"
+    S_ADMIN_TIP1="  Be @userinfobot payam bedid"
+    S_ADMIN_PROMPT="ID admin-ha (ba comma joda konid)"
+    S_ADMIN_ERR="Haddaghal yek ID admin lazem ast!"
 
-    S_GEMINI_TIP="Chetori Gemini API Key begirim (raigan ast):"
-    S_GEMINI_TIP1="  1. Berid be: https://aistudio.google.com/apikey"
-    S_GEMINI_TIP2="  2. Ba hesab Google login konid"
-    S_GEMINI_TIP3="  3. Roye 'Create API Key' click konid"
-    S_GEMINI_TIP4="  4. API Key ra copy va inja paste konid"
-    S_GEMINI_TIP5="  Toze: Gemini 1.5 Flash: 15 darkhast/daghighe, 1500/ruz -- raigan"
-    S_GEMINI_PROMPT="Gemini API Key"
-    S_GEMINI_ERR="Gemini API Key ejbari ast!"
-    S_GEMINI_MODEL_TIP="Model Gemini ra entekhab konid:"
-    S_GEMINI_M1="1) gemini-1.5-flash  -- saritar, raigan (pishnahad)"
-    S_GEMINI_M2="2) gemini-1.5-pro    -- keyfiyat balatr, محدودیت کمتر"
-    S_GEMINI_M3="3) gemini-2.0-flash  -- jadidtarin, saritar"
-    S_GEMINI_MODEL_PROMPT="Shomare model"
+    S_GROQ_TIP="Groq API Key (RAIGAN -- 14400 darkhast/ruz):"
+    S_GROQ_TIP1="  1. Berid be: https://console.groq.com"
+    S_GROQ_TIP2="  2. Register ya login konid (raigan)"
+    S_GROQ_TIP3="  3. API Keys --> Create API Key"
+    S_GROQ_TIP4="  4. Key ra copy va inja paste konid"
+    S_GROQ_PROMPT="Groq API Key"
+    S_GROQ_ERR="Groq API Key ejbari ast!"
+
+    S_GROQ_MODEL_TIP="Model Groq ra entekhab konid:"
+    S_GROQ_M1="1) llama-3.1-8b-instant   -- saritar, pishnahad (raigan)"
+    S_GROQ_M2="2) llama-3.3-70b-versatile -- keyfiyat balatr (raigan)"
+    S_GROQ_M3="3) mixtral-8x7b-32768      -- motavazen (raigan)"
+    S_GROQ_MODEL_PROMPT="Shomare model"
+
+    S_GEMINI_HEAD="Gemini API Key (EKHTIYARI -- fallback dar surat khatay Groq):"
+    S_GEMINI_TIP1="  Agar mikhahid Gemini ham dasha bashid:"
+    S_GEMINI_TIP2="  https://aistudio.google.com/apikey"
+    S_GEMINI_PROMPT="Gemini API Key (Enter = rads kardan)"
+    S_GEMINI_SKIP="Gemini rad shod -- faghat Groq estefade mishavad"
+    S_GEMINI_OK="Gemini ham tanzim shod -- dar surat khatay Groq estefade mishavad"
 
     S_MOD_HEAD="Tanzimate modiriyat geruh:"
     S_WARN_PROMPT="Haddaksar akhtar ghabl az ban"
     S_WIN_PROMPT="Baze zamani tashkhis spam (sanie)"
     S_SPAM_PROMPT="Haddaksar payam dar baze spam"
-    S_CONF_PROMPT="Haddaghal etminan Hush Masnoui (0.0 ta 1.0)"
+    S_CONF_PROMPT="Haddaghal etminan AI (0.0 ta 1.0)"
 
-    S_LANG_TIP="Zaban payam-haye robot dar Telegram:"
+    S_LANG_TIP="Zaban payam-haye robot:"
     S_LANG_1="1) Farsi"
     S_LANG_2="2) English"
     S_LANG_PROMPT="Entekhab"
@@ -116,34 +123,34 @@ if [ "$LANG" = "fa" ]; then
 
     S_STEP3="Marhale 3: Mohit majazi Python"
     S_VENV_NEW="Mohit majazi sakhte shod"
-    S_VENV_EXISTS="Mohit majazi az ghabl vojud darad -- rad shod"
+    S_VENV_EXISTS="Mohit majazi az ghabl vojud darad"
     S_DEPS_OK="Vabastegi-ha nasb shodand"
 
-    S_STEP4="Marhale 4: Zakhire file tanzimate"
+    S_STEP4="Marhale 4: Zakhire tanzimate"
     S_ENV_OK="File .env zakhire shod"
 
-    S_STEP5="Marhale 5: Servis systemd (ejraye khodkar ba boot)"
-    S_SVC_OK="Servis robot ba movafaghiat shoroo shod"
-    S_SVC_FAIL="Servis shoroo nashod. Log ra barresi kon:"
+    S_STEP5="Marhale 5: Servis systemd"
+    S_SVC_OK="Servis robot shoroo shod"
+    S_SVC_FAIL="Servis shoroo nashod. Log barresi kon:"
 
     S_DONE_HEAD="Nasb tamam shod!"
-    S_DONE_1="Moshahedeye log zende:"
-    S_DONE_2="Restart robot:"
-    S_DONE_3="Stop robot:"
-    S_DONE_4="Virayesh tanzimate:"
-    S_DONE_5="Dar Telegram (faghat admin):"
-    S_DONE_NOTE="Nakte: bad az virayeshe dasti .env robot ra restart konid"
+    S_DONE_1="Log zende:"
+    S_DONE_2="Restart:"
+    S_DONE_3="Stop:"
+    S_DONE_4="Virayesh .env:"
+    S_DONE_5="Dar Telegram:"
+    S_DONE_NOTE="Nakte: bad az virayesh .env robot ra restart konid"
 else
     S_STEP1="Step 1: Python"
     S_PY_INSTALL="python3 not found -- installing..."
     S_PY_OK="Python %s found"
-    S_PY_UPGRADE="Python %s found -- installing Python 3.11 from deadsnakes PPA..."
-    S_PY_UPGRADE_OK="Python 3.11 installed successfully"
-    S_PY_UPGRADE_FAIL="Failed to install Python 3.11. Please upgrade manually and re-run."
+    S_PY_UPGRADE="Python %s found -- installing Python 3.11..."
+    S_PY_UPGRADE_OK="Python 3.11 installed"
+    S_PY_UPGRADE_FAIL="Failed to install Python 3.11. Please upgrade manually."
 
     S_STEP2="Step 2: Bot Configuration"
-    S_TOKEN_TIP="How to get a bot token:"
-    S_TOKEN_TIP1="  1. Open Telegram and message @BotFather"
+    S_TOKEN_TIP="How to get your bot token:"
+    S_TOKEN_TIP1="  1. Message @BotFather on Telegram"
     S_TOKEN_TIP2="  2. Send: /newbot"
     S_TOKEN_TIP3="  3. Copy the token and paste it here"
     S_TOKEN_PROMPT="Telegram bot token"
@@ -154,19 +161,26 @@ else
     S_ADMIN_PROMPT="Admin Telegram ID(s) -- separate multiple with commas"
     S_ADMIN_ERR="At least one admin ID is required!"
 
-    S_GEMINI_TIP="How to get a FREE Gemini API Key:"
-    S_GEMINI_TIP1="  1. Go to: https://aistudio.google.com/apikey"
-    S_GEMINI_TIP2="  2. Sign in with your Google account"
-    S_GEMINI_TIP3="  3. Click 'Create API Key'"
-    S_GEMINI_TIP4="  4. Copy the key and paste it below"
-    S_GEMINI_TIP5="  Note: Gemini 1.5 Flash: 15 req/min, 1500/day -- completely FREE"
-    S_GEMINI_PROMPT="Gemini API Key"
-    S_GEMINI_ERR="Gemini API Key is required!"
-    S_GEMINI_MODEL_TIP="Choose Gemini model:"
-    S_GEMINI_M1="1) gemini-1.5-flash  -- fast, free tier (recommended)"
-    S_GEMINI_M2="2) gemini-1.5-pro    -- higher quality, lower limits"
-    S_GEMINI_M3="3) gemini-2.0-flash  -- newest, fastest"
-    S_GEMINI_MODEL_PROMPT="Model choice"
+    S_GROQ_TIP="Groq API Key (FREE -- 14,400 requests/day):"
+    S_GROQ_TIP1="  1. Go to: https://console.groq.com"
+    S_GROQ_TIP2="  2. Register or login (free)"
+    S_GROQ_TIP3="  3. API Keys --> Create API Key"
+    S_GROQ_TIP4="  4. Copy the key and paste it here"
+    S_GROQ_PROMPT="Groq API Key"
+    S_GROQ_ERR="Groq API Key is required!"
+
+    S_GROQ_MODEL_TIP="Choose Groq model:"
+    S_GROQ_M1="1) llama-3.1-8b-instant    -- fastest, recommended (free)"
+    S_GROQ_M2="2) llama-3.3-70b-versatile -- better quality (free)"
+    S_GROQ_M3="3) mixtral-8x7b-32768      -- balanced (free)"
+    S_GROQ_MODEL_PROMPT="Model choice"
+
+    S_GEMINI_HEAD="Gemini API Key (OPTIONAL -- fallback if Groq fails):"
+    S_GEMINI_TIP1="  If you want Gemini as backup:"
+    S_GEMINI_TIP2="  https://aistudio.google.com/apikey"
+    S_GEMINI_PROMPT="Gemini API Key (Enter = skip)"
+    S_GEMINI_SKIP="Gemini skipped -- using Groq only"
+    S_GEMINI_OK="Gemini configured -- will be used if Groq fails"
 
     S_MOD_HEAD="Moderation settings:"
     S_WARN_PROMPT="Max warnings before ban"
@@ -174,7 +188,7 @@ else
     S_SPAM_PROMPT="Max messages in spam window"
     S_CONF_PROMPT="AI confidence threshold (0.0 to 1.0)"
 
-    S_LANG_TIP="Bot message language in Telegram:"
+    S_LANG_TIP="Bot message language:"
     S_LANG_1="1) Persian / Farsi"
     S_LANG_2="2) English"
     S_LANG_PROMPT="Choice"
@@ -188,10 +202,10 @@ else
     S_VENV_EXISTS="Virtual environment already exists -- skipped"
     S_DEPS_OK="Python dependencies installed"
 
-    S_STEP4="Step 4: Writing configuration file"
+    S_STEP4="Step 4: Writing configuration"
     S_ENV_OK="Configuration saved to .env"
 
-    S_STEP5="Step 5: System service (auto-start on boot)"
+    S_STEP5="Step 5: System service"
     S_SVC_OK="Bot service started successfully"
     S_SVC_FAIL="Service failed to start. Check logs:"
 
@@ -227,32 +241,24 @@ _install_python311() {
     curl -sS https://bootstrap.pypa.io/get-pip.py | sudo python3.11 2>/dev/null || \
         sudo apt-get install -y python3.11-distutils 2>/dev/null || true
     if python3.11 -c 'import sys; exit(0 if sys.version_info >= (3,11) else 1)' 2>/dev/null; then
-        success "$S_PY_UPGRADE_OK"
-        return 0
+        success "$S_PY_UPGRADE_OK"; return 0
     else
         return 1
     fi
 }
 
 PY_BIN="python3"
-
 if python3 -c 'import sys; exit(0 if sys.version_info >= (3,11) else 1)' 2>/dev/null; then
     success "$(printf "$S_PY_OK" "$PY_VER")"
 else
     warn "$(printf "$S_PY_UPGRADE" "$PY_VER")"
     if _install_python311; then
-        PY_BIN="python3.11"
-        PY_VER="3.11"
+        PY_BIN="python3.11"; PY_VER="3.11"
+    elif command -v python3.11 &>/dev/null; then
+        PY_BIN="python3.11"; PY_VER="3.11"
+        success "$S_PY_UPGRADE_OK"
     else
-        if command -v python3.11 &>/dev/null && \
-           python3.11 -c 'import sys; exit(0 if sys.version_info >= (3,11) else 1)' 2>/dev/null; then
-            PY_BIN="python3.11"
-            PY_VER="3.11"
-            success "$S_PY_UPGRADE_OK"
-        else
-            echo -e "${RED}[FAIL]${NC}  $S_PY_UPGRADE_FAIL" >&2
-            exit 1
-        fi
+        echo -e "${RED}[FAIL]${NC}  $S_PY_UPGRADE_FAIL" >&2; exit 1
     fi
 fi
 
@@ -261,7 +267,7 @@ fi
 # ===================================================================
 banner "$S_STEP2"
 
-# -- Telegram Token --
+# Telegram Token
 echo ""
 echo -e "  ${YELLOW}$S_TOKEN_TIP${NC}"
 echo "$S_TOKEN_TIP1"
@@ -271,48 +277,59 @@ echo ""
 prompt BOT_TOKEN "$S_TOKEN_PROMPT" "" "secret"
 [ -z "$BOT_TOKEN" ] && error "$S_TOKEN_ERR"
 
-# -- Admin IDs --
+# Admin IDs
 echo ""
 echo -e "  ${YELLOW}$S_ADMIN_TIP${NC}"
 echo "$S_ADMIN_TIP1"
 echo ""
 prompt ADMIN_IDS "$S_ADMIN_PROMPT" "" ""
 [ -z "$ADMIN_IDS" ] && error "$S_ADMIN_ERR"
-
 if ! echo "$ADMIN_IDS" | grep -qE '^[0-9]+(,[0-9]+)*$'; then
-    error "Admin IDs must be numbers separated by commas (e.g. 123456789,987654321)"
+    error "Admin IDs must be numbers separated by commas"
 fi
 
-# -- Gemini API Key --
+# Groq API Key (required)
 echo ""
-echo -e "  ${YELLOW}$S_GEMINI_TIP${NC}"
+echo -e "  ${YELLOW}$S_GROQ_TIP${NC}"
+echo "$S_GROQ_TIP1"
+echo "$S_GROQ_TIP2"
+echo "$S_GROQ_TIP3"
+echo "$S_GROQ_TIP4"
 echo ""
-echo -e "  ${CYAN}$S_GEMINI_TIP1${NC}"
-echo "$S_GEMINI_TIP2"
-echo "$S_GEMINI_TIP3"
-echo "$S_GEMINI_TIP4"
-echo ""
-echo -e "  ${GREEN}$S_GEMINI_TIP5${NC}"
-echo ""
-prompt GEMINI_API_KEY "$S_GEMINI_PROMPT" "" "secret"
-[ -z "$GEMINI_API_KEY" ] && error "$S_GEMINI_ERR"
+prompt GROQ_API_KEY "$S_GROQ_PROMPT" "" "secret"
+[ -z "$GROQ_API_KEY" ] && error "$S_GROQ_ERR"
 
-# -- Gemini Model --
+# Groq Model
 echo ""
-echo -e "  ${YELLOW}$S_GEMINI_MODEL_TIP${NC}"
-echo "    $S_GEMINI_M1"
-echo "    $S_GEMINI_M2"
-echo "    $S_GEMINI_M3"
+echo -e "  ${YELLOW}$S_GROQ_MODEL_TIP${NC}"
+echo "    $S_GROQ_M1"
+echo "    $S_GROQ_M2"
+echo "    $S_GROQ_M3"
 echo ""
-prompt GEMINI_MODEL_CHOICE "$S_GEMINI_MODEL_PROMPT" "1" ""
-case "$GEMINI_MODEL_CHOICE" in
-    1) GEMINI_MODEL="gemini-1.5-flash" ;;
-    2) GEMINI_MODEL="gemini-1.5-pro"   ;;
-    3) GEMINI_MODEL="gemini-2.0-flash" ;;
-    *) GEMINI_MODEL="gemini-1.5-flash" ;;
+prompt GROQ_MODEL_CHOICE "$S_GROQ_MODEL_PROMPT" "1" ""
+case "$GROQ_MODEL_CHOICE" in
+    1) GROQ_MODEL="llama-3.1-8b-instant"    ;;
+    2) GROQ_MODEL="llama-3.3-70b-versatile" ;;
+    3) GROQ_MODEL="mixtral-8x7b-32768"      ;;
+    *) GROQ_MODEL="llama-3.1-8b-instant"    ;;
 esac
 
-# -- Moderation --
+# Gemini API Key (optional fallback)
+echo ""
+echo -e "  ${CYAN}$S_GEMINI_HEAD${NC}"
+echo "$S_GEMINI_TIP1"
+echo "$S_GEMINI_TIP2"
+echo ""
+prompt GEMINI_API_KEY "$S_GEMINI_PROMPT" "" "secret"
+if [ -z "$GEMINI_API_KEY" ]; then
+    warn "$S_GEMINI_SKIP"
+    GEMINI_MODEL="gemini-1.5-flash"
+else
+    success "$S_GEMINI_OK"
+    GEMINI_MODEL="gemini-1.5-flash"
+fi
+
+# Moderation settings
 echo ""
 echo -e "  ${YELLOW}$S_MOD_HEAD${NC}"
 prompt MAX_WARNINGS "$S_WARN_PROMPT" "3"    ""
@@ -326,7 +343,7 @@ prompt MIN_CONF     "$S_CONF_PROMPT" "0.60" ""
 "$PY_BIN" -c "v=float('$MIN_CONF'); exit(0 if 0.0<=v<=1.0 else 1)" 2>/dev/null \
     || error "AI confidence must be between 0.0 and 1.0"
 
-# -- Bot Language --
+# Bot language
 echo ""
 echo -e "  ${YELLOW}$S_LANG_TIP${NC}"
 echo "    $S_LANG_1"
@@ -338,19 +355,19 @@ case "$BOT_LANG_CHOICE" in
     *) BOT_LANG="fa" ;;
 esac
 
-# -- Summary --
+# Summary
 echo ""
 echo -e "${GREEN}+------------------------------------------------------+${NC}"
 echo -e "${GREEN}|  $S_SUM_HEAD${NC}"
 echo -e "${GREEN}+------------------------------------------------------+${NC}"
 printf "${GREEN}|${NC}  Token          : %s...\n"  "${BOT_TOKEN:0:15}"
 printf "${GREEN}|${NC}  Admin IDs      : %s\n"     "$ADMIN_IDS"
-printf "${GREEN}|${NC}  Gemini Model   : %s\n"     "$GEMINI_MODEL"
-printf "${GREEN}|${NC}  Gemini Key     : %s...\n"  "${GEMINI_API_KEY:0:8}"
+printf "${GREEN}|${NC}  Groq Model     : %s\n"     "$GROQ_MODEL"
+printf "${GREEN}|${NC}  Groq Key       : %s...\n"  "${GROQ_API_KEY:0:8}"
+printf "${GREEN}|${NC}  Gemini Key     : %s\n"     "${GEMINI_API_KEY:+set}${GEMINI_API_KEY:-not set}"
 printf "${GREEN}|${NC}  Max Warnings   : %s\n"     "$MAX_WARNINGS"
 printf "${GREEN}|${NC}  Spam Window    : %s sec\n" "$SPAM_WINDOW"
 printf "${GREEN}|${NC}  Spam Limit     : %s msg\n" "$SPAM_MAX"
-printf "${GREEN}|${NC}  AI Confidence  : %s\n"     "$MIN_CONF"
 printf "${GREEN}|${NC}  Bot Language   : %s\n"     "$BOT_LANG"
 echo -e "${GREEN}+------------------------------------------------------+${NC}"
 echo ""
@@ -394,9 +411,17 @@ TELEGRAM_BOT_TOKEN=${BOT_TOKEN}
 ADMIN_IDS=${ADMIN_IDS}
 BOT_LANG=${BOT_LANG}
 
-# Gemini AI (free tier)
+# Groq AI (primary -- 14400 req/day free)
+GROQ_API_KEY=${GROQ_API_KEY}
+GROQ_MODEL=${GROQ_MODEL}
+
+# Gemini AI (optional fallback)
 GEMINI_API_KEY=${GEMINI_API_KEY}
 GEMINI_MODEL=${GEMINI_MODEL}
+
+# Cache
+CACHE_MIN_SCORE=0.75
+CACHE_TTL_HOURS=24
 
 # Moderation
 MAX_WARNINGS=${MAX_WARNINGS}
@@ -453,9 +478,7 @@ if systemctl is-active --quiet "${SERVICE_NAME}"; then
     success "$S_SVC_OK"
 else
     warn "$S_SVC_FAIL"
-    echo ""
     echo "    journalctl -u ${SERVICE_NAME} -n 50 --no-pager"
-    echo ""
 fi
 
 # ===================================================================
@@ -466,22 +489,14 @@ echo -e "${GREEN}+======================================================+${NC}"
 echo -e "${GREEN}|   ${BOLD}$S_DONE_HEAD${NC}"
 echo -e "${GREEN}+======================================================+${NC}"
 echo ""
-echo -e "  ${CYAN}$S_DONE_1${NC}"
-echo    "    journalctl -u ${SERVICE_NAME} -f"
-echo ""
-echo -e "  ${CYAN}$S_DONE_2${NC}"
-echo    "    sudo systemctl restart ${SERVICE_NAME}"
-echo ""
-echo -e "  ${CYAN}$S_DONE_3${NC}"
-echo    "    sudo systemctl stop ${SERVICE_NAME}"
-echo ""
-echo -e "  ${CYAN}$S_DONE_4${NC}"
-echo    "    nano ${ENV_FILE}"
+echo -e "  ${CYAN}$S_DONE_1${NC}  journalctl -u ${SERVICE_NAME} -f"
+echo -e "  ${CYAN}$S_DONE_2${NC}  sudo systemctl restart ${SERVICE_NAME}"
+echo -e "  ${CYAN}$S_DONE_3${NC}  sudo systemctl stop ${SERVICE_NAME}"
+echo -e "  ${CYAN}$S_DONE_4${NC}  nano ${ENV_FILE}"
 echo ""
 echo -e "  ${CYAN}$S_DONE_5${NC}"
-echo    "    /settings  -- change settings from Telegram"
-echo    "    /stats     -- group statistics"
-echo    "    /reports   -- pending reports"
+echo    "    /settings -- change settings from Telegram"
+echo    "    /stats    -- group statistics"
 echo ""
 echo -e "${YELLOW}  $S_DONE_NOTE${NC}"
 echo ""

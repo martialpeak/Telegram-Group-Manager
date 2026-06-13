@@ -9,9 +9,23 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 # ── زبان ربات ─────────────────────────────────────────
 BOT_LANG = os.getenv("BOT_LANG", "fa")
 
-# ── Gemini AI ─────────────────────────────────────────
+# ── AI Provider ───────────────────────────────────────
+# primary: groq | gemini
+AI_PROVIDER    = os.getenv("AI_PROVIDER", "groq")
+
+# Groq (primary — 14400 req/day free)
+GROQ_API_KEY   = os.getenv("GROQ_API_KEY", "")
+GROQ_MODEL     = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
+
+# Gemini (fallback — 1500 req/day free)
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 GEMINI_MODEL   = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+
+# ── Cache ─────────────────────────────────────────────
+# حداقل شباهت برای استفاده از cache
+CACHE_MIN_SCORE    = float(os.getenv("CACHE_MIN_SCORE", "0.75"))
+# مدت نگهداری cache به ساعت
+CACHE_TTL_HOURS    = int(os.getenv("CACHE_TTL_HOURS", "24"))
 
 # ── مدیریت گروه ──────────────────────────────────────
 MAX_WARNINGS       = int(os.getenv("MAX_WARNINGS", "3"))

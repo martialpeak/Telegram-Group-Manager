@@ -1,37 +1,51 @@
 """
-تحلیل پیام با Gemini API — شناسایی توهین / اسپم / درخواست
+تحلیل پیام — Groq (primary) → Gemini (fallback) → Rule-based (آخرین راه)
 """
 
 import json
 import re
 import logging
-import google.generativeai as genai
-from config import GEMINI_API_KEY, GEMINI_MODEL
+import asyncio
+from typing import Optional
+
+from config import GROQ_API_KEY, GROQ_MODEL, GEMINI_API_KEY, GEMINI_MODEL
 
 logger = logging.getLogger(__name__)
 
+# ── راه‌اندازی Groq ───────────────────────────────────────────────────────────
+_groq_client = None
+if GROQ_API_KEY:
+    try:
+        from groq import Groq
+        _groq_client = Groq(api_key=GROQ_API_KEY)
+    except Exception as e:
+        logger.warning(f"Groq init failed: {e}")
+
 # ── راه‌اندازی Gemini ─────────────────────────────────────────────────────────
+_gemini_model = None
 if GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY)
-    _model = genai.GenerativeModel(GEMINI_MODEL)
-else:
-    _model = None
-    logger.warning("GEMINI_API_KEY تنظیم نشده — فقط rule-based کار می‌کنه")
+    try:
+        import google.generativeai as genai
+        genai.configure(api_key=GEMINI_API_KEY)
+        _gemini_model = genai.GenerativeModel(GEMINI_MODEL)
+    except Exception as e:
+        logger.warning(f"Gemini init failed: {e}")
 
-SYSTEM_PROMPT = """تو سیستم هوشمند مدیریت گروه تلگرام هستی. پیام‌های کاربران را تحلیل کن.
+if not _groq_client and not _gemini_model:
+    logger.warning("هیچ AI تنظیم نشده — فقط rule-based کار می‌کنه")
 
-دقیقاً یک JSON برگردان، بدون هیچ متن اضافه:
+# ── System prompt ─────────────────────────────────────────────────────────────
+SYSTEM_PROMPT = """You are a Telegram group moderation AI. Analyze the message and return ONLY a JSON object, no extra text:
 {
   "type": "insult" | "spam" | "request" | "normal",
-  "confidence": عدد 0 تا 1,
-  "reason": "توضیح کوتاه فارسی"
+  "confidence": 0.0 to 1.0,
+  "reason": "brief explanation in Farsi"
 }
-
-قوانین:
-- insult: فحش، ناسزا، توهین به فرد/قوم/مذهب/جنسیت
-- spam: تبلیغ، لینک مشکوک، پیام تکراری، دعوت به کانال
-- request: سوال، درخواست کمک، خواستن اطلاعات
-- normal: مکالمه عادی"""
+Rules:
+- insult: offensive language, profanity, personal attacks
+- spam: ads, suspicious links, channel promotion, repeated messages
+- request: questions, help requests, information seeking
+- normal: regular conversation"""
 
 # ── Rule-based fallback ───────────────────────────────────────────────────────
 INSULT_WORDS = [
@@ -51,31 +65,57 @@ REQUEST_WORDS = [
 
 
 async def analyze_message(text: str) -> dict:
-    if _model:
+    # ۱. Groq
+    if _groq_client:
         try:
-            return await _gemini(text)
+            return await _analyze_groq(text)
         except Exception as e:
-            logger.warning(f"Gemini fallback: {e}")
+            logger.warning(f"Groq analyze failed, trying Gemini: {e}")
+
+    # ۲. Gemini fallback
+    if _gemini_model:
+        try:
+            return await _analyze_gemini(text)
+        except Exception as e:
+            logger.warning(f"Gemini analyze failed, using rules: {e}")
+
+    # ۳. Rule-based
     return _rules(text)
 
 
-async def _gemini(text: str) -> dict:
-    import asyncio
-    prompt = f"{SYSTEM_PROMPT}\n\nپیام: {text}"
+async def _analyze_groq(text: str) -> dict:
     loop = asyncio.get_event_loop()
     response = await loop.run_in_executor(
         None,
-        lambda: _model.generate_content(
-            prompt,
+        lambda: _groq_client.chat.completions.create(
+            model=GROQ_MODEL,
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user",   "content": f"Message: {text}"},
+            ],
+            temperature=0.1,
+            max_tokens=150,
+            response_format={"type": "json_object"},
+        )
+    )
+    content = response.choices[0].message.content.strip()
+    return _normalize(json.loads(content))
+
+
+async def _analyze_gemini(text: str) -> dict:
+    import google.generativeai as genai
+    loop = asyncio.get_event_loop()
+    response = await loop.run_in_executor(
+        None,
+        lambda: _gemini_model.generate_content(
+            f"{SYSTEM_PROMPT}\n\nMessage: {text}",
             generation_config=genai.types.GenerationConfig(
                 temperature=0.1,
-                max_output_tokens=200,
+                max_output_tokens=150,
             ),
         )
     )
-    content = response.text.strip()
-    # پاک کردن markdown code block اگه بود
-    content = re.sub(r"```json\s*|\s*```", "", content).strip()
+    content = re.sub(r"```json\s*|\s*```", "", response.text).strip()
     try:
         result = json.loads(content)
     except json.JSONDecodeError:
@@ -88,19 +128,13 @@ def _rules(text: str) -> dict:
     t = text.lower()
     for kw in INSULT_WORDS:
         if kw in t:
-            return _normalize({
-                "type": "insult", "confidence": 0.85,
-                "reason": f"کلمه نامناسب: «{kw}»",
-            })
+            return _normalize({"type": "insult", "confidence": 0.85, "reason": f"کلمه نامناسب: {kw}"})
     for kw in SPAM_WORDS:
         if kw in t:
             return _normalize({"type": "spam", "confidence": 0.75, "reason": "محتوای تبلیغاتی"})
     for kw in REQUEST_WORDS:
         if kw in t:
-            return _normalize({
-                "type": "request", "confidence": 0.65,
-                "reason": "درخواست کاربر",
-            })
+            return _normalize({"type": "request", "confidence": 0.65, "reason": "درخواست کاربر"})
     return _normalize({"type": "normal", "confidence": 0.90, "reason": "پیام عادی"})
 
 
