@@ -152,6 +152,12 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             user.id, chat.id, user.username or "",
             user.full_name, message.text, "normal", 1.0,
         )
+        # ادمین هم می‌تونه با mention سوال بپرسه
+        bot_username = context.bot.username
+        if is_addressing_bot(message, bot_username):
+            clean_q = message.text.strip().replace(f"@{bot_username}", "").strip()
+            result  = await answer_question(clean_q, chat.id)
+            await message.reply_text(f"🤖 {result['answer']}")
         return
 
     text = message.text.strip()
@@ -182,6 +188,53 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
 
     # ── تحلیل AI ─────────────────────────────────────────────────────────────
+    bot_username = context.bot.username
+    is_mentioned = is_addressing_bot(message, bot_username)
+
+    # اگه مستقیم mention شده → جواب بده (صرف‌نظر از نوع AI)
+    if is_mentioned:
+        level  = await db.get_user_level(user.id, chat.id)
+        config = get_config(level)
+        if config.daily_queries != -1:
+            count = await db.increment_query_count(user.id, chat.id)
+            if count > config.daily_queries:
+                await send_and_delete(
+                    message,
+                    t("query_limit", name=user.full_name, limit=config.daily_queries),
+                    delay=15,
+                )
+                await db.log_message(
+                    user.id, chat.id, user.username or "",
+                    user.full_name, text, "request_limit", 1.0,
+                )
+                return
+        else:
+            await db.increment_query_count(user.id, chat.id)
+
+        clean_q = text.replace(f"@{bot_username}", "").strip()
+        result  = await answer_question(clean_q, chat.id)
+        answer_text = t("request_handled", response=result["answer"])
+
+        key = f"{user.id}_{message.message_id}"
+        _pending_answers[key] = {
+            "question": clean_q,
+            "answer":   result["answer"],
+            "user_id":  user.id,
+            "chat_id":  chat.id,
+        }
+        source_label = "📚" if result.get("source") == "knowledge_base" else "🤖"
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+        keyboard = InlineKeyboardMarkup([[
+            InlineKeyboardButton("✅ درسته",   callback_data=f"fb_ok_{key}"),
+            InlineKeyboardButton("❌ اشتباهه", callback_data=f"fb_no_{key}"),
+        ]])
+        await message.reply_text(f"{source_label} {answer_text}", reply_markup=keyboard)
+        await db.log_message(
+            user.id, chat.id, user.username or "",
+            user.full_name, text, "request", 1.0,
+        )
+        return
+
     analysis   = await analyze_message(text)
     msg_type   = analysis["type"]
     confidence = analysis["confidence"]
