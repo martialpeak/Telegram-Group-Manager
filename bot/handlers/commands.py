@@ -65,7 +65,9 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/stats — آمار گروه\n"
         "/violations — آمار تخلفات\n"
         "/search [متن] — جستجو در تاریخچه\n"
-        "/learn — یادگیری از فیدبک‌ها",
+        "/learn — یادگیری از فیدبک‌ها\n"
+        "/settings — پنل تنظیمات\n"
+        "/update — آپدیت ربات از GitHub",
         parse_mode="HTML",
     )
 

@@ -118,6 +118,7 @@ def _current_settings() -> str:
 async def cmd_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in ADMIN_IDS:
         return
+    # هم در PV هم در گروه کار می‌کنه
     await update.message.reply_text(
         "⚙️ <b>پنل تنظیمات ربات</b>\nیک مورد را برای تغییر انتخاب کنید:",
         parse_mode="HTML",
@@ -266,6 +267,11 @@ async def on_settings_value(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return   # این پیام مربوط به settings نیست
 
     new_value = update.message.text.strip()
+    # اگه /cancel فرستاده
+    if new_value.lower() in ("/cancel", "cancel"):
+        context.user_data.pop("settings_key", None)
+        await update.message.reply_text("❌ لغو شد.")
+        return
 
     # ── تغییر سطح ────────────────────────────────────
     if env_key.startswith("LEVEL_"):
@@ -278,7 +284,7 @@ async def on_settings_value(update: Update, context: ContextTypes.DEFAULT_TYPE):
         _apply_level_change(level, field, new_value)
         context.user_data.pop("settings_key", None)
 
-        chat_id = context.user_data.pop("settings_chatid", None)
+        chat_id = context.user_data.pop("settings_chatid", None) or update.message.chat_id
         msg_id  = context.user_data.pop("settings_msgid", None)
         try:
             await update.message.delete()
@@ -303,6 +309,11 @@ async def on_settings_value(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
         except Exception as e:
             logger.warning(f"edit message failed: {e}")
+            await update.message.reply_text(
+                f"✅ سطح <b>{level}</b> — <b>{field}</b> به <code>{new_value}</code> تغییر کرد.",
+                parse_mode="HTML",
+                reply_markup=_level_detail_keyboard(level),
+            )
         return
 
     # ── تغییر .env ───────────────────────────────────
@@ -314,7 +325,7 @@ async def on_settings_value(update: Update, context: ContextTypes.DEFAULT_TYPE):
     _set(env_key, new_value)
     context.user_data.pop("settings_key", None)
 
-    chat_id = context.user_data.pop("settings_chatid", None)
+    chat_id = context.user_data.pop("settings_chatid", None) or update.message.chat_id
     msg_id  = context.user_data.pop("settings_msgid", None)
     try:
         await update.message.delete()
@@ -339,6 +350,10 @@ async def on_settings_value(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
     except Exception as e:
         logger.warning(f"edit message failed: {e}")
+        await update.message.reply_text(
+            f"✅ <b>{env_key}</b> به <code>{new_value}</code> تغییر کرد.",
+            parse_mode="HTML",
+        )
 
     logger.info(f"Setting {env_key} = '{new_value}' by {update.effective_user.id}")
 
@@ -399,11 +414,107 @@ def _apply_level_change(level: str, field: str, value: str):
         cfg.can_media      = value.lower() == "true"
 
 
+# ── /update — آپدیت ربات از داخل تلگرام ─────────────
+async def cmd_update(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    git pull + pip install + systemctl restart
+    فقط ادمین — هم در PV هم در گروه
+    """
+    if update.effective_user.id not in ADMIN_IDS:
+        return
+
+    msg = await update.message.reply_text("🔄 در حال بررسی آپدیت...")
+
+    import asyncio, subprocess, sys, os
+
+    bot_dir = os.path.dirname(os.path.abspath(__file__))
+
+    async def _run(cmd: list[str]) -> tuple[int, str]:
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            cwd=bot_dir,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+        )
+        out, _ = await asyncio.wait_for(proc.communicate(), timeout=120)
+        return proc.returncode, out.decode(errors="replace").strip()
+
+    try:
+        # ۱. وضعیت فعلی
+        _, current = await _run(["git", "rev-parse", "--short", "HEAD"])
+
+        # ۲. fetch
+        await msg.edit_text("🔄 دریافت تغییرات از GitHub...")
+        rc, _ = await _run(["git", "fetch", "origin"])
+        if rc != 0:
+            await msg.edit_text("❌ خطا در git fetch. اتصال به GitHub را بررسی کن.")
+            return
+
+        # ۳. مقایسه
+        _, remote = await _run(["git", "rev-parse", "--short", "origin/main"])
+        if current == remote:
+            await msg.edit_text(
+                f"✅ ربات به‌روز است.\n📌 نسخه فعلی: <code>{current}</code>",
+                parse_mode="HTML",
+            )
+            return
+
+        # ۴. pull
+        await msg.edit_text("⬇️ دانلود آپدیت...")
+        rc, pull_out = await _run(["git", "pull", "--ff-only", "origin", "main"])
+        if rc != 0:
+            await msg.edit_text(f"❌ خطا در git pull:\n<code>{pull_out[:300]}</code>", parse_mode="HTML")
+            return
+
+        _, new_ver = await _run(["git", "rev-parse", "--short", "HEAD"])
+
+        # ۵. نمایش changelog
+        _, changes = await _run(["git", "log", "--oneline", f"{current}..HEAD"])
+        changes_txt = changes[:400] if changes else "بدون تغییر"
+
+        # ۶. آپدیت پکیج‌ها
+        await msg.edit_text("📦 آپدیت پکیج‌های Python...")
+        venv_pip = os.path.join(bot_dir, "venv", "bin", "pip")
+        if not os.path.exists(venv_pip):
+            venv_pip = sys.executable.replace("python", "pip")
+        await _run([venv_pip, "install", "-q", "-r", os.path.join(bot_dir, "requirements.txt")])
+
+        # ۷. ری‌استارت سرویس
+        await msg.edit_text("🔁 ری‌استارت سرویس...")
+        rc, svc_out = await _run(["sudo", "systemctl", "restart", "telegram-bot"])
+
+        if rc == 0:
+            await msg.edit_text(
+                f"✅ <b>آپدیت موفق!</b>\n\n"
+                f"📌 نسخه قبلی: <code>{current}</code>\n"
+                f"📌 نسخه جدید: <code>{new_ver}</code>\n\n"
+                f"📋 تغییرات:\n<code>{changes_txt}</code>\n\n"
+                "♻️ سرویس ری‌استارت شد.",
+                parse_mode="HTML",
+            )
+        else:
+            # systemctl ممکنه نیاز به sudo داشته باشه یا سرویس تعریف نشده باشه
+            await msg.edit_text(
+                f"⚠️ کد آپدیت شد (<code>{current}</code> → <code>{new_ver}</code>) "
+                f"ولی ری‌استارت سرویس ناموفق بود.\n\n"
+                f"دستی ری‌استارت کن:\n"
+                f"<code>sudo systemctl restart telegram-bot</code>",
+                parse_mode="HTML",
+            )
+
+    except asyncio.TimeoutError:
+        await msg.edit_text("❌ عملیات آپدیت timeout شد. سرور را بررسی کن.")
+    except Exception as e:
+        logger.error(f"cmd_update error: {e}")
+        await msg.edit_text(f"❌ خطای غیرمنتظره:\n<code>{str(e)[:300]}</code>", parse_mode="HTML")
+
+
 # ── ثبت handler ها در app ────────────────────────────
 def register(app):
     """همه handler های settings رو یکجا ثبت می‌کنه"""
     app.add_handler(CommandHandler("settings", cmd_settings))
     app.add_handler(CommandHandler("cancel",   cmd_cancel))
+    app.add_handler(CommandHandler("update",   cmd_update))
     app.add_handler(CallbackQueryHandler(on_settings_callback, pattern=r"^cfg_"))
     app.add_handler(
         MessageHandler(

@@ -58,25 +58,49 @@ def is_addressing_bot(message: Message, bot_username: str) -> bool:
     """
     بررسی اینکه پیام خطاب به ربات هست یا نه.
     دو حالت:
-    ۱. mention مستقیم: @botname در متن پیام
-    ۲. ریپلای روی پیام ربات — فقط اگه متن پیام به اندازه کافی طولانی باشه (سوال واقعی)
+    ۱. mention مستقیم: @botname در متن پیام — همیشه فعال
+    ۲. ریپلای روی پیام ربات — فقط اگه پیام شبیه سوال واقعی باشه
+
+    برای جلوگیری از loop و جواب دادن به تعارفات ساده،
+    ریپلای باید حداقل ۱۵ کاراکتر و ۳ کلمه داشته باشه
+    و نباید فقط یک کلمه احساسی/تعارفی باشه.
     """
-    text = message.text or message.caption or ""
+    import re
+    text = (message.text or message.caption or "").strip()
 
     # منشن مستقیم — همیشه فعال
     if f"@{bot_username}" in text:
         return True
 
-    # ریپلای روی پیام ربات — فقط اگه متن کافی داشته باشه
+    # ریپلای روی پیام ربات
     if (
         message.reply_to_message
         and message.reply_to_message.from_user
         and message.reply_to_message.from_user.username == bot_username
     ):
-        # حداقل ۵ کاراکتر و ۲ کلمه لازمه تا سوال بگیریم
-        # این جلوگیری می‌کنه از trigger شدن با "ممنون"، "ok"، "خوبی" و ...
-        clean = text.strip()
-        if len(clean) >= 5 and len(clean.split()) >= 2:
+        # کلمات تعارفی / احساسی که سوال نیستن — نادیده بگیر
+        _SKIP_PATTERNS = re.compile(
+            r"^(ممنون|مرسی|تشکر|باشه|خوبی|خوبم|اوکی|ok|okay|thanks|thank you|"
+            r"سلام|درود|هی|hi|hello|عالی|خوب|بد|چطوری|داری\??|چه خبر|"
+            r"👍|👎|❤️|😊|🙏|👌|✅|❌|ارادت|لطفا|لطفاً|باتشکر|نه|آره|بله)$",
+            re.IGNORECASE,
+        )
+        clean = re.sub(r"\s+", " ", text).strip()
+        # رد کردن پیام‌های خیلی کوتاه یا تعارفی
+        if len(clean) < 15 or len(clean.split()) < 3:
+            return False
+        if _SKIP_PATTERNS.match(clean):
+            return False
+        # باید علامت سوال داشته باشه یا کلمه سوالی
+        has_question = (
+            "?" in clean or "؟" in clean
+            or any(w in clean for w in [
+                "چطور", "چگونه", "چیه", "چیست", "کجا", "کی ", "چرا",
+                "چند", "آیا", "بگو", "توضیح", "راهنما", "how", "what",
+                "why", "where", "when", "which", "who",
+            ])
+        )
+        if has_question or len(clean) >= 30:
             return True
 
     return False
