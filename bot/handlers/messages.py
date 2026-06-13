@@ -65,9 +65,7 @@ async def _check_level_restrictions(message, bot) -> bool:
     lv_lbl = level_label(level)
 
     # ── فوروارد ──────────────────────────────────────────────────────────────
-    is_forward = bool(
-        message.forward_date or message.forward_from or message.forward_from_chat
-    )
+    is_forward = bool(message.forward_origin)
     if is_forward:
         if config.daily_forwards == 0:
             txt, pm = await mod.handle_level_violation(bot, message, "فوروارد ممنوع")
