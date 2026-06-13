@@ -66,85 +66,91 @@ read -r LANG_CHOICE
 #  جدول رشته‌ها / String Table
 # ══════════════════════════════════════════════════════════════
 if [ "$LANG" = "fa" ]; then
-    S_STEP1="مرحله ۱: بررسی پایتون"
-    S_PY_INSTALL="پایتون ۳ پیدا نشد — در حال نصب..."
-    S_PY_OK="Python %s پیدا شد ✓"
-    S_PY_ERR="Python 3.11+ لازم است (نسخه فعلی: %s). لطفاً Python را ارتقاء دهید."
+    S_STEP1="Marhale 1: Barresi Python"
+    S_PY_INSTALL="Python 3 peyda nashod — dar hal nasb..."
+    S_PY_OK="Python %s peyda shod ✓"
+    S_PY_ERR="Python 3.11+ lazem ast (version feli: %s). Dar hal nasb Python 3.11..."
+    S_PY_UPGRADE="Python %s peyda shod — dar hal nasb Python 3.11 az deadsnakes PPA..."
+    S_PY_UPGRADE_OK="Python 3.11 ba movafaghiat nasb shod ✓"
+    S_PY_UPGRADE_FAIL="Nasb Python 3.11 namovaghagh shod. Dasti upgrade kon va dobbare ejra kon."
 
-    S_STEP2="مرحله ۲: پیکربندی ربات"
-    S_TOKEN_TIP="چطور توکن بگیریم:"
-    S_TOKEN_TIP1="  ۱. در تلگرام به @BotFather پیام دهید"
-    S_TOKEN_TIP2="  ۲. دستور /newbot را ارسال کنید"
-    S_TOKEN_TIP3="  ۳. توکن دریافتی را اینجا وارد کنید"
-    S_TOKEN_PROMPT="توکن ربات تلگرام"
-    S_TOKEN_ERR="توکن ربات اجباری است!"
+    S_STEP2="Marhale 2: Pikar-bandi Robot"
+    S_TOKEN_TIP="Chetori token begirim:"
+    S_TOKEN_TIP1="  1. Dar Telegram be @BotFather payam bedid"
+    S_TOKEN_TIP2="  2. Dastur /newbot ra ersal konid"
+    S_TOKEN_TIP3="  3. Token daryafti ra inja vared konid"
+    S_TOKEN_PROMPT="Token robot Telegram"
+    S_TOKEN_ERR="Token robot ejbari ast!"
 
-    S_ADMIN_TIP="چطور شناسه تلگرام خود را پیدا کنید:"
-    S_ADMIN_TIP1="  به @userinfobot پیام دهید — شناسه عددی شما را برمی‌گرداند"
-    S_ADMIN_PROMPT="شناسه ادمین‌ها (چند تا با کاما جدا کنید)"
-    S_ADMIN_ERR="حداقل یک شناسه ادمین لازم است!"
+    S_ADMIN_TIP="Chetori shenase Telegram khodetono peyda konid:"
+    S_ADMIN_TIP1="  Be @userinfobot payam bedid — shenase adadi shoma ra barmigardanad"
+    S_ADMIN_PROMPT="Shenase admin-ha (chand ta ba comma joda konid)"
+    S_ADMIN_ERR="Haddaghal yek shenase admin lazem ast!"
 
-    S_MODEL_TIP="مدل هوش مصنوعی را انتخاب کنید:"
-    S_MODEL_1="1) llama3.1     — کیفیت خوب      (~4.7 GB RAM)"
-    S_MODEL_2="2) gemma2:2b    — سبک‌تر          (~1.6 GB RAM)"
-    S_MODEL_3="3) phi3         — سریع‌تر          (~2.3 GB RAM)"
-    S_MODEL_4="4) mistral      — متوازن           (~4.1 GB RAM)"
-    S_MODEL_5="5) دستی         — خودت نام بنویس"
-    S_MODEL_PROMPT="شماره مدل"
-    S_MODEL_CUSTOM="نام مدل را وارد کن (مثلاً llama3.1:8b)"
+    S_MODEL_TIP="Model Hush Masnoui ra entekhab konid:"
+    S_MODEL_1="1) llama3.1     — keyfiyat khob      (~4.7 GB RAM)"
+    S_MODEL_2="2) gemma2:2b    — saboktar           (~1.6 GB RAM)"
+    S_MODEL_3="3) phi3         — saritar            (~2.3 GB RAM)"
+    S_MODEL_4="4) mistral      — motavazen          (~4.1 GB RAM)"
+    S_MODEL_5="5) dasti        — khodet esm benevis"
+    S_MODEL_PROMPT="Shomare model"
+    S_MODEL_CUSTOM="Esm model ra vared kon (masalan llama3.1:8b)"
 
-    S_MOD_HEAD="تنظیمات مدیریت گروه:"
-    S_WARN_PROMPT="حداکثر اخطار قبل از بن"
-    S_WIN_PROMPT="بازه زمانی تشخیص اسپم (ثانیه)"
-    S_SPAM_PROMPT="حداکثر پیام در بازه اسپم"
-    S_CONF_PROMPT="حداقل اطمینان هوش مصنوعی (0.0 تا 1.0)"
+    S_MOD_HEAD="Tanzimate modiriyat geruh:"
+    S_WARN_PROMPT="Haddaksar akhtar ghabl az ban"
+    S_WIN_PROMPT="Baze zamani tashkhis spam (sanie)"
+    S_SPAM_PROMPT="Haddaksar payam dar baze spam"
+    S_CONF_PROMPT="Haddaghal etminan Hush Masnoui (0.0 ta 1.0)"
 
-    S_LANG_TIP="زبان پیام‌های ربات در تلگرام:"
-    S_LANG_1="1) فارسی"
+    S_LANG_TIP="Zaban payam-haye robot dar Telegram:"
+    S_LANG_1="1) Farsi (Finglish)"
     S_LANG_2="2) English"
-    S_LANG_PROMPT="انتخاب"
+    S_LANG_PROMPT="Entekhab"
 
-    S_SUM_HEAD="خلاصه تنظیمات:"
-    S_CONTINUE="ادامه می‌دهیم؟ [Y/n]"
-    S_ABORT="لغو شد."
+    S_SUM_HEAD="Kholase tanzimate:"
+    S_CONTINUE="Edame midahim? [Y/n]"
+    S_ABORT="Laghv shod."
 
-    S_STEP3="مرحله ۳: محیط مجازی پایتون"
-    S_VENV_NEW="محیط مجازی ساخته شد"
-    S_VENV_EXISTS="محیط مجازی از قبل وجود دارد — رد شد"
-    S_DEPS_OK="وابستگی‌ها نصب شدند"
+    S_STEP3="Marhale 3: Mohit majazi Python"
+    S_VENV_NEW="Mohit majazi sakhte shod"
+    S_VENV_EXISTS="Mohit majazi az ghabl vojud darad — rad shod"
+    S_DEPS_OK="Vabastegi-ha nasb shodand"
 
-    S_STEP4="مرحله ۴: ذخیره فایل تنظیمات"
-    S_ENV_OK="فایل .env ذخیره شد"
+    S_STEP4="Marhale 4: Zakhire file tanzimate"
+    S_ENV_OK="File .env zakhire shod"
 
-    S_STEP5="مرحله ۵: Ollama (موتور هوش مصنوعی محلی)"
-    S_OLL_INSTALL="در حال نصب Ollama..."
-    S_OLL_OK="Ollama نصب شد"
-    S_OLL_EXISTS="Ollama از قبل نصب است"
-    S_OLL_RUNNING="سرویس Ollama در حال اجراست"
-    S_OLL_START="سرویس Ollama را راه‌اندازی می‌کنیم..."
-    S_MODEL_PULL="در حال دانلود مدل %s (چند دقیقه طول می‌کشد)..."
-    S_MODEL_OK="مدل '%s' آماده است ✓"
-    S_MODEL_FAIL="دانلود '%s' ناموفق بود. دستی اجرا کن: ollama pull %s"
-    S_EMBED_PULL="در حال دانلود مدل embedding..."
-    S_EMBED_OK="مدل embedding آماده است ✓"
-    S_EMBED_FAIL="دانلود embedding ناموفق. دستی اجرا کن: ollama pull nomic-embed-text"
+    S_STEP5="Marhale 5: Ollama (motor Hush Masnoui mahali)"
+    S_OLL_INSTALL="Dar hal nasb Ollama..."
+    S_OLL_OK="Ollama nasb shod"
+    S_OLL_EXISTS="Ollama az ghabl nasb ast"
+    S_OLL_RUNNING="Servis Ollama dar hal ejrast"
+    S_OLL_START="Servis Ollama ra rahendazi mikonim..."
+    S_MODEL_PULL="Dar hal download model %s (chand daghighe tool mikeshad)..."
+    S_MODEL_OK="Model '%s' amadeh ast ✓"
+    S_MODEL_FAIL="Download '%s' namovaghagh bud. Dasti ejra kon: ollama pull %s"
+    S_EMBED_PULL="Dar hal download model embedding..."
+    S_EMBED_OK="Model embedding amadeh ast ✓"
+    S_EMBED_FAIL="Download embedding namovaghagh. Dasti ejra kon: ollama pull nomic-embed-text"
 
-    S_STEP6="مرحله ۶: سرویس systemd (اجرای خودکار با بوت)"
-    S_SVC_OK="سرویس ربات با موفقیت شروع شد ✓"
-    S_SVC_FAIL="سرویس شروع نشد. لاگ را بررسی کن:"
+    S_STEP6="Marhale 6: Servis systemd (ejraye khodkar ba boot)"
+    S_SVC_OK="Servis robot ba movafaghiat shoroo shod ✓"
+    S_SVC_FAIL="Servis shoroo nashod. Log ra barresi kon:"
 
-    S_DONE_HEAD="نصب تمام شد! 🎉"
-    S_DONE_1="مشاهده لاگ زنده:"
-    S_DONE_2="ری‌استارت ربات:"
-    S_DONE_3="استاپ ربات:"
-    S_DONE_4="ویرایش تنظیمات:"
-    S_DONE_5="در تلگرام (فقط ادمین):"
-    S_DONE_NOTE="نکته: بعد از ویرایش دستی .env ربات را ری‌استارت کنید"
+    S_DONE_HEAD="Nasb tamam shod! 🎉"
+    S_DONE_1="Moshahedeye log zende:"
+    S_DONE_2="Restart robot:"
+    S_DONE_3="Stop robot:"
+    S_DONE_4="Virayesh tanzimate:"
+    S_DONE_5="Dar Telegram (faghat admin):"
+    S_DONE_NOTE="Nakte: bad az virayeshe dasti .env robot ra restart konid"
 else
     S_STEP1="Step 1: Python"
     S_PY_INSTALL="python3 not found — installing..."
     S_PY_OK="Python %s found ✓"
-    S_PY_ERR="Python 3.11+ is required (found: %s). Please upgrade Python."
+    S_PY_ERR="Python 3.11+ is required (found: %s). Attempting to install Python 3.11..."
+    S_PY_UPGRADE="Python %s found — installing Python 3.11 from deadsnakes PPA..."
+    S_PY_UPGRADE_OK="Python 3.11 installed successfully ✓"
+    S_PY_UPGRADE_FAIL="Failed to install Python 3.11. Please upgrade manually and re-run."
 
     S_STEP2="Step 2: Bot Configuration"
     S_TOKEN_TIP="How to get a bot token:"
@@ -229,10 +235,54 @@ if ! command -v python3 &>/dev/null; then
 fi
 
 PY_VER=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
+
+_install_python311() {
+    # نصب software-properties-common اگه نیاز بود
+    if ! command -v add-apt-repository &>/dev/null; then
+        sudo apt-get install -y software-properties-common &>/dev/null || true
+    fi
+
+    # اضافه کردن deadsnakes PPA
+    sudo add-apt-repository -y ppa:deadsnakes/ppa 2>/dev/null || true
+    sudo apt-get update -q
+    sudo apt-get install -y python3.11 python3.11-venv python3.11-dev curl git
+
+    # نصب pip برای 3.11
+    curl -sS https://bootstrap.pypa.io/get-pip.py | sudo python3.11 2>/dev/null || \
+        sudo apt-get install -y python3.11-distutils 2>/dev/null || true
+
+    # بررسی نتیجه
+    if python3.11 -c 'import sys; exit(0 if sys.version_info >= (3,11) else 1)' 2>/dev/null; then
+        success "$S_PY_UPGRADE_OK"
+        return 0
+    else
+        return 1
+    fi
+}
+
+# تعیین PY_BIN
+PY_BIN="python3"
+
 if python3 -c 'import sys; exit(0 if sys.version_info >= (3,11) else 1)' 2>/dev/null; then
     success "$(printf "$S_PY_OK" "$PY_VER")"
 else
-    error "$(printf "$S_PY_ERR" "$PY_VER")"
+    warn "$(printf "$S_PY_UPGRADE" "$PY_VER")"
+
+    if _install_python311; then
+        PY_BIN="python3.11"
+        PY_VER="3.11"
+    else
+        # بررسی: شاید python3.11 از قبل نصب بود ولی pip نبود
+        if command -v python3.11 &>/dev/null && \
+           python3.11 -c 'import sys; exit(0 if sys.version_info >= (3,11) else 1)' 2>/dev/null; then
+            PY_BIN="python3.11"
+            PY_VER="3.11"
+            success "$S_PY_UPGRADE_OK"
+        else
+            echo -e "${RED}[FAIL]${NC}  $S_PY_UPGRADE_FAIL" >&2
+            exit 1
+        fi
+    fi
 fi
 
 # ══════════════════════════════════════════════════════════════
@@ -294,7 +344,7 @@ prompt MIN_CONF     "$S_CONF_PROMPT" "0.60" ""
 [[ "$MAX_WARNINGS" =~ ^[0-9]+$ ]] || error "Max warnings must be a positive integer"
 [[ "$SPAM_WINDOW"  =~ ^[0-9]+$ ]] || error "Spam window must be a positive integer"
 [[ "$SPAM_MAX"     =~ ^[0-9]+$ ]] || error "Spam max must be a positive integer"
-python3 -c "v=float('$MIN_CONF'); exit(0 if 0.0<=v<=1.0 else 1)" 2>/dev/null \
+"$PY_BIN" -c "v=float('$MIN_CONF'); exit(0 if 0.0<=v<=1.0 else 1)" 2>/dev/null \
     || error "AI confidence must be between 0.0 and 1.0"
 
 # ── زبان ────────────────────────────────────────────────────
@@ -334,7 +384,7 @@ read -r CONFIRM
 banner "$S_STEP3"
 
 if [ ! -d "$BOT_DIR/venv" ]; then
-    python3 -m venv "$BOT_DIR/venv"
+    "$PY_BIN" -m venv "$BOT_DIR/venv"
     success "$S_VENV_NEW"
 else
     warn "$S_VENV_EXISTS"
