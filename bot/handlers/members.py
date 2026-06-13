@@ -25,7 +25,7 @@ async def on_new_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # ── ست کردن تگ سطح فعلی کاربر ──────────────────────────────────────
         level = await db.get_user_level(member.id, message.chat_id)
         cfg   = get_config(level)
-        tag   = cfg.label if level != "simple" else ""
+        tag   = cfg.tag if level != "simple" else ""
         from bot.core.moderation import _set_status_tag
         await _set_status_tag(context.bot, message.chat_id, member.id, tag)
 

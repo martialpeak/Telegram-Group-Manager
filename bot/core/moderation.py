@@ -85,18 +85,18 @@ async def apply_warn_tag(bot: Bot, chat_id: int, user_id: int, warn_count: int):
         level = await db.get_user_level(user_id, chat_id)
         from bot.core.user_levels import get_config
         cfg = get_config(level)
-        tag = cfg.label if level != "simple" else ""
+        tag = cfg.tag if level != "simple" else ""
     elif warn_count == 1:
-        tag = "⚠️ ۱ اخطار"
+        tag = "اخطار 1"
     elif warn_count == 2:
-        tag = "⚠️⚠️ ۲ اخطار"
+        tag = "اخطار 2"
     else:
-        tag = f"⚠️ {warn_count} اخطار"
+        tag = f"اخطار {warn_count}"
     await _set_status_tag(bot, chat_id, user_id, tag)
 
 
 async def apply_mute_tag(bot: Bot, chat_id: int, user_id: int, duration_label: str):
-    await _set_status_tag(bot, chat_id, user_id, f"🔇 میوت {duration_label}")
+    await _set_status_tag(bot, chat_id, user_id, f"میوت {duration_label}")
 
 
 # ─── هندلرهای اصلی ───────────────────────────────────────────────────────────

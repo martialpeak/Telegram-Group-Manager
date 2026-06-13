@@ -186,7 +186,7 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await db.set_user_level(user.id, chat.id, next_lv, set_by=0)
             new_cfg = get_config(next_lv)
             from bot.core.moderation import _set_status_tag
-            await _set_status_tag(context.bot, chat.id, user.id, new_cfg.label)
+            await _set_status_tag(context.bot, chat.id, user.id, new_cfg.tag)
             await chat.send_message(
                 f"🎉 {mention(user)} به سطح {level_label(next_lv)} ارتقاء پیدا کرد!",
                 parse_mode="HTML",

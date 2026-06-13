@@ -9,7 +9,8 @@ from dataclasses import dataclass
 @dataclass
 class LevelConfig:
     name:              str
-    label:             str    # نام فارسی + آیکون
+    label:             str    # نام فارسی + آیکون — برای نمایش در چت
+    tag:               str    # تگ ساده بدون emoji — برای setChatMemberTag
     can_media:         bool   # ارسال عکس/ویدئو/فایل
     can_links:         bool   # ارسال لینک
     can_forward:       bool   # فوروارد پیام
@@ -23,6 +24,7 @@ LEVELS: dict[str, LevelConfig] = {
     "simple": LevelConfig(
         name="simple",
         label="👤 ساده",
+        tag="",
         can_media=False,
         can_links=False,
         can_forward=False,
@@ -34,6 +36,7 @@ LEVELS: dict[str, LevelConfig] = {
     "bronze": LevelConfig(
         name="bronze",
         label="🥉 برنزی",
+        tag="برنزی",
         can_media=True,
         can_links=True,
         can_forward=True,
@@ -45,6 +48,7 @@ LEVELS: dict[str, LevelConfig] = {
     "silver": LevelConfig(
         name="silver",
         label="🥈 نقره‌ای",
+        tag="نقره‌ای",
         can_media=True,
         can_links=True,
         can_forward=True,
@@ -56,6 +60,7 @@ LEVELS: dict[str, LevelConfig] = {
     "gold": LevelConfig(
         name="gold",
         label="🥇 طلایی",
+        tag="طلایی",
         can_media=True,
         can_links=True,
         can_forward=True,
@@ -67,6 +72,7 @@ LEVELS: dict[str, LevelConfig] = {
     "diamond": LevelConfig(
         name="diamond",
         label="💎 الماسی",
+        tag="الماسی",
         can_media=True,
         can_links=True,
         can_forward=True,
