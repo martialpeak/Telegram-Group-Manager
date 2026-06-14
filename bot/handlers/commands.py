@@ -680,7 +680,7 @@ async def cmd_tagall(update: Update, context: ContextTypes.DEFAULT_TYPE):
             rows = await cur.fetchall()
         for (uid,) in rows:
             try:
-                await _set_status_tag(context.bot, chat.id, uid, "")
+                await _set_status_tag(context.bot, chat.id, uid, "ساده")
                 tagged_simple += 1
             except Exception:
                 pass
@@ -690,5 +690,5 @@ async def cmd_tagall(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await msg.edit_text(
         f"✅ تگ‌گذاری کامل شد:\n"
         f"  🏅 سطح‌دار: {tagged_non_simple} نفر\n"
-        f"  👤 ساده (بدون تگ): {tagged_simple} نفر"
+        f"  👤 ساده: {tagged_simple} نفر"
     )
