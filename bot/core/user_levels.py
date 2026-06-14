@@ -24,7 +24,7 @@ LEVELS: dict[str, LevelConfig] = {
     "simple": LevelConfig(
         name="simple",
         label="👤 ساده",
-        tag="",
+        tag="ساده",
         can_media=False,
         can_links=False,
         can_forward=False,
