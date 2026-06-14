@@ -71,17 +71,15 @@ async def _check_level_restrictions(message, bot) -> bool:
     is_forward = bool(message.forward_origin)
     if is_forward:
         if config.daily_forwards == 0:
-            txt, pm = await mod.handle_level_violation(bot, message, "فوروارد ممنوع")
-            await bot.send_message(message.chat_id, txt, parse_mode=pm)
+            await mod.handle_level_violation(bot, message, "فوروارد ممنوع")
             return True
         if config.daily_forwards != -1:
             count = await db.increment_daily_action(user.id, chat_id, "forward")
             if count > config.daily_forwards:
-                txt, pm = await mod.handle_level_violation(
+                await mod.handle_level_violation(
                     bot, message,
                     f"تجاوز از سقف فوروارد روزانه ({config.daily_forwards})",
                 )
-                await bot.send_message(message.chat_id, txt, parse_mode=pm)
                 return True
 
     # ── مدیا ─────────────────────────────────────────────────────────────────
@@ -91,8 +89,7 @@ async def _check_level_restrictions(message, bot) -> bool:
         message.sticker, message.animation,
     ])
     if has_media and not config.can_media:
-        txt, pm = await mod.handle_level_violation(bot, message, "ارسال مدیا ممنوع")
-        await bot.send_message(message.chat_id, txt, parse_mode=pm)
+        await mod.handle_level_violation(bot, message, "ارسال مدیا ممنوع")
         return True
 
     # ── لینک ─────────────────────────────────────────────────────────────────
@@ -104,17 +101,15 @@ async def _check_level_restrictions(message, bot) -> bool:
     )
     if has_link:
         if config.daily_links == 0:
-            txt, pm = await mod.handle_level_violation(bot, message, "ارسال لینک ممنوع")
-            await bot.send_message(message.chat_id, txt, parse_mode=pm)
+            await mod.handle_level_violation(bot, message, "ارسال لینک ممنوع")
             return True
         if config.daily_links != -1:
             count = await db.increment_daily_action(user.id, chat_id, "link")
             if count > config.daily_links:
-                txt, pm = await mod.handle_level_violation(
+                await mod.handle_level_violation(
                     bot, message,
                     f"تجاوز از سقف لینک روزانه ({config.daily_links})",
                 )
-                await bot.send_message(message.chat_id, txt, parse_mode=pm)
                 return True
 
     return False

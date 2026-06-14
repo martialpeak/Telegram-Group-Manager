@@ -11,6 +11,7 @@ from .commands import (
     cmd_stats, cmd_violations,
     cmd_mystats, cmd_myrank,
     cmd_setlevel, cmd_levels,
+    cmd_tagall,
 )
 
 __all__ = [
@@ -26,4 +27,5 @@ __all__ = [
     "cmd_stats", "cmd_violations",
     "cmd_mystats", "cmd_myrank",
     "cmd_setlevel", "cmd_levels",
+    "cmd_tagall",
 ]

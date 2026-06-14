@@ -632,3 +632,63 @@ async def cmd_reports(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"💬 پیام: {r['message_text'][:100]}\n\n"
         )
     await update.message.reply_text(text, parse_mode="HTML")
+
+
+# ─── /tagall — تگ همه اعضای گروه ────────────────────────────────────────────
+
+async def cmd_tagall(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    تگ همه کاربرانی که در DB ثبت شدن رو بر اساس سطحشون ست می‌کنه.
+    فقط ادمین — در گروه اجرا می‌شه.
+    """
+    if not _is_admin(update.message.from_user.id):
+        return
+    chat = update.message.chat
+    if chat.type == ChatType.PRIVATE:
+        await update.message.reply_text("این دستور فقط در گروه کار می‌کند.")
+        return
+
+    from bot.core.moderation import _set_status_tag
+
+    msg = await update.message.reply_text("⏳ در حال تگ کردن اعضا...")
+
+    # همه کاربرانی که سطح non-simple دارن
+    chat_levels = await db.get_chat_levels(chat.id)
+    tagged_non_simple = 0
+    for entry in chat_levels:
+        cfg = get_config(entry["level"])
+        try:
+            await _set_status_tag(context.bot, chat.id, entry["user_id"], cfg.tag)
+            tagged_non_simple += 1
+        except Exception:
+            pass
+
+    # همه کاربرانی که در message_log هستن ولی سطح ندارن (simple)
+    tagged_simple = 0
+    try:
+        import bot.db.database as _db
+        import aiosqlite
+        async with aiosqlite.connect(_db.DB_PATH) as _conn:
+            cur = await _conn.execute(
+                """SELECT DISTINCT user_id FROM message_log
+                   WHERE chat_id=?
+                   AND user_id NOT IN (
+                       SELECT user_id FROM user_levels WHERE chat_id=?
+                   )""",
+                (chat.id, chat.id),
+            )
+            rows = await cur.fetchall()
+        for (uid,) in rows:
+            try:
+                await _set_status_tag(context.bot, chat.id, uid, "")
+                tagged_simple += 1
+            except Exception:
+                pass
+    except Exception as e:
+        logger.warning(f"tagall simple error: {e}")
+
+    await msg.edit_text(
+        f"✅ تگ‌گذاری کامل شد:\n"
+        f"  🏅 سطح‌دار: {tagged_non_simple} نفر\n"
+        f"  👤 ساده (بدون تگ): {tagged_simple} نفر"
+    )
