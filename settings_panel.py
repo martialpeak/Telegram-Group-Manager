@@ -479,28 +479,23 @@ async def cmd_update(update: Update, context: ContextTypes.DEFAULT_TYPE):
             venv_pip = sys.executable.replace("python", "pip")
         await _run([venv_pip, "install", "-q", "-r", os.path.join(bot_dir, "requirements.txt")])
 
-        # ۷. ری‌استارت سرویس
-        await msg.edit_text("🔁 ری‌استارت سرویس...")
-        rc, svc_out = await _run(["sudo", "systemctl", "restart", "telegram-bot"])
+        # ۷. اطلاع‌رسانی و ری‌استارت
+        await msg.edit_text(
+            f"✅ <b>آپدیت موفق!</b>\n\n"
+            f"📌 نسخه قبلی: <code>{current}</code>\n"
+            f"📌 نسخه جدید: <code>{new_ver}</code>\n\n"
+            f"📋 تغییرات:\n<code>{changes_txt}</code>\n\n"
+            "♻️ در حال ری‌استارت...",
+            parse_mode="HTML",
+        )
 
-        if rc == 0:
-            await msg.edit_text(
-                f"✅ <b>آپدیت موفق!</b>\n\n"
-                f"📌 نسخه قبلی: <code>{current}</code>\n"
-                f"📌 نسخه جدید: <code>{new_ver}</code>\n\n"
-                f"📋 تغییرات:\n<code>{changes_txt}</code>\n\n"
-                "♻️ سرویس ری‌استارت شد.",
-                parse_mode="HTML",
-            )
-        else:
-            # systemctl ممکنه نیاز به sudo داشته باشه یا سرویس تعریف نشده باشه
-            await msg.edit_text(
-                f"⚠️ کد آپدیت شد (<code>{current}</code> → <code>{new_ver}</code>) "
-                f"ولی ری‌استارت سرویس ناموفق بود.\n\n"
-                f"دستی ری‌استارت کن:\n"
-                f"<code>sudo systemctl restart telegram-bot</code>",
-                parse_mode="HTML",
-            )
+        # کمی صبر تا پیام ارسال بشه
+        await asyncio.sleep(2)
+
+        # ری‌استارت با os.execv — بدون نیاز به sudo
+        # systemd خودش پروسه رو restart می‌کنه چون Restart=on-failure داره
+        python = sys.executable
+        os.execv(python, [python] + sys.argv)
 
     except asyncio.TimeoutError:
         await msg.edit_text("❌ عملیات آپدیت timeout شد. سرور را بررسی کن.")
