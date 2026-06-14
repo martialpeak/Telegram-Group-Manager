@@ -88,6 +88,7 @@ async def cmd_myrank(update: Update, context: ContextTypes.DEFAULT_TYPE):
     today_fw = await db.get_daily_action(user.id, chat.id, "forward")
     total_m  = await db.get_message_count(user.id, chat.id)
     warns    = await db.get_warnings(user.id, chat.id)
+    points   = await db.get_points(user.id, chat.id)
 
     limit_q  = "نامحدود" if cfg.daily_queries  == -1 else f"{today_q}/{cfg.daily_queries}"
     limit_lk = "ممنوع"   if cfg.daily_links    ==  0 else ("نامحدود" if cfg.daily_links    == -1 else f"{today_lk}/{cfg.daily_links}")
@@ -99,6 +100,15 @@ async def cmd_myrank(update: Update, context: ContextTypes.DEFAULT_TYPE):
         remaining    = max(0, cfg.auto_upgrade_msgs - total_m)
         upgrade_line = f"\n📈 تا ارتقاء به {level_label(next_lv)}: {remaining} پیام"
 
+    # آستانه امتیازی
+    from bot.handlers.messages import UPGRADE_THRESHOLDS
+    points_line = ""
+    if level in UPGRADE_THRESHOLDS:
+        threshold, next_pts_lv = UPGRADE_THRESHOLDS[level]
+        points_line = f"\n⭐ امتیاز: {points} | آستانه بعدی: {threshold}"
+    else:
+        points_line = f"\n⭐ امتیاز: {points}"
+
     tag = mention(user)
     await update.message.reply_text(
         f"👤 {tag}\n\n"
@@ -109,6 +119,7 @@ async def cmd_myrank(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"❓ سوال امروز: {limit_q}\n"
         f"💬 کل پیام‌ها: {total_m}\n"
         f"⚠️ اخطار: {warns}/3"
+        f"{points_line}"
         f"{upgrade_line}",
         parse_mode="HTML",
     )
@@ -131,6 +142,7 @@ async def cmd_mystats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     level    = await db.get_user_level(user.id, chat.id)
     cfg      = get_config(level)
     extra    = await db.get_user_daily_stats(user.id, chat.id)
+    points   = await db.get_points(user.id, chat.id)
 
     q_lim  = "نامحدود" if cfg.daily_queries  == -1 else str(cfg.daily_queries)
     lk_lim = "ممنوع"   if cfg.daily_links    ==  0 else ("نامحدود" if cfg.daily_links    == -1 else str(cfg.daily_links))
@@ -159,6 +171,14 @@ async def cmd_mystats(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"  [{bar}] {done}/{cfg.auto_upgrade_msgs} پیام"
         )
 
+    # آستانه امتیازی
+    from bot.handlers.messages import UPGRADE_THRESHOLDS
+    if level in UPGRADE_THRESHOLDS:
+        threshold, _ = UPGRADE_THRESHOLDS[level]
+        pts_line = f"\n⭐ امتیاز: {points} | آستانه بعدی: {threshold}"
+    else:
+        pts_line = f"\n⭐ امتیاز: {points}"
+
     tag = mention(user)
     await update.message.reply_text(
         f"📊 *آمار روزانه* — {tag}\n"
@@ -175,6 +195,7 @@ async def cmd_mystats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"  تخلف امروز: {extra['violations_today']}\n"
         f"  میوت این هفته: {extra['mutes_week']}\n"
         f"  بن کل: {extra['bans_total']}"
+        f"{pts_line}"
         f"{upgrade_line}",
         parse_mode="HTML",
     )

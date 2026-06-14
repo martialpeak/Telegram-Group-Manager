@@ -31,6 +31,10 @@ def _main_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton("🔑 Gemini API Key", callback_data="cfg_gemini_key"),
         ],
         [
+            InlineKeyboardButton("🤖 Groq Model",     callback_data="cfg_groq_model"),
+            InlineKeyboardButton("🔑 Groq API Key",   callback_data="cfg_groq_key"),
+        ],
+        [
             InlineKeyboardButton("⚠️ Max Warnings",   callback_data="cfg_max_warn"),
             InlineKeyboardButton("🕐 Spam Window",    callback_data="cfg_spam_window"),
         ],
@@ -59,8 +63,9 @@ def _levels_keyboard() -> InlineKeyboardMarkup:
         q  = "∞" if c.daily_queries  == -1 else str(c.daily_queries)
         lk = "✗" if c.daily_links    ==  0 else ("∞" if c.daily_links    == -1 else str(c.daily_links))
         fw = "✗" if c.daily_forwards ==  0 else ("∞" if c.daily_forwards == -1 else str(c.daily_forwards))
+        st = "✗" if c.daily_stickers ==  0 else ("∞" if c.daily_stickers == -1 else str(c.daily_stickers))
         rows.append([InlineKeyboardButton(
-            f"{c.label}  |  ❓{q}  🔗{lk}  ↩{fw}  📸{'✅' if c.can_media else '❌'}",
+            f"{c.label}  |  ❓{q}  🔗{lk}  ↩{fw}  🎭{st}  📸{'✅' if c.can_media else '❌'}",
             callback_data=f"cfg_lv_{lv}",
         )])
     rows.append([InlineKeyboardButton("🔙 برگشت", callback_data="cfg_back")])
@@ -77,6 +82,9 @@ def _level_detail_keyboard(level: str) -> InlineKeyboardMarkup:
             InlineKeyboardButton("↩️ فوروارد/روز",  callback_data=f"cfg_lv_{level}_forwards"),
             InlineKeyboardButton("📸 مجاز مدیا",    callback_data=f"cfg_lv_{level}_media"),
         ],
+        [
+            InlineKeyboardButton("🎭 استیکر/روز",   callback_data=f"cfg_lv_{level}_stickers"),
+        ],
         [InlineKeyboardButton("🔙 برگشت به سطوح", callback_data="cfg_levels_menu")],
     ])
 
@@ -87,11 +95,13 @@ def _level_summary_text(level: str) -> str:
     q  = "نامحدود" if c.daily_queries  == -1 else str(c.daily_queries)
     lk = "ممنوع"   if c.daily_links    ==  0 else ("نامحدود" if c.daily_links    == -1 else str(c.daily_links))
     fw = "ممنوع"   if c.daily_forwards ==  0 else ("نامحدود" if c.daily_forwards == -1 else str(c.daily_forwards))
+    st = "ممنوع"   if c.daily_stickers ==  0 else ("نامحدود" if c.daily_stickers == -1 else str(c.daily_stickers))
     return (
         f"🏅 <b>سطح {c.label}</b>\n\n"
         f"❓ سوال/روز:      <code>{q}</code>\n"
         f"🔗 لینک/روز:      <code>{lk}</code>\n"
         f"↩️ فوروارد/روز:  <code>{fw}</code>\n"
+        f"🎭 استیکر/روز:   <code>{st}</code>\n"
         f"📸 مدیا:          <code>{'✅' if c.can_media else '❌'}</code>\n\n"
         "یک مورد برای تغییر انتخاب کن:"
     )
@@ -190,6 +200,7 @@ async def on_settings_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             "links":    ("لینک روزانه",    "عدد  |  0 = ممنوع  |  -1 = نامحدود"),
             "forwards": ("فوروارد روزانه", "عدد  |  0 = ممنوع  |  -1 = نامحدود"),
             "media":    ("اجازه مدیا",     "true  یا  false"),
+            "stickers": ("استیکر/گیف روزانه", "عدد  |  0 = ممنوع  |  -1 = نامحدود"),
         }
         if field not in field_labels:
             return
@@ -201,6 +212,7 @@ async def on_settings_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             "links":    str(cfg.daily_links),
             "forwards": str(cfg.daily_forwards),
             "media":    str(cfg.can_media).lower(),
+            "stickers": str(cfg.daily_stickers),
         }[field]
 
         context.user_data["settings_key"]    = f"LEVEL_{level}_{field}"
@@ -232,6 +244,8 @@ async def on_settings_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     key_map = {
         "cfg_ai_model":    ("GEMINI_MODEL",      "Gemini model name"),
         "cfg_gemini_key":  ("GEMINI_API_KEY",    "Gemini API Key"),
+        "cfg_groq_model":  ("GROQ_MODEL",        "Groq model name"),
+        "cfg_groq_key":    ("GROQ_API_KEY",      "Groq API Key"),
         "cfg_max_warn":    ("MAX_WARNINGS",      "Max warnings before ban"),
         "cfg_spam_window": ("SPAM_TIME_WINDOW",  "Spam detection window (seconds)"),
         "cfg_spam_max":    ("SPAM_MAX_MESSAGES", "Max messages in spam window"),
@@ -385,11 +399,18 @@ def _validate(key: str, value: str) -> str:
     elif key == "BOT_LANG":
         if value not in ("fa", "en"):
             return "باید fa یا en باشد"
+    elif key == "GROQ_API_KEY":
+        if len(value) < 10:
+            return "API Key معتبر نیست"
+    elif key == "GROQ_MODEL":
+        valid = ["llama-3.1-8b-instant", "llama-3.3-70b-versatile", "gemma2-9b-it"]
+        if value not in valid:
+            return f"مدل باید یکی از اینها باشد: {', '.join(valid)}"
     return ""
 
 
 def _validate_level_field(field: str, value: str) -> str:
-    if field in ("queries", "links", "forwards"):
+    if field in ("queries", "links", "forwards", "stickers"):
         try:
             if int(value) < -1:
                 return "باید عدد >= -1 باشد (-1 نامحدود، 0 ممنوع)"
@@ -410,6 +431,8 @@ def _apply_level_change(level: str, field: str, value: str):
         cfg.daily_links    = int(value)
     elif field == "forwards":
         cfg.daily_forwards = int(value)
+    elif field == "stickers":
+        cfg.daily_stickers = int(value)
     elif field == "media":
         cfg.can_media      = value.lower() == "true"
 

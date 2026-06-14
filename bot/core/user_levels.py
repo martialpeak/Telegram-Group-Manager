@@ -17,6 +17,7 @@ class LevelConfig:
     daily_queries:     int    # سوال روزانه از ربات  (-1 = نامحدود)
     daily_links:       int    # لینک روزانه          (-1 = نامحدود، 0 = ممنوع)
     daily_forwards:    int    # فوروارد روزانه        (-1 = نامحدود، 0 = ممنوع)
+    daily_stickers:    int    # گیف/استیکر/انیمیشن روزانه (-1=نامحدود, 0=ممنوع)
     auto_upgrade_msgs: int | None = None  # آستانه ارتقاء خودکار
 
 
@@ -31,6 +32,7 @@ LEVELS: dict[str, LevelConfig] = {
         daily_queries=3,
         daily_links=0,
         daily_forwards=0,
+        daily_stickers=0,
         auto_upgrade_msgs=50,
     ),
     "bronze": LevelConfig(
@@ -43,6 +45,7 @@ LEVELS: dict[str, LevelConfig] = {
         daily_queries=10,
         daily_links=5,
         daily_forwards=5,
+        daily_stickers=10,
         auto_upgrade_msgs=None,
     ),
     "silver": LevelConfig(
@@ -55,6 +58,7 @@ LEVELS: dict[str, LevelConfig] = {
         daily_queries=25,
         daily_links=15,
         daily_forwards=15,
+        daily_stickers=30,
         auto_upgrade_msgs=None,
     ),
     "gold": LevelConfig(
@@ -67,6 +71,7 @@ LEVELS: dict[str, LevelConfig] = {
         daily_queries=50,
         daily_links=50,
         daily_forwards=50,
+        daily_stickers=-1,
         auto_upgrade_msgs=None,
     ),
     "diamond": LevelConfig(
@@ -79,6 +84,7 @@ LEVELS: dict[str, LevelConfig] = {
         daily_queries=-1,
         daily_links=-1,
         daily_forwards=-1,
+        daily_stickers=-1,
         auto_upgrade_msgs=None,
     ),
 }

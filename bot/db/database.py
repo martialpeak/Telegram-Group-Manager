@@ -134,6 +134,23 @@ async def init_db():
             PRIMARY KEY (user_id, chat_id)
         );
 
+        CREATE TABLE IF NOT EXISTS user_points (
+            user_id  INTEGER NOT NULL,
+            chat_id  INTEGER NOT NULL,
+            points   INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (user_id, chat_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS upgrade_pending (
+            user_id     INTEGER NOT NULL,
+            chat_id     INTEGER NOT NULL,
+            from_level  TEXT NOT NULL,
+            to_level    TEXT NOT NULL,
+            points      INTEGER NOT NULL,
+            notified_at TEXT DEFAULT (datetime('now')),
+            PRIMARY KEY (user_id, chat_id)
+        );
+
         CREATE INDEX IF NOT EXISTS idx_warnings_user  ON warnings(user_id, chat_id);
         CREATE INDEX IF NOT EXISTS idx_msglog_chat    ON message_log(chat_id, created_at);
         CREATE INDEX IF NOT EXISTS idx_kb_question    ON knowledge_base(question);
@@ -811,3 +828,79 @@ async def get_user_daily_stats(user_id: int, chat_id: int) -> dict:
             "mutes_week":       mutes_week,
             "bans_total":       bans_total,
         }
+
+
+# ─── امتیاز کاربران ──────────────────────────────────────────────────────────
+
+async def add_points(user_id: int, chat_id: int, delta: int) -> int:
+    """امتیاز اضافه/کم کن، برگردون مجموع جدید"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            """INSERT INTO user_points (user_id, chat_id, points)
+               VALUES (?,?,?)
+               ON CONFLICT(user_id, chat_id) DO UPDATE
+               SET points = points + excluded.points""",
+            (user_id, chat_id, delta),
+        )
+        await db.commit()
+        cur = await db.execute(
+            "SELECT points FROM user_points WHERE user_id=? AND chat_id=?",
+            (user_id, chat_id),
+        )
+        row = await cur.fetchone()
+        return row[0] if row else 0
+
+
+async def get_points(user_id: int, chat_id: int) -> int:
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute(
+            "SELECT points FROM user_points WHERE user_id=? AND chat_id=?",
+            (user_id, chat_id),
+        )
+        row = await cur.fetchone()
+        return row[0] if row else 0
+
+
+async def save_upgrade_pending(
+    user_id: int, chat_id: int, from_level: str, to_level: str, points: int
+):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            """INSERT INTO upgrade_pending (user_id, chat_id, from_level, to_level, points)
+               VALUES (?,?,?,?,?)
+               ON CONFLICT(user_id, chat_id) DO UPDATE
+               SET from_level=excluded.from_level,
+                   to_level=excluded.to_level,
+                   points=excluded.points,
+                   notified_at=datetime('now')""",
+            (user_id, chat_id, from_level, to_level, points),
+        )
+        await db.commit()
+
+
+async def get_upgrade_pending(user_id: int, chat_id: int) -> dict | None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute(
+            """SELECT user_id, chat_id, from_level, to_level, points
+               FROM upgrade_pending WHERE user_id=? AND chat_id=?""",
+            (user_id, chat_id),
+        )
+        row = await cur.fetchone()
+        if not row:
+            return None
+        return {
+            "user_id":    row[0],
+            "chat_id":    row[1],
+            "from_level": row[2],
+            "to_level":   row[3],
+            "points":     row[4],
+        }
+
+
+async def delete_upgrade_pending(user_id: int, chat_id: int):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "DELETE FROM upgrade_pending WHERE user_id=? AND chat_id=?",
+            (user_id, chat_id),
+        )
+        await db.commit()

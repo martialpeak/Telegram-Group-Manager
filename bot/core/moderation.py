@@ -105,6 +105,7 @@ async def handle_insult(bot: Bot, message, analysis: dict) -> tuple[str, str]:
     user, chat_id = message.from_user, message.chat_id
     await _delete(bot, chat_id, message.message_id)
     warn_count = await db.add_warning(user.id, chat_id, analysis.get("reason", "توهین"))
+    await db.add_points(user.id, chat_id, -5)  # اخطار
     await db.log_message(
         user.id, chat_id, user.username or "",
         user.full_name, message.text or "", "insult",
@@ -131,6 +132,7 @@ async def handle_spam(bot: Bot, message, analysis: dict) -> tuple[str, str]:
     user, chat_id = message.from_user, message.chat_id
     await _delete(bot, chat_id, message.message_id)
     warn_count = await db.add_warning(user.id, chat_id, analysis.get("reason", "spam"))
+    await db.add_points(user.id, chat_id, -5)  # اخطار
     await db.log_message(
         user.id, chat_id, user.username or "",
         user.full_name, message.text or "", "spam",
@@ -202,6 +204,7 @@ async def _ban(bot: Bot, chat_id: int, user_id: int, until_date=None):
 
 
 async def _mute(bot: Bot, chat_id: int, user_id: int, minutes: int = 10):
+    await db.add_points(user_id, chat_id, -10)  # میوت
     until   = datetime.now() + timedelta(minutes=minutes)
     no_send = ChatPermissions(
         can_send_messages=False,

@@ -33,6 +33,13 @@ _MAX_FB_PER_HOUR    = 5
 _VOTES_TO_CONFIRM   = 2
 _VOTES_TO_REJECT    = 3
 
+# آستانه‌های ارتقاء بر اساس امتیاز
+UPGRADE_THRESHOLDS = {
+    "simple":  (100,  "bronze"),
+    "bronze":  (500,  "silver"),
+    "silver":  (2000, "gold"),
+}
+
 
 def _is_admin(uid: int) -> bool:
     return uid in ADMIN_IDS
@@ -92,27 +99,63 @@ async def _check_level_restrictions(message, bot) -> bool:
         await mod.handle_level_violation(bot, message, "ارسال مدیا ممنوع")
         return True
 
-    # ── لینک ─────────────────────────────────────────────────────────────────
-    text     = message.text or message.caption or ""
-    entities = list(message.entities or []) + list(message.caption_entities or [])
-    has_link = (
-        any(e.type in ("url", "text_link") for e in entities)
-        or "http://" in text or "https://" in text or "t.me/" in text
-    )
-    if has_link:
-        if config.daily_links == 0:
-            await mod.handle_level_violation(bot, message, "ارسال لینک ممنوع")
+    # ── استیکر / گیف / انیمیشن ──────────────────────────────────────────────
+    has_sticker = bool(message.sticker or message.animation)
+    if has_sticker:
+        if config.daily_stickers == 0:
+            await mod.handle_level_violation(bot, message, "ارسال استیکر/گیف ممنوع")
             return True
-        if config.daily_links != -1:
-            count = await db.increment_daily_action(user.id, chat_id, "link")
-            if count > config.daily_links:
+        if config.daily_stickers != -1:
+            count = await db.increment_daily_action(user.id, chat_id, "sticker")
+            if count > config.daily_stickers:
                 await mod.handle_level_violation(
                     bot, message,
-                    f"تجاوز از سقف لینک روزانه ({config.daily_links})",
+                    f"تجاوز از سقف استیکر/گیف روزانه ({config.daily_stickers})",
                 )
                 return True
 
     return False
+
+
+# ─── بررسی آستانه ارتقاء بر اساس امتیاز ─────────────────────────────────────
+
+async def _check_upgrade_threshold(bot, user, chat_id: int, points: int):
+    """اگه کاربر به آستانه ارتقاء رسید، به ادمین اطلاع بده"""
+    level = await db.get_user_level(user.id, chat_id)
+    if level not in UPGRADE_THRESHOLDS:
+        return
+    threshold, to_level = UPGRADE_THRESHOLDS[level]
+    if points < threshold:
+        return
+    # چک کن pending نداشته باشه
+    existing = await db.get_upgrade_pending(user.id, chat_id)
+    if existing:
+        return
+    # ذخیره
+    await db.save_upgrade_pending(user.id, chat_id, level, to_level, points)
+    # اطلاع به ادمین‌ها
+    tag = mention(user)
+    from bot.core.user_levels import level_label as _lv_lbl
+    text = (
+        f"🎖️ <b>درخواست ارتقاء سطح</b>\n\n"
+        f"👤 کاربر: {tag}\n"
+        f"📊 امتیاز: {points}\n"
+        f"🏅 از: {level} → {to_level}\n"
+    )
+    keyboard = InlineKeyboardMarkup([[
+        InlineKeyboardButton("✅ تأیید", callback_data=f"upg_approve_{user.id}_{chat_id}"),
+        InlineKeyboardButton("❌ رد",    callback_data=f"upg_reject_{user.id}_{chat_id}"),
+    ]])
+    for admin_id in ADMIN_IDS:
+        try:
+            await bot.send_message(
+                chat_id=admin_id,
+                text=text,
+                parse_mode="HTML",
+                reply_markup=keyboard,
+            )
+        except Exception:
+            pass
 
 
 # ─── هندلر مدیا/فوروارد ──────────────────────────────────────────────────────
@@ -138,6 +181,13 @@ async def on_media_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await _set_status_tag(context.bot, message.chat_id, user.id, _cfg.tag)
 
     await _check_level_restrictions(message, context.bot)
+
+    # ── امتیاز مدیا ──────────────────────────────────────────────────────────
+    if not _is_admin(user.id):
+        is_sticker_type = bool(message.sticker or message.animation)
+        delta = 1 if is_sticker_type else 2
+        pts = await db.add_points(user.id, message.chat_id, delta)
+        await _check_upgrade_threshold(context.bot, user, message.chat_id, pts)
 
 
 # ─── هندلر اصلی پیام‌های متنی ────────────────────────────────────────────────
@@ -211,6 +261,10 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"🎉 {mention(user)} به سطح {level_label(next_lv)} ارتقاء پیدا کرد!",
                 parse_mode="HTML",
             )
+
+    # ── امتیاز پیام متنی: +1 ─────────────────────────────────────────────────
+    pts = await db.add_points(user.id, chat.id, 1)
+    await _check_upgrade_threshold(context.bot, user, chat.id, pts)
 
     # ── تحلیل AI ─────────────────────────────────────────────────────────────
     bot_username = context.bot.username

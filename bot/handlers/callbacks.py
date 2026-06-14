@@ -207,6 +207,8 @@ async def on_feedback_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             f"_(حداقل {_MIN_CORRECTION_LEN} کاراکتر)_",
             parse_mode="HTML",
         )
+        # امتیاز به کاربر برای تصحیح
+        await db.add_points(voter.id, info["chat_id"], 5)
 
     # ── رای روی تصحیح ────────────────────────────────────────────────────────
     elif data.startswith("vote_up_") or data.startswith("vote_dn_"):
@@ -219,6 +221,8 @@ async def on_feedback_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         fb     = await db.get_feedback_by_id(fb_id)
         if not fb:
             return
+        # امتیاز برای رای‌دهنده
+        await db.add_points(voter.id, fb["chat_id"], 2)
         if result["ups"] >= _VOTES_TO_CONFIRM:
             from bot.core.knowledge_engine import _normalize_question
             norm_q = _normalize_question(fb["question"])
@@ -263,6 +267,7 @@ async def on_report_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     parts  = data.split("_")
     action = parts[1]
 
+    # ── تأیید رد گزارش ───────────────────────────────────────────────────────
     if action == "ignore":
         report_id = int(parts[2])
         await db.update_report_status(report_id, "ignored")
@@ -282,10 +287,26 @@ async def on_report_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     await db.update_report_status(report_id, "reviewed")
 
+    # امتیاز به گزارش‌دهنده
+    reporter_id = None
+    try:
+        import aiosqlite
+        async with aiosqlite.connect(db.DB_PATH) as _db:
+            cur = await _db.execute(
+                "SELECT reporter_id FROM reports WHERE id=?", (report_id,)
+            )
+            row = await cur.fetchone()
+            if row:
+                reporter_id = row[0]
+    except Exception:
+        pass
+
     if action == "warn":
         warn_count = await db.add_warning(user_id, chat_id, f"گزارش #{report_id}")
         await mod.apply_warn_tag(context.bot, chat_id, user_id, warn_count)
         result_txt = f"⚠️ اخطار #{warn_count} داده شد"
+        if reporter_id:
+            await db.add_points(reporter_id, chat_id, 4)
 
     elif action == "mute":
         minutes      = await mod._next_mute_minutes(user_id, chat_id)
@@ -296,6 +317,8 @@ async def on_report_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
         )
         await mod.apply_mute_tag(context.bot, chat_id, user_id, duration_lbl)
         result_txt = f"🔇 میوت {duration_lbl}"
+        if reporter_id:
+            await db.add_points(reporter_id, chat_id, 4)
 
     elif action == "ban":
         days, label = await mod._next_ban_duration(user_id, chat_id)
@@ -309,6 +332,8 @@ async def on_report_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
             f"گزارش #{report_id}",
         )
         result_txt = f"🚫 بن {label}"
+        if reporter_id:
+            await db.add_points(reporter_id, chat_id, 4)
     else:
         return
 
@@ -316,3 +341,71 @@ async def on_report_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
         query.message.text + f"\n\n✅ *اقدام انجام شد: {result_txt}*",
         parse_mode="HTML",
     )
+
+
+# ─── callback تأیید/رد ارتقاء سطح ───────────────────────────────────────────
+
+async def on_upgrade_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    data  = query.data
+
+    if not _is_admin(query.from_user.id):
+        await query.answer("❌ فقط ادمین‌ها میتونن اقدام کنن.", show_alert=True)
+        return
+
+    if data.startswith("upg_approve_"):
+        parts   = data[12:].split("_")
+        try:
+            user_id = int(parts[0])
+            chat_id = int(parts[1])
+        except (IndexError, ValueError):
+            return
+
+        pending = await db.get_upgrade_pending(user_id, chat_id)
+        if not pending:
+            await query.answer("درخواست ارتقاء دیگه موجود نیست.", show_alert=True)
+            try:
+                await query.message.delete()
+            except Exception:
+                pass
+            return
+
+        to_level = pending["to_level"]
+        await db.set_user_level(user_id, chat_id, to_level, set_by=query.from_user.id)
+
+        from bot.core.moderation import _set_status_tag
+        from bot.core.user_levels import get_config as _get_cfg, level_label as _lv_lbl
+        new_cfg = _get_cfg(to_level)
+        await _set_status_tag(context.bot, chat_id, user_id, new_cfg.tag)
+
+        # ساخت mention بدون آبجکت User — فقط ID داریم
+        user_mention = f'<a href="tg://user?id={user_id}">{user_id}</a>'
+        try:
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=f"🎉 {user_mention} به سطح {_lv_lbl(to_level)} ارتقاء پیدا کرد!",
+                parse_mode="HTML",
+            )
+        except Exception as e:
+            logger.warning(f"upgrade announce failed: {e}")
+
+        await db.delete_upgrade_pending(user_id, chat_id)
+        try:
+            await query.message.delete()
+        except Exception:
+            pass
+
+    elif data.startswith("upg_reject_"):
+        parts   = data[11:].split("_")
+        try:
+            user_id = int(parts[0])
+            chat_id = int(parts[1])
+        except (IndexError, ValueError):
+            return
+
+        await db.delete_upgrade_pending(user_id, chat_id)
+        try:
+            await query.message.delete()
+        except Exception:
+            pass
