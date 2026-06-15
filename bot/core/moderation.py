@@ -85,7 +85,8 @@ async def apply_warn_tag(bot: Bot, chat_id: int, user_id: int, warn_count: int):
         level = await db.get_user_level(user_id, chat_id)
         from bot.core.user_levels import get_config
         cfg = get_config(level)
-        tag = cfg.tag if level != "simple" else ""
+        # برای simple هم تگ "ساده" بده نه خالی
+        tag = cfg.tag if cfg.tag else "ساده"
     elif warn_count == 1:
         tag = "اخطار 1"
     elif warn_count == 2:

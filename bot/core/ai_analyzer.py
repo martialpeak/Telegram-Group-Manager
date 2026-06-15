@@ -42,18 +42,22 @@ SYSTEM_PROMPT = """You are a Telegram group moderation AI. Analyze the message a
   "confidence": 0.0 to 1.0,
   "reason": "brief explanation in Farsi"
 }
-Rules:
-- insult: clear offensive language, profanity, direct personal attacks (be strict, only flag obvious cases)
-- spam: unsolicited ads, suspicious links promoting external channels/products, affiliate/scam promotions (do NOT flag normal mentions of buying/selling topics in conversation)
-- request: questions, help requests, information seeking
-- normal: regular conversation, discussion about topics like commerce, business, daily life — even if words like buy/sell/join appear in natural context
-Be conservative: when in doubt, classify as "normal". Only flag high-confidence violations."""
+
+Classification rules:
+- insult: ONLY flag DIRECT, EXPLICIT personal attacks with CLEAR offensive language targeting a specific person. Do NOT flag: general frustration, venting, discussing sensitive topics, mild complaints, or emotional expressions. Do NOT flag emojis alone. Minimum confidence for insult: 0.85
+- spam: unsolicited commercial ads, suspicious referral links, pyramid scheme promotions. Do NOT flag: normal buying/selling discussion, sharing news, group-relevant links
+- request: genuine questions seeking help or information
+- normal: everything else including complaints, debates, emotional venting, jokes, greetings, reactions
+
+Be VERY conservative. Most messages are "normal". Only flag OBVIOUS violations.
+When in doubt → "normal"
+Emojis alone or with normal context → ALWAYS "normal"
+"""
 
 # ── Rule-based fallback ───────────────────────────────────────────────────────
 INSULT_WORDS = [
-    "احمق", "کودن", "گاو", "خر", "بیشعور", "بی‌شعور",
-    "بی‌ناموس", "فاحشه", "حرومزاده", "کثیف", "گوساله", "الاغ",
-    "idiot", "stupid", "fuck", "shit", "bitch", "asshole", "moron",
+    "بی‌ناموس", "فاحشه", "حرومزاده",
+    "fuck you", "motherfucker", "son of a bitch",
 ]
 # فقط الگوهای واضح تبلیغاتی — کلمات عمومی مثل خرید/فروش حذف شدن
 SPAM_WORDS = [

@@ -201,6 +201,16 @@ async def reset_warnings(user_id: int, chat_id: int):
         await db.commit()
 
 
+async def expire_old_warnings(days: int = 30):
+    """اخطارهای قدیمی‌تر از X روز رو پاک کن"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "DELETE FROM warnings WHERE created_at < datetime('now', ?)",
+            (f"-{days} days",),
+        )
+        await db.commit()
+
+
 # ─── لاگ پیام‌ها ─────────────────────────────────────────────────────────────
 
 async def log_message(
