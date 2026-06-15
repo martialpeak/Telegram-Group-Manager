@@ -2,7 +2,6 @@
 نقطه ورود اصلی ربات
 """
 
-import datetime
 import logging
 from telegram.ext import (
     ApplicationBuilder,
@@ -25,19 +24,28 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-async def _expire_warnings_job(context):
+async def _expire_warnings_job(context=None):
     import bot.db.database as db
     await db.expire_old_warnings(days=30)
     logger.info("🗑️ اخطارهای قدیمی پاک شدند.")
 
 
+async def _daily_scheduler():
+    """هر ۲۴ ساعت یه بار _expire_warnings_job رو اجرا کن"""
+    import asyncio
+    while True:
+        await asyncio.sleep(86400)  # ۲۴ ساعت
+        try:
+            await _expire_warnings_job()
+        except Exception as e:
+            logger.warning(f"daily scheduler error: {e}")
+
+
 async def post_init(application):
     await db.init_db()
-    # هر روز ساعت ۳ صبح اخطارهای قدیمی پاک بشن
-    application.job_queue.run_daily(
-        _expire_warnings_job,
-        time=datetime.time(3, 0, 0),
-    )
+    # scheduler برای پاک کردن اخطارهای قدیمی — هر ۲۴ ساعت
+    import asyncio
+    asyncio.ensure_future(_daily_scheduler())
     logger.info("✅ پایگاه داده آماده شد.")
     logger.info("🚀 ربات در حال اجرا است.")
 
