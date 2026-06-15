@@ -41,6 +41,31 @@ async def post_init(application):
     logger.info("✅ پایگاه داده آماده شد.")
     logger.info("🚀 ربات در حال اجرا است.")
 
+    # ── چک پیام آپدیت بعد از restart ────────────────
+    import json, os
+    notify_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".restart_notify.json")
+    if os.path.exists(notify_file):
+        try:
+            with open(notify_file, encoding="utf-8") as f:
+                info = json.load(f)
+            os.remove(notify_file)
+
+            text = (
+                f"🚀 <b>ربات با موفقیت ری‌استارت شد!</b>\n\n"
+                f"📌 نسخه قبلی: <code>{info['old_ver']}</code>\n"
+                f"📌 نسخه جدید: <code>{info['new_ver']}</code>\n\n"
+                f"📋 تغییرات:\n<code>{info['changes']}</code>"
+            )
+            # پیام به ادمین در همون چتی که /update زده
+            await application.bot.send_message(
+                chat_id=info["chat_id"],
+                text=text,
+                parse_mode="HTML",
+            )
+            logger.info(f"✅ پیام آپدیت به {info['chat_id']} ارسال شد.")
+        except Exception as e:
+            logger.warning(f"notify after restart failed: {e}")
+
 
 def main():
     if not TELEGRAM_BOT_TOKEN:

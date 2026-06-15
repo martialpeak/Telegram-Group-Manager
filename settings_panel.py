@@ -502,21 +502,29 @@ async def cmd_update(update: Update, context: ContextTypes.DEFAULT_TYPE):
             venv_pip = sys.executable.replace("python", "pip")
         await _run([venv_pip, "install", "-q", "-r", os.path.join(bot_dir, "requirements.txt")])
 
-        # ۷. اطلاع‌رسانی و ری‌استارت
+        # ۷. ذخیره اطلاعات برای پیام بعد از restart
+        import json
+        restart_info = {
+            "chat_id":     update.message.chat_id,
+            "admin_id":    update.effective_user.id,
+            "old_ver":     current,
+            "new_ver":     new_ver,
+            "changes":     changes_txt,
+        }
+        with open(os.path.join(bot_dir, ".restart_notify.json"), "w", encoding="utf-8") as f:
+            json.dump(restart_info, f, ensure_ascii=False)
+
         await msg.edit_text(
             f"✅ <b>آپدیت موفق!</b>\n\n"
             f"📌 نسخه قبلی: <code>{current}</code>\n"
             f"📌 نسخه جدید: <code>{new_ver}</code>\n\n"
             f"📋 تغییرات:\n<code>{changes_txt}</code>\n\n"
-            "♻️ در حال ری‌استارت...",
+            "♻️ در حال ری‌استارت — بعد از چند ثانیه پیام تأیید می‌رسه...",
             parse_mode="HTML",
         )
 
-        # کمی صبر تا پیام ارسال بشه
         await asyncio.sleep(2)
 
-        # ری‌استارت با os.execv — بدون نیاز به sudo
-        # systemd خودش پروسه رو restart می‌کنه چون Restart=on-failure داره
         python = sys.executable
         os.execv(python, [python] + sys.argv)
 
