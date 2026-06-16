@@ -40,10 +40,15 @@ if GEMINI_API_KEY:
         logger.warning(f"Gemini init failed: {e}")
 
 PROMPT_TEMPLATE = (
-    "تو دستیار هوشمند یک گروه تلگرامی هستی.{context}\n"
+    "تو یک دستیار هوشمند تخصصی برای یک گروه تلگرامی هستی.\n"
+    "{context}\n"
     "سوال کاربر: {question}\n\n"
-    "پاسخ کوتاه، مفید و به زبان فارسی بده. "
-    "اگر اطلاعات کافی نداری صادقانه بگو."
+    "راهنمای پاسخ:\n"
+    "- پاسخ را به زبان فارسی روان و دقیق بده\n"
+    "- اگر سوال فنی یا تخصصی است، جزئیات کافی بده\n"
+    "- اگر اطلاعات کافی نداری صادقانه بگو و راهنمایی کن کجا بپرسن\n"
+    "- از حدس و گمان خودداری کن\n"
+    "- پاسخ را ساختارمند بنویس (اگه چند نکته داری، لیست کن)\n"
 )
 
 
@@ -127,9 +132,19 @@ async def _generate_groq(question: str, context: str) -> Optional[str]:
             None,
             lambda: _groq_client.chat.completions.create(
                 model=GROQ_MODEL,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.3,
-                max_tokens=500,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "تو یک دستیار هوشمند و دقیق هستی. "
+                            "همیشه پاسخ‌های دقیق، کامل و مستند بده. "
+                            "اگر مطمئن نیستی، بگو. هیچوقت اطلاعات اشتباه نده."
+                        ),
+                    },
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.1,   # پایین‌تر = دقیق‌تر
+                max_tokens=1500,   # بیشتر = پاسخ کامل‌تر
             )
         )
         answer = response.choices[0].message.content.strip()
@@ -153,8 +168,8 @@ async def _generate_gemini(question: str, context: str) -> Optional[str]:
             lambda: _gemini_model.generate_content(
                 prompt,
                 generation_config=genai.types.GenerationConfig(
-                    temperature=0.3,
-                    max_output_tokens=500,
+                    temperature=0.1,
+                    max_output_tokens=1500,
                 ),
             )
         )
@@ -183,7 +198,7 @@ async def answer_question(question: str, chat_id: int) -> dict:
     context = ""
     if history:
         lines = "\n".join(f"- {m['name']}: {m['text']}" for m in history[:5])
-        context = f"\nاطلاعات مرتبط از گروه:\n{lines}\n"
+        context = f"\n\nاطلاعات مرتبط از تاریخچه گروه (برای کمک به پاسخ):\n{lines}\n"
 
     # ۳. Groq (primary)
     answer = await _generate_groq(question, context)
