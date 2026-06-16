@@ -206,7 +206,8 @@ async def _ban(bot: Bot, chat_id: int, user_id: int, until_date=None):
 
 async def _mute(bot: Bot, chat_id: int, user_id: int, minutes: int = 10):
     await db.add_points(user_id, chat_id, -10)  # میوت
-    until   = datetime.now() + timedelta(minutes=minutes)
+    # timezone.utc ضروریه — بدون اون تلگرام با offset سرور میوت طولانی‌تر می‌کنه
+    until = datetime.now(tz=timezone.utc) + timedelta(minutes=minutes)
     no_send = ChatPermissions(
         can_send_messages=False,
         can_send_audios=False,

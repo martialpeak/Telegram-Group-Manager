@@ -380,10 +380,10 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_text = None
     parse_mode = None
 
-    if msg_type == "insult" and confidence >= MIN_CONFIDENCE:
+    if msg_type == "insult" and confidence >= 0.90:
         reply_text, parse_mode = await mod.handle_insult(context.bot, message, analysis)
 
-    elif msg_type == "spam" and confidence >= MIN_CONFIDENCE:
+    elif msg_type == "spam" and confidence >= 0.92:
         reply_text, parse_mode = await mod.handle_spam(context.bot, message, analysis)
 
     elif msg_type == "request" and confidence >= MIN_CONFIDENCE:
