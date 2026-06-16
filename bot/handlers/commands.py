@@ -52,20 +52,36 @@ async def _get_target(update, context) -> tuple:
 async def _get_target(update, context) -> tuple:
     """
     برمی‌گردونه (user_id, full_name, mention_str) یا (None, None, None)
-    از reply یا آرگومان اول (user_id عددی)
+    از reply یا آرگومان اول (user_id عددی یا @username)
     """
     from bot.utils.helpers import mention as _mention
     if update.message.reply_to_message:
         u = update.message.reply_to_message.from_user
         return u.id, u.full_name, _mention(u)
-    # آرگومان اول user_id عددی
     args = list(context.args) if context.args else []
-    if args:
+    if not args:
+        return None, None, None
+
+    raw = args[0]
+
+    # عدد — user_id مستقیم
+    try:
+        uid = int(raw)
+        return uid, str(uid), f"کاربر <code>{uid}</code>"
+    except ValueError:
+        pass
+
+    # @username — از تلگرام بگیر
+    username = raw.lstrip("@")
+    if username:
         try:
-            uid = int(args[0])
-            return uid, str(uid), f"کاربر <code>{uid}</code>"
-        except ValueError:
+            chat_member = await context.bot.get_chat(f"@{username}")
+            uid = chat_member.id
+            name = getattr(chat_member, "full_name", username) or username
+            return uid, name, f"@{username}"
+        except Exception:
             pass
+
     return None, None, None
 
 
