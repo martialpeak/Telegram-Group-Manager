@@ -5,6 +5,7 @@ from .callbacks import (
     on_feedback_callback, on_report_callback, on_general_callback,
     on_admin_answer_callback, on_admin_answer_text,
     on_upgrade_callback,
+    on_moderation_review_callback,
 )
 from .commands import (
     cmd_start, cmd_search, cmd_learn,
@@ -24,6 +25,7 @@ __all__ = [
     "on_feedback_callback", "on_report_callback", "on_general_callback",
     "on_admin_answer_callback", "on_admin_answer_text",
     "on_upgrade_callback",
+    "on_moderation_review_callback",
     "cmd_start", "cmd_search", "cmd_learn",
     "cmd_warn", "cmd_unwarn", "cmd_warnings",
     "cmd_ban", "cmd_unban",

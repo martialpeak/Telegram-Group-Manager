@@ -409,3 +409,110 @@ async def on_upgrade_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
             await query.message.delete()
         except Exception:
             pass
+
+
+# ─── callback بازبینی مدیریت (تأیید/رد تشخیص AI) ────────────────────────────
+
+async def on_moderation_review_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    pattern: rev_approve_{review_id}_{user_id}_{chat_id}_{action}
+             rev_reject_{review_id}_{user_id}_{chat_id}_{action}
+    """
+    query = update.callback_query
+    await query.answer()
+
+    if not _is_admin(query.from_user.id):
+        return
+
+    data  = query.data
+    parts = data.split("_")
+    # parts[0]=rev, parts[1]=approve/reject, parts[2]=review_id,
+    # parts[3]=user_id, parts[4]=chat_id, parts[5]=action
+    try:
+        decision  = parts[1]           # approve یا reject
+        review_id = int(parts[2])
+        user_id   = int(parts[3])
+        chat_id   = int(parts[4])
+        action    = parts[5]           # insult یا spam
+    except (IndexError, ValueError):
+        await query.answer("داده نامعتبر.", show_alert=True)
+        return
+
+    review = await db.get_moderation_review(review_id)
+    if not review or review["status"] != "pending":
+        try:
+            await query.edit_message_text(
+                query.message.text + "\n\n⚠️ قبلاً پردازش شده.",
+                parse_mode="HTML",
+            )
+        except Exception:
+            pass
+        return
+
+    from bot.core.moderation import (
+        apply_warn_tag, apply_mute_tag,
+        _mute, _ban, _next_ban_duration, _next_mute_minutes,
+        _format_minutes, _notify_user,
+    )
+    from config import MAX_WARNINGS as _MAX_WARNS
+
+    if decision == "approve":
+        await db.update_moderation_review(review_id, "approved")
+        warn_count = await db.add_warning(user_id, chat_id, review["ai_reason"] or "تخلف")
+        await db.add_points(user_id, chat_id, -5)
+
+        if warn_count >= _MAX_WARNS:
+            days, label = await _next_ban_duration(user_id, chat_id)
+            from datetime import datetime, timedelta, timezone
+            until = (datetime.now(tz=timezone.utc) + timedelta(days=days)) if days else None
+            await _ban(context.bot, chat_id, user_id, until_date=until)
+            await db.add_punishment(
+                user_id, chat_id, "ban",
+                days * 86400 if days else -1, action,
+            )
+            await db.reset_warnings(user_id, chat_id)
+            result_txt = f"🚫 بن {label}"
+        elif action == "spam":
+            minutes      = await _next_mute_minutes(user_id, chat_id)
+            duration_lbl = _format_minutes(minutes)
+            await _mute(context.bot, chat_id, user_id, minutes=minutes)
+            await db.add_punishment(user_id, chat_id, "mute", minutes * 60, action)
+            await apply_mute_tag(context.bot, chat_id, user_id, duration_lbl)
+            result_txt = f"🔇 میوت {duration_lbl} + اخطار {warn_count}"
+        else:
+            result_txt = f"⚠️ اخطار {warn_count}"
+
+        await apply_warn_tag(context.bot, chat_id, user_id, warn_count)
+
+        try:
+            await _notify_user(
+                context.bot, user_id,
+                f"⚠️ پیام شما در گروه حذف شد.\n"
+                f"اخطار: {warn_count}/{_MAX_WARNS}\n"
+                f"دلیل: {review['ai_reason'] or 'تخلف'}",
+            )
+        except Exception:
+            pass
+
+        try:
+            await query.edit_message_text(
+                query.message.text + f"\n\n✅ <b>تأیید شد — {result_txt}</b>",
+                parse_mode="HTML",
+            )
+        except Exception:
+            pass
+
+    elif decision == "reject":
+        await db.update_moderation_review(review_id, "rejected")
+        await db.save_false_positive(
+            action=action,
+            message_text=review["message_text"] or "",
+            ai_reason=review["ai_reason"] or "",
+        )
+        try:
+            await query.edit_message_text(
+                query.message.text + "\n\n❌ <b>رد شد — یاد گرفته شد</b>",
+                parse_mode="HTML",
+            )
+        except Exception:
+            pass

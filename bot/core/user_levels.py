@@ -98,7 +98,10 @@ def _load_overrides():
     import os
     try:
         from dotenv import dotenv_values
-        env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), ".env")
+        # از __file__ مسیر مطلق بگیر و سه سطح بالاتر برو
+        base = os.path.dirname(os.path.abspath(__file__))
+        env_path = os.path.join(base, "..", "..", ".env")
+        env_path = os.path.normpath(env_path)
         vals = dotenv_values(env_path)
         for level in LEVEL_ORDER:
             cfg = LEVELS[level]

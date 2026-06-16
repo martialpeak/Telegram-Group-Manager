@@ -160,6 +160,29 @@ async def init_db():
         CREATE INDEX IF NOT EXISTS idx_reports_user   ON reports(reporter_id, chat_id);
         CREATE INDEX IF NOT EXISTS idx_ph_user        ON punishment_history(user_id, chat_id, type);
         CREATE INDEX IF NOT EXISTS idx_ul_chat        ON user_levels(chat_id);
+
+        CREATE TABLE IF NOT EXISTS moderation_review (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id      INTEGER NOT NULL,
+            chat_id      INTEGER NOT NULL,
+            action       TEXT    NOT NULL,
+            message_text TEXT,
+            ai_reason    TEXT,
+            confidence   REAL,
+            status       TEXT DEFAULT 'pending',
+            created_at   TEXT DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS ai_false_positives (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            action       TEXT NOT NULL,
+            message_text TEXT NOT NULL,
+            ai_reason    TEXT,
+            created_at   TEXT DEFAULT (datetime('now'))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_mr_status   ON moderation_review(status, created_at);
+        CREATE INDEX IF NOT EXISTS idx_afp_action  ON ai_false_positives(action, created_at);
         """)
         await db.commit()
     logger.info("✅ پایگاه داده آماده شد.")
@@ -914,3 +937,75 @@ async def delete_upgrade_pending(user_id: int, chat_id: int):
             (user_id, chat_id),
         )
         await db.commit()
+
+
+# ─── بازبینی مدیریت ──────────────────────────────────────────────────────────
+
+async def save_moderation_review(
+    user_id: int, chat_id: int, action: str,
+    message_text: str, ai_reason: str, confidence: float,
+) -> int:
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute(
+            """INSERT INTO moderation_review
+               (user_id, chat_id, action, message_text, ai_reason, confidence)
+               VALUES (?,?,?,?,?,?)""",
+            (user_id, chat_id, action, message_text, ai_reason, confidence),
+        )
+        await db.commit()
+        return cur.lastrowid
+
+
+async def update_moderation_review(review_id: int, status: str):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "UPDATE moderation_review SET status=? WHERE id=?",
+            (status, review_id),
+        )
+        await db.commit()
+
+
+async def get_moderation_review(review_id: int) -> dict | None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute(
+            """SELECT id, user_id, chat_id, action, message_text,
+                      ai_reason, confidence, status
+               FROM moderation_review WHERE id=?""",
+            (review_id,),
+        )
+        row = await cur.fetchone()
+        if not row:
+            return None
+        return {
+            "id":           row[0],
+            "user_id":      row[1],
+            "chat_id":      row[2],
+            "action":       row[3],
+            "message_text": row[4],
+            "ai_reason":    row[5],
+            "confidence":   row[6],
+            "status":       row[7],
+        }
+
+
+# ─── False Positive (یادگیری از اشتباه) ─────────────────────────────────────
+
+async def save_false_positive(action: str, message_text: str, ai_reason: str):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            """INSERT INTO ai_false_positives (action, message_text, ai_reason)
+               VALUES (?,?,?)""",
+            (action, message_text, ai_reason),
+        )
+        await db.commit()
+
+
+async def get_recent_false_positives(action: str, limit: int = 5) -> list[dict]:
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute(
+            """SELECT message_text, ai_reason FROM ai_false_positives
+               WHERE action=? ORDER BY created_at DESC LIMIT ?""",
+            (action, limit),
+        )
+        rows = await cur.fetchall()
+        return [{"message_text": r[0], "ai_reason": r[1]} for r in rows]

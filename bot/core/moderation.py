@@ -1,16 +1,17 @@
 """
 عملیات مدیریتی: اخطار، سکوت، بن، حذف پیام
 سیستم مجازات پلکانی — هر بار تکرار، مجازات سنگین‌تر
+سیستم بازبینی ادمین — AI پیشنهاد می‌ده، ادمین تأیید/رد می‌کنه
 """
 
 import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 
-from telegram import Bot, ChatPermissions
+from telegram import Bot, ChatPermissions, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.error import TelegramError
 
-from config import MAX_WARNINGS
+from config import MAX_WARNINGS, ADMIN_IDS
 from i18n import t
 import bot.db.database as db
 
@@ -28,7 +29,6 @@ def _mention(user) -> str:
         return f"@{user.username}"
     name = user.full_name.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
     return f'<a href="tg://user?id={user.id}">{name}</a>'
-
 
 # ─── محاسبه مدت پلکانی ───────────────────────────────────────────────────────
 
@@ -85,7 +85,6 @@ async def apply_warn_tag(bot: Bot, chat_id: int, user_id: int, warn_count: int):
         level = await db.get_user_level(user_id, chat_id)
         from bot.core.user_levels import get_config
         cfg = get_config(level)
-        # برای simple هم تگ "ساده" بده نه خالی
         tag = cfg.tag if cfg.tag else "ساده"
     elif warn_count == 1:
         tag = "اخطار 1"
@@ -100,19 +99,14 @@ async def apply_mute_tag(bot: Bot, chat_id: int, user_id: int, duration_label: s
     await _set_status_tag(bot, chat_id, user_id, f"میوت {duration_label}")
 
 
-# ─── هندلرهای اصلی ───────────────────────────────────────────────────────────
+# ─── اقدام مستقیم توهین (بدون بازبینی) ──────────────────────────────────────
 
-async def handle_insult(bot: Bot, message, analysis: dict) -> tuple[str, str]:
-    user, chat_id = message.from_user, message.chat_id
-    await _delete(bot, chat_id, message.message_id)
+async def _do_insult_action(
+    bot: Bot, message, analysis: dict, user, chat_id: int, tag: str
+) -> tuple[str | None, str | None]:
+    """منطق اصلی اخطار/بن برای توهین — فقط وقتی ادمین قابل دسترس نیست"""
     warn_count = await db.add_warning(user.id, chat_id, analysis.get("reason", "توهین"))
     await db.add_points(user.id, chat_id, -5)
-    await db.log_message(
-        user.id, chat_id, user.username or "",
-        user.full_name, message.text or "", "insult",
-        analysis.get("confidence", 1.0),
-    )
-    tag = _mention(user)
 
     if warn_count >= MAX_WARNINGS:
         days, label = await _next_ban_duration(user.id, chat_id)
@@ -127,7 +121,6 @@ async def handle_insult(bot: Bot, message, analysis: dict) -> tuple[str, str]:
 
     await apply_warn_tag(bot, chat_id, user.id, warn_count)
     reply = t("warn_insult", name=tag, warn=warn_count, max=MAX_WARNINGS)
-    # اطلاع به کاربر در PV
     await _notify_user(bot, user.id,
         f"⚠️ پیام شما در گروه حذف شد.\n"
         f"اخطار: {warn_count}/{MAX_WARNINGS}\n"
@@ -136,17 +129,14 @@ async def handle_insult(bot: Bot, message, analysis: dict) -> tuple[str, str]:
     return reply, "HTML"
 
 
-async def handle_spam(bot: Bot, message, analysis: dict) -> tuple[str, str]:
-    user, chat_id = message.from_user, message.chat_id
-    await _delete(bot, chat_id, message.message_id)
+# ─── اقدام مستقیم اسپم (بدون بازبینی) ───────────────────────────────────────
+
+async def _do_spam_action(
+    bot: Bot, message, analysis: dict, user, chat_id: int, tag: str
+) -> tuple[str | None, str | None]:
+    """منطق اصلی اخطار/میوت برای اسپم — فقط وقتی ادمین قابل دسترس نیست"""
     warn_count = await db.add_warning(user.id, chat_id, analysis.get("reason", "spam"))
     await db.add_points(user.id, chat_id, -5)
-    await db.log_message(
-        user.id, chat_id, user.username or "",
-        user.full_name, message.text or "", "spam",
-        analysis.get("confidence", 1.0),
-    )
-    tag = _mention(user)
 
     if warn_count >= MAX_WARNINGS:
         days, label = await _next_ban_duration(user.id, chat_id)
@@ -165,7 +155,6 @@ async def handle_spam(bot: Bot, message, analysis: dict) -> tuple[str, str]:
     await db.add_punishment(user.id, chat_id, "mute", minutes * 60, "spam")
     await apply_warn_tag(bot, chat_id, user.id, warn_count)
     await apply_mute_tag(bot, chat_id, user.id, duration_lbl)
-    # اطلاع به کاربر در PV
     await _notify_user(bot, user.id,
         f"⚠️ پیام شما در گروه حذف شد و {duration_lbl} میوت شدید.\n"
         f"اخطار: {warn_count}/{MAX_WARNINGS}\n"
@@ -176,6 +165,118 @@ async def handle_spam(bot: Bot, message, analysis: dict) -> tuple[str, str]:
         + f"\n🔇 <b>{duration_lbl}</b>",
         "HTML",
     )
+
+
+# ─── هندلرهای اصلی با بازبینی ────────────────────────────────────────────────
+
+async def handle_insult(bot: Bot, message, analysis: dict) -> tuple[str | None, str | None]:
+    user, chat_id = message.from_user, message.chat_id
+    msg_text = message.text or ""
+    await _delete(bot, chat_id, message.message_id)
+    await db.log_message(
+        user.id, chat_id, user.username or "",
+        user.full_name, msg_text, "insult",
+        analysis.get("confidence", 1.0),
+    )
+
+    # ذخیره برای بازبینی
+    review_id = await db.save_moderation_review(
+        user_id=user.id, chat_id=chat_id,
+        action="insult", message_text=msg_text[:500],
+        ai_reason=analysis.get("reason", ""), confidence=analysis.get("confidence", 0),
+    )
+
+    tag = _mention(user)
+    notified = False
+    for admin_id in ADMIN_IDS:
+        try:
+            keyboard = InlineKeyboardMarkup([[
+                InlineKeyboardButton(
+                    "✅ درست بود",
+                    callback_data=f"rev_approve_{review_id}_{user.id}_{chat_id}_insult",
+                ),
+                InlineKeyboardButton(
+                    "❌ اشتباه بود",
+                    callback_data=f"rev_reject_{review_id}_{user.id}_{chat_id}_insult",
+                ),
+            ]])
+            await bot.send_message(
+                chat_id=admin_id,
+                text=(
+                    f"🔍 <b>بازبینی تشخیص توهین</b>\n\n"
+                    f"👤 کاربر: {tag}\n"
+                    f"🤖 دلیل AI: {analysis.get('reason','')}\n"
+                    f"📊 اطمینان: {analysis.get('confidence', 0):.0%}\n\n"
+                    f"💬 پیام:\n<code>{msg_text[:300]}</code>\n\n"
+                    "آیا تشخیص درست بود؟"
+                ),
+                parse_mode="HTML",
+                reply_markup=keyboard,
+            )
+            notified = True
+        except Exception:
+            pass
+
+    if not notified:
+        # هیچ ادمینی دریافت نکرد — اقدام مستقیم
+        return await _do_insult_action(bot, message, analysis, user, chat_id, tag)
+
+    return None, None
+
+
+async def handle_spam(bot: Bot, message, analysis: dict) -> tuple[str | None, str | None]:
+    user, chat_id = message.from_user, message.chat_id
+    msg_text = message.text or ""
+    await _delete(bot, chat_id, message.message_id)
+    await db.log_message(
+        user.id, chat_id, user.username or "",
+        user.full_name, msg_text, "spam",
+        analysis.get("confidence", 1.0),
+    )
+
+    # ذخیره برای بازبینی
+    review_id = await db.save_moderation_review(
+        user_id=user.id, chat_id=chat_id,
+        action="spam", message_text=msg_text[:500],
+        ai_reason=analysis.get("reason", ""), confidence=analysis.get("confidence", 0),
+    )
+
+    tag = _mention(user)
+    notified = False
+    for admin_id in ADMIN_IDS:
+        try:
+            keyboard = InlineKeyboardMarkup([[
+                InlineKeyboardButton(
+                    "✅ درست بود",
+                    callback_data=f"rev_approve_{review_id}_{user.id}_{chat_id}_spam",
+                ),
+                InlineKeyboardButton(
+                    "❌ اشتباه بود",
+                    callback_data=f"rev_reject_{review_id}_{user.id}_{chat_id}_spam",
+                ),
+            ]])
+            await bot.send_message(
+                chat_id=admin_id,
+                text=(
+                    f"🔍 <b>بازبینی تشخیص اسپم</b>\n\n"
+                    f"👤 کاربر: {tag}\n"
+                    f"🤖 دلیل AI: {analysis.get('reason','')}\n"
+                    f"📊 اطمینان: {analysis.get('confidence', 0):.0%}\n\n"
+                    f"💬 پیام:\n<code>{msg_text[:300]}</code>\n\n"
+                    "آیا تشخیص درست بود؟"
+                ),
+                parse_mode="HTML",
+                reply_markup=keyboard,
+            )
+            notified = True
+        except Exception:
+            pass
+
+    if not notified:
+        # هیچ ادمینی دریافت نکرد — اقدام مستقیم
+        return await _do_spam_action(bot, message, analysis, user, chat_id, tag)
+
+    return None, None
 
 
 async def handle_level_violation(bot: Bot, message, violation: str) -> tuple[str, str]:
@@ -193,7 +294,6 @@ async def handle_level_violation(bot: Bot, message, violation: str) -> tuple[str
         600,  # ۱۰ دقیقه
         lambda: asyncio.ensure_future(_delete(bot, chat_id, sent.message_id)),
     )
-    # اطلاع به کاربر در PV
     await _notify_user(bot, user.id,
         f"ℹ️ پیام شما در گروه حذف شد.\nدلیل: {violation}"
     )
@@ -230,7 +330,6 @@ async def _ban(bot: Bot, chat_id: int, user_id: int, until_date=None):
 
 async def _mute(bot: Bot, chat_id: int, user_id: int, minutes: int = 10):
     await db.add_points(user_id, chat_id, -10)  # میوت
-    # timezone.utc ضروریه — بدون اون تلگرام با offset سرور میوت طولانی‌تر می‌کنه
     until = datetime.now(tz=timezone.utc) + timedelta(minutes=minutes)
     no_send = ChatPermissions(
         can_send_messages=False,

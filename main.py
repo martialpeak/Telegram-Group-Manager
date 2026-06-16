@@ -118,6 +118,7 @@ def main():
     app.add_handler(CallbackQueryHandler(handlers.on_feedback_callback, pattern=r"^vote_"))
     app.add_handler(CallbackQueryHandler(handlers.on_admin_answer_callback, pattern=r"^adm_"))
     app.add_handler(CallbackQueryHandler(handlers.on_upgrade_callback, pattern=r"^upg_"))
+    app.add_handler(CallbackQueryHandler(handlers.on_moderation_review_callback, pattern=r"^rev_"))
     # پاسخ متنی ادمین به سوال — group=9 قبل از settings (group=10)
     app.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, handlers.on_admin_answer_text),

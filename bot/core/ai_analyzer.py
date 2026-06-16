@@ -61,6 +61,7 @@ REQUEST — genuine question or help request
 NORMAL — everything else (conversations about commerce, prices, products, services, debates, emotions)
 
 DEFAULT to "normal". Only flag with HIGH confidence.
+IMPORTANT: Pay close attention to any examples of previously wrongly classified messages provided below — do NOT classify similar messages the same way.
 """
 
 # ── Rule-based fallback ───────────────────────────────────────────────────────
@@ -80,33 +81,55 @@ REQUEST_WORDS = [
 ]
 
 
-async def analyze_message(text: str) -> dict:
-    # ۱. Groq
+async def analyze_message(text: str, chat_id: int = 0) -> dict:
+    # ۱. جمع‌آوری context از false positives
+    fp_insult = await _get_fp_context("insult")
+    fp_spam   = await _get_fp_context("spam")
+    extra_context = fp_insult + fp_spam
+
+    # ۲. Groq
     if _groq_client:
         try:
-            return await _analyze_groq(text)
+            return await _analyze_groq(text, extra_context=extra_context)
         except Exception as e:
             logger.warning(f"Groq analyze failed, trying Gemini: {e}")
 
-    # ۲. Gemini fallback
+    # ۳. Gemini fallback
     if _gemini_model:
         try:
-            return await _analyze_gemini(text)
+            return await _analyze_gemini(text, extra_context=extra_context)
         except Exception as e:
             logger.warning(f"Gemini analyze failed, using rules: {e}")
 
-    # ۳. Rule-based
+    # ۴. Rule-based
     return _rules(text)
 
 
-async def _analyze_groq(text: str) -> dict:
+async def _get_fp_context(action: str) -> str:
+    """آخرین ۵ false positive رو از DB بخون و به prompt اضافه کن"""
+    try:
+        import bot.db.database as db_module
+        fps = await db_module.get_recent_false_positives(action, limit=5)
+        if not fps:
+            return ""
+        examples = "\n".join(f'- "{fp["message_text"][:100]}"' for fp in fps)
+        return (
+            f"\n\nPREVIOUSLY WRONGLY CLASSIFIED as {action} "
+            f"(do NOT flag similar messages):\n{examples}"
+        )
+    except Exception:
+        return ""
+
+
+async def _analyze_groq(text: str, extra_context: str = "") -> dict:
+    prompt = SYSTEM_PROMPT + extra_context
     loop = asyncio.get_event_loop()
     response = await loop.run_in_executor(
         None,
         lambda: _groq_client.chat.completions.create(
             model=GROQ_MODEL,
             messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "system", "content": prompt},
                 {"role": "user",   "content": f"Message: {text}"},
             ],
             temperature=0.1,
@@ -118,13 +141,14 @@ async def _analyze_groq(text: str) -> dict:
     return _normalize(json.loads(content))
 
 
-async def _analyze_gemini(text: str) -> dict:
+async def _analyze_gemini(text: str, extra_context: str = "") -> dict:
     import google.generativeai as genai
+    prompt = SYSTEM_PROMPT + extra_context
     loop = asyncio.get_event_loop()
     response = await loop.run_in_executor(
         None,
         lambda: _gemini_model.generate_content(
-            f"{SYSTEM_PROMPT}\n\nMessage: {text}",
+            f"{prompt}\n\nMessage: {text}",
             generation_config=genai.types.GenerationConfig(
                 temperature=0.1,
                 max_output_tokens=150,
