@@ -27,7 +27,48 @@ def _is_admin(uid: int) -> bool:
     return uid in ADMIN_IDS
 
 
-# ─── /start ──────────────────────────────────────────────────────────────────
+
+
+async def _get_target(update, context) -> tuple:
+    """
+    برمی‌گردونه (user_id, full_name, mention_str) یا (None, None, None)
+    از reply یا آرگومان اول (user_id عددی)
+    """
+    from bot.utils.helpers import mention as _mention
+    if update.message.reply_to_message:
+        u = update.message.reply_to_message.from_user
+        return u.id, u.full_name, _mention(u)
+    if context.args:
+        try:
+            uid = int(context.args[0])
+            return uid, str(uid), f"کاربر <code>{uid}</code>"
+        except ValueError:
+            pass
+    return None, None, None
+
+
+# ─── helper: پیدا کردن target از reply یا user_id ───────────────────────────
+
+async def _get_target(update, context) -> tuple:
+    """
+    برمی‌گردونه (user_id, full_name, mention_str) یا (None, None, None)
+    از reply یا آرگومان اول (user_id عددی)
+    """
+    from bot.utils.helpers import mention as _mention
+    if update.message.reply_to_message:
+        u = update.message.reply_to_message.from_user
+        return u.id, u.full_name, _mention(u)
+    # آرگومان اول user_id عددی
+    args = list(context.args) if context.args else []
+    if args:
+        try:
+            uid = int(args[0])
+            return uid, str(uid), f"کاربر <code>{uid}</code>"
+        except ValueError:
+            pass
+    return None, None, None
+
+
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     bot_username = context.bot.username
@@ -213,38 +254,52 @@ async def cmd_setlevel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not _is_admin(update.message.from_user.id):
         await update.message.reply_text("❌ فقط ادمین‌ها میتونن سطح تغییر بدن.")
         return
-    if not update.message.reply_to_message:
+
+    args = list(context.args) if context.args else []
+
+    # تشخیص target و سطح
+    if update.message.reply_to_message:
+        target_id = update.message.reply_to_message.from_user.id
+        target_mention = mention(update.message.reply_to_message.from_user)
+        level_arg = args[0].lower() if args else None
+    elif args:
+        try:
+            target_id = int(args[0])
+            target_mention = f"کاربر <code>{target_id}</code>"
+            level_arg = args[1].lower() if len(args) > 1 else None
+        except ValueError:
+            await update.message.reply_text(
+                f"استفاده: /setlevel <user_id> <سطح>\nسطوح: {' | '.join(LEVEL_ORDER)}"
+            )
+            return
+    else:
         await update.message.reply_text(
-            "روی پیام کاربر موردنظر ریپلای بزنید.\n"
-            f"استفاده: /setlevel <سطح>\nسطوح: {' | '.join(LEVEL_ORDER)}"
-        )
-        return
-    if not context.args:
-        await update.message.reply_text(
-            f"سطح رو مشخص کن: /setlevel <سطح>\nسطوح: {' | '.join(LEVEL_ORDER)}"
+            f"روی پیام ریپلای بزن یا /setlevel <user_id> <سطح>\nسطوح: {' | '.join(LEVEL_ORDER)}"
         )
         return
 
-    new_level = context.args[0].lower()
-    if not is_valid_level(new_level):
+    if not level_arg:
+        await update.message.reply_text(
+            f"سطح رو مشخص کن.\nسطوح: {' | '.join(LEVEL_ORDER)}"
+        )
+        return
+
+    if not is_valid_level(level_arg):
         await update.message.reply_text(
             f"❌ سطح نامعتبر!\nسطوح معتبر: {' | '.join(LEVEL_ORDER)}"
         )
         return
 
-    target  = update.message.reply_to_message.from_user
     chat_id = update.message.chat_id
-    cfg     = get_config(new_level)
+    cfg     = get_config(level_arg)
+    await db.set_user_level(target_id, chat_id, level_arg, update.message.from_user.id)
 
-    await db.set_user_level(target.id, chat_id, new_level, update.message.from_user.id)
-
-    tag_text = "" if new_level == "simple" else cfg.tag
+    tag_text = cfg.tag if level_arg != "simple" else "ساده"
     from bot.core.moderation import _set_status_tag
-    await _set_status_tag(context.bot, chat_id, target.id, tag_text)
-    tag_note = f" | تگ: {cfg.label}" if tag_text else " | تگ حذف شد"
+    await _set_status_tag(context.bot, chat_id, target_id, tag_text)
 
     await update.message.reply_text(
-        f"✅ سطح {mention(target)} به {level_label(new_level)} تغییر کرد.{tag_note}",
+        f"✅ سطح {target_mention} به {level_label(level_arg)} تغییر کرد.",
         parse_mode="HTML",
     )
 
@@ -281,24 +336,28 @@ async def cmd_learn(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_warn(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not _is_admin(update.message.from_user.id):
         return
-    if not update.message.reply_to_message:
-        await update.message.reply_text("روی پیام کاربر موردنظر ریپلای بزنید.")
+    target_id, _, target_mention = await _get_target(update, context)
+    if not target_id:
+        await update.message.reply_text("روی پیام ریپلای بزن یا /warn <user_id> [دلیل]")
         return
-    target     = update.message.reply_to_message.from_user
-    chat_id    = update.message.chat_id
-    reason     = " ".join(context.args) or "تخلف"
-    warn_count = await db.add_warning(target.id, chat_id, reason)
+    chat_id = update.message.chat_id
+    # اگه user_id آرگومان بود، بقیه args دلیل هستن
+    if update.message.reply_to_message:
+        reason = " ".join(context.args) or "تخلف"
+    else:
+        reason = " ".join(context.args[1:]) or "تخلف"
+    warn_count = await db.add_warning(target_id, chat_id, reason)
 
     if warn_count >= MAX_WARNINGS:
-        await mod._ban(context.bot, chat_id, target.id)
-        await db.reset_warnings(target.id, chat_id)
+        await mod._ban(context.bot, chat_id, target_id)
+        await db.reset_warnings(target_id, chat_id)
         await update.message.reply_text(
-            t("banned", name=mention(target)), parse_mode="HTML"
+            t("banned", name=target_mention), parse_mode="HTML"
         )
     else:
-        await mod.apply_warn_tag(context.bot, chat_id, target.id, warn_count)
+        await mod.apply_warn_tag(context.bot, chat_id, target_id, warn_count)
         await update.message.reply_text(
-            t("warn_insult", name=mention(target), warn=warn_count, max=MAX_WARNINGS),
+            t("warn_insult", name=target_mention, warn=warn_count, max=MAX_WARNINGS),
             parse_mode="HTML",
         )
 
@@ -308,28 +367,28 @@ async def cmd_warn(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_unwarn(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not _is_admin(update.message.from_user.id):
         return
-    if not update.message.reply_to_message:
-        await update.message.reply_text("روی پیام کاربر موردنظر ریپلای بزنید.")
+    target_id, _, target_mention = await _get_target(update, context)
+    if not target_id:
+        await update.message.reply_text("روی پیام ریپلای بزن یا /unwarn <user_id>")
         return
-    target  = update.message.reply_to_message.from_user
     chat_id = update.message.chat_id
-    await db.reset_warnings(target.id, chat_id)
-    await mod.apply_warn_tag(context.bot, chat_id, target.id, 0)
+    await db.reset_warnings(target_id, chat_id)
+    await mod.apply_warn_tag(context.bot, chat_id, target_id, 0)
     await update.message.reply_text(
-        f"✅ اخطارهای {mention(target)} پاک شد.", parse_mode="HTML"
+        f"✅ اخطارهای {target_mention} پاک شد.", parse_mode="HTML"
     )
 
 
 # ─── /warnings ───────────────────────────────────────────────────────────────
 
 async def cmd_warnings(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message.reply_to_message:
-        await update.message.reply_text("روی پیام کاربر موردنظر ریپلای بزنید.")
+    target_id, target_name, _ = await _get_target(update, context)
+    if not target_id:
+        await update.message.reply_text("روی پیام ریپلای بزن یا /warnings <user_id>")
         return
-    target = update.message.reply_to_message.from_user
-    count  = await db.get_warnings(target.id, update.message.chat_id)
+    count = await db.get_warnings(target_id, update.message.chat_id)
     await update.message.reply_text(
-        f"📋 {target.full_name} — اخطار: {count}/{MAX_WARNINGS}"
+        f"📋 {target_name} — اخطار: {count}/{MAX_WARNINGS}"
     )
 
 
@@ -338,26 +397,29 @@ async def cmd_warnings(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_mute(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not _is_admin(update.message.from_user.id):
         return
-    if not update.message.reply_to_message:
-        await update.message.reply_text("روی پیام کاربر موردنظر ریپلای بزنید.")
+    target_id, _, target_mention = await _get_target(update, context)
+    if not target_id:
+        await update.message.reply_text("روی پیام ریپلای بزن یا /mute <user_id> [دقیقه]")
         return
-    target  = update.message.reply_to_message.from_user
     chat_id = update.message.chat_id
 
-    if context.args:
+    # اگه reply بود، args[0] دقیقه است. اگه user_id بود، args[1] دقیقه است
+    args = list(context.args) if context.args else []
+    minute_arg = args[1] if not update.message.reply_to_message and len(args) > 1 else (args[0] if update.message.reply_to_message and args else None)
+    if minute_arg:
         try:
-            minutes = max(1, int(context.args[0]))
+            minutes = max(1, int(minute_arg))
         except ValueError:
-            minutes = await mod._next_mute_minutes(target.id, chat_id)
+            minutes = await mod._next_mute_minutes(target_id, chat_id)
     else:
-        minutes = await mod._next_mute_minutes(target.id, chat_id)
+        minutes = await mod._next_mute_minutes(target_id, chat_id)
 
     duration_lbl = mod._format_minutes(minutes)
-    await mod._mute(context.bot, chat_id, target.id, minutes=minutes)
-    await db.add_punishment(target.id, chat_id, "mute", minutes * 60, "میوت دستی ادمین")
-    await mod.apply_mute_tag(context.bot, chat_id, target.id, duration_lbl)
+    await mod._mute(context.bot, chat_id, target_id, minutes=minutes)
+    await db.add_punishment(target_id, chat_id, "mute", minutes * 60, "میوت دستی ادمین")
+    await mod.apply_mute_tag(context.bot, chat_id, target_id, duration_lbl)
     await update.message.reply_text(
-        f"🔇 {mention(target)} به مدت *{duration_lbl}* میوت شد.",
+        f"🔇 {target_mention} به مدت <b>{duration_lbl}</b> میوت شد.",
         parse_mode="HTML",
     )
 
@@ -367,10 +429,10 @@ async def cmd_mute(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_unmute(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not _is_admin(update.message.from_user.id):
         return
-    if not update.message.reply_to_message:
-        await update.message.reply_text("روی پیام کاربر موردنظر ریپلای بزنید.")
+    target_id, _, target_mention = await _get_target(update, context)
+    if not target_id:
+        await update.message.reply_text("روی پیام ریپلای بزن یا /unmute <user_id>")
         return
-    target  = update.message.reply_to_message.from_user
     chat_id = update.message.chat_id
     all_perms = ChatPermissions(
         can_send_messages=True, can_send_audios=True,
@@ -380,14 +442,14 @@ async def cmd_unmute(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     try:
         await context.bot.restrict_chat_member(
-            chat_id=chat_id, user_id=target.id, permissions=all_perms
+            chat_id=chat_id, user_id=target_id, permissions=all_perms
         )
     except Exception as e:
         logger.warning(f"unmute ناموفق: {e}")
-    warns = await db.get_warnings(target.id, chat_id)
-    await mod.apply_warn_tag(context.bot, chat_id, target.id, warns)
+    warns = await db.get_warnings(target_id, chat_id)
+    await mod.apply_warn_tag(context.bot, chat_id, target_id, warns)
     await update.message.reply_text(
-        f"🔊 میوت {mention(target)} برداشته شد.", parse_mode="HTML"
+        f"🔊 میوت {target_mention} برداشته شد.", parse_mode="HTML"
     )
 
 
@@ -395,28 +457,37 @@ async def cmd_unmute(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_ban(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
-    /ban              → بن پلکانی
-    /ban 30m          → ۳۰ دقیقه
-    /ban 2h           → ۲ ساعت
-    /ban 7d           → ۷ روز
-    /ban 1h دلیل      → با دلیل
+    /ban              → بن پلکانی (ریپلای)
+    /ban <user_id>    → بن پلکانی با ID
+    /ban 30m          → ریپلای + مدت
+    /ban <user_id> 1h دلیل → ID + مدت + دلیل
     """
     if not _is_admin(update.message.from_user.id):
         return
-    if not update.message.reply_to_message:
-        await update.message.reply_text(
-            "روی پیام کاربر موردنظر ریپلای بزنید.\n"
-            "مثال: /ban 1h اسپم  یا  /ban  (پلکانی)"
-        )
+
+    args = list(context.args) if context.args else []
+    chat_id = update.message.chat_id
+
+    # تشخیص target
+    if update.message.reply_to_message:
+        target_id = update.message.reply_to_message.from_user.id
+        target_mention = mention(update.message.reply_to_message.from_user)
+    elif args:
+        try:
+            target_id = int(args[0])
+            target_mention = f"کاربر <code>{target_id}</code>"
+            args = args[1:]  # بقیه args مدت و دلیل هستن
+        except ValueError:
+            await update.message.reply_text("روی پیام ریپلای بزن یا /ban <user_id> [مدت] [دلیل]")
+            return
+    else:
+        await update.message.reply_text("روی پیام ریپلای بزن یا /ban <user_id> [مدت] [دلیل]")
         return
 
-    target  = update.message.reply_to_message.from_user
-    chat_id = update.message.chat_id
-    reason  = "تخلف"
+    reason       = "تخلف"
     until_date   = None
     duration_txt = "دائم"
 
-    args = list(context.args)
     if args:
         seconds = parse_duration(args[0])
         if seconds:
@@ -426,25 +497,25 @@ async def cmd_ban(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if args:
             reason = " ".join(args)
     else:
-        days, duration_txt = await mod._next_ban_duration(target.id, chat_id)
+        days, duration_txt = await mod._next_ban_duration(target_id, chat_id)
         if days:
             until_date = datetime.now(tz=timezone.utc) + timedelta(days=days)
 
-    await mod._ban(context.bot, chat_id, target.id, until_date=until_date)
+    await mod._ban(context.bot, chat_id, target_id, until_date=until_date)
     duration_secs = (
         int((until_date - datetime.now(tz=timezone.utc)).total_seconds())
         if until_date else -1
     )
-    await db.add_punishment(target.id, chat_id, "ban", duration_secs, reason)
+    await db.add_punishment(target_id, chat_id, "ban", duration_secs, reason)
 
     if until_date:
         await update.message.reply_text(
-            t("banned_temp", name=mention(target), duration=duration_txt, reason=reason),
+            t("banned_temp", name=target_mention, duration=duration_txt, reason=reason),
             parse_mode="HTML",
         )
     else:
         await update.message.reply_text(
-            t("banned", name=mention(target)), parse_mode="HTML"
+            t("banned", name=target_mention), parse_mode="HTML"
         )
 
 

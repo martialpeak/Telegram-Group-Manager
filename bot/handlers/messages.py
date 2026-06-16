@@ -89,18 +89,14 @@ async def _check_level_restrictions(message, bot) -> bool:
                 )
                 return True
 
-    # ── مدیا ─────────────────────────────────────────────────────────────────
+    # ── مدیا (استیکر و گیف جدا چک می‌شن) ───────────────────────────────────
+    has_sticker = bool(message.sticker or message.animation)
     has_media = any([
         message.photo, message.video, message.document,
         message.audio, message.voice, message.video_note,
-        message.sticker, message.animation,
     ])
-    if has_media and not config.can_media:
-        await mod.handle_level_violation(bot, message, "ارسال مدیا ممنوع")
-        return True
 
-    # ── استیکر / گیف / انیمیشن ──────────────────────────────────────────────
-    has_sticker = bool(message.sticker or message.animation)
+    # استیکر/گیف — چک مستقل از مدیا
     if has_sticker:
         if config.daily_stickers == 0:
             await mod.handle_level_violation(bot, message, "ارسال استیکر/گیف ممنوع")
@@ -113,6 +109,11 @@ async def _check_level_restrictions(message, bot) -> bool:
                     f"تجاوز از سقف استیکر/گیف روزانه ({config.daily_stickers})",
                 )
                 return True
+
+    # مدیا (عکس، ویدئو، فایل، صدا)
+    if has_media and not config.can_media:
+        await mod.handle_level_violation(bot, message, "ارسال مدیا ممنوع")
+        return True
 
     return False
 
