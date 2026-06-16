@@ -52,13 +52,15 @@ NEVER classify as spam:
 - Discussing prices, buying, selling, products in conversation
 - Sharing news or information
 - Asking about prices or availability
-- Any message without an external promotional link
+- VPN/proxy config links: vless://, vmess://, ss://, trojan://, tuic://, hysteria://, wireguard://
+- Technical configs, server addresses, subscription links for VPN services
+- Any technical configuration string
 
 INSULT — ONLY flag DIRECT explicit personal attack with CLEAR offensive words aimed at a SPECIFIC person. Minimum confidence: 0.90
 NEVER classify as insult: frustration, venting, discussing controversial topics, mild language, emojis
 
 REQUEST — genuine question or help request
-NORMAL — everything else (conversations about commerce, prices, products, services, debates, emotions)
+NORMAL — everything else (conversations about commerce, prices, products, VPN configs, services, debates, emotions)
 
 DEFAULT to "normal". Only flag with HIGH confidence.
 IMPORTANT: Pay close attention to any examples of previously wrongly classified messages provided below — do NOT classify similar messages the same way.

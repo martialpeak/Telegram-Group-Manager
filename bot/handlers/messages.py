@@ -115,6 +115,48 @@ async def _check_level_restrictions(message, bot) -> bool:
         await mod.handle_level_violation(bot, message, "ارسال مدیا ممنوع")
         return True
 
+    # ── لینک ─────────────────────────────────────────────────────────────────
+    import re
+    text_content = message.text or message.caption or ""
+    entities     = list(message.entities or []) + list(message.caption_entities or [])
+
+    # پروتکل‌های VPN/پراکسی — کانفیگ هستن، لینک حساب نمی‌شن
+    _VPN_PROTOCOLS = re.compile(
+        r"(vless|vmess|ss|shadowsocks|trojan|tuic|hysteria2?|hy2|"
+        r"wireguard|naive|brook|snell)://",
+        re.IGNORECASE,
+    )
+
+    has_link = (
+        any(e.type in ("url", "text_link") for e in entities)
+        or "http://" in text_content
+        or "https://" in text_content
+        or "t.me/" in text_content
+    )
+    # اگه فقط کانفیگ VPN داره، لینک حساب نکن
+    if has_link and _VPN_PROTOCOLS.search(text_content):
+        # چک کن غیر از کانفیگ VPN لینک دیگه‌ای نداره
+        cleaned = _VPN_PROTOCOLS.sub("", text_content)
+        has_link = (
+            "http://" in cleaned
+            or "https://" in cleaned
+            or "t.me/" in cleaned
+            or any(e.type in ("url", "text_link") for e in entities)
+        )
+
+    if has_link:
+        if config.daily_links == 0:
+            await mod.handle_level_violation(bot, message, "ارسال لینک ممنوع")
+            return True
+        if config.daily_links != -1:
+            count = await db.increment_daily_action(user.id, chat_id, "link")
+            if count > config.daily_links:
+                await mod.handle_level_violation(
+                    bot, message,
+                    f"تجاوز از سقف لینک روزانه ({config.daily_links})",
+                )
+                return True
+
     return False
 
 
