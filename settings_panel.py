@@ -435,6 +435,9 @@ def _apply_level_change(level: str, field: str, value: str):
         cfg.daily_stickers = int(value)
     elif field == "media":
         cfg.can_media      = value.lower() == "true"
+    # ذخیره در .env تا بعد از restart هم باقی بمونه
+    env_key = f"LEVEL_{level.upper()}_{field.upper()}"
+    set_key(ENV_PATH, env_key, value)
 
 
 # ── /update — آپدیت ربات از داخل تلگرام ─────────────

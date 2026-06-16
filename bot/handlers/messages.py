@@ -401,7 +401,7 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     if reply_text:
-        await send_and_delete(message, reply_text, delay=300, parse_mode=parse_mode)
+        await send_and_delete(message, reply_text, delay=600, parse_mode=parse_mode)
 
 
 # ─── پیام خصوصی ──────────────────────────────────────────────────────────────

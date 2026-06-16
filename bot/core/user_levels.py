@@ -93,6 +93,41 @@ LEVEL_ORDER = ["simple", "bronze", "silver", "gold", "diamond"]
 AUTO_UPGRADE_MAX = "bronze"
 
 
+def _load_overrides():
+    """بارگذاری تنظیمات سطوح از .env در صورت وجود"""
+    import os
+    try:
+        from dotenv import dotenv_values
+        env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), ".env")
+        vals = dotenv_values(env_path)
+        for level in LEVEL_ORDER:
+            cfg = LEVELS[level]
+            prefix = f"LEVEL_{level.upper()}_"
+            for key, val in vals.items():
+                if not key.startswith(prefix):
+                    continue
+                field = key[len(prefix):].lower()
+                try:
+                    if field == "queries":
+                        cfg.daily_queries  = int(val)
+                    elif field == "links":
+                        cfg.daily_links    = int(val)
+                    elif field == "forwards":
+                        cfg.daily_forwards = int(val)
+                    elif field == "stickers":
+                        cfg.daily_stickers = int(val)
+                    elif field == "media":
+                        cfg.can_media      = val.lower() == "true"
+                except (ValueError, TypeError):
+                    pass
+    except Exception:
+        pass
+
+
+# بارگذاری override ها هنگام import
+_load_overrides()
+
+
 def get_config(level: str) -> LevelConfig:
     return LEVELS.get(level, LEVELS["simple"])
 

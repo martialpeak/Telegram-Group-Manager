@@ -106,7 +106,7 @@ async def handle_insult(bot: Bot, message, analysis: dict) -> tuple[str, str]:
     user, chat_id = message.from_user, message.chat_id
     await _delete(bot, chat_id, message.message_id)
     warn_count = await db.add_warning(user.id, chat_id, analysis.get("reason", "توهین"))
-    await db.add_points(user.id, chat_id, -5)  # اخطار
+    await db.add_points(user.id, chat_id, -5)
     await db.log_message(
         user.id, chat_id, user.username or "",
         user.full_name, message.text or "", "insult",
@@ -126,14 +126,21 @@ async def handle_insult(bot: Bot, message, analysis: dict) -> tuple[str, str]:
         return t("banned", name=tag), "HTML"
 
     await apply_warn_tag(bot, chat_id, user.id, warn_count)
-    return t("warn_insult", name=tag, warn=warn_count, max=MAX_WARNINGS), "HTML"
+    reply = t("warn_insult", name=tag, warn=warn_count, max=MAX_WARNINGS)
+    # اطلاع به کاربر در PV
+    await _notify_user(bot, user.id,
+        f"⚠️ پیام شما در گروه حذف شد.\n"
+        f"اخطار: {warn_count}/{MAX_WARNINGS}\n"
+        f"دلیل: {analysis.get('reason','توهین')}"
+    )
+    return reply, "HTML"
 
 
 async def handle_spam(bot: Bot, message, analysis: dict) -> tuple[str, str]:
     user, chat_id = message.from_user, message.chat_id
     await _delete(bot, chat_id, message.message_id)
     warn_count = await db.add_warning(user.id, chat_id, analysis.get("reason", "spam"))
-    await db.add_points(user.id, chat_id, -5)  # اخطار
+    await db.add_points(user.id, chat_id, -5)
     await db.log_message(
         user.id, chat_id, user.username or "",
         user.full_name, message.text or "", "spam",
@@ -158,7 +165,12 @@ async def handle_spam(bot: Bot, message, analysis: dict) -> tuple[str, str]:
     await db.add_punishment(user.id, chat_id, "mute", minutes * 60, "spam")
     await apply_warn_tag(bot, chat_id, user.id, warn_count)
     await apply_mute_tag(bot, chat_id, user.id, duration_lbl)
-
+    # اطلاع به کاربر در PV
+    await _notify_user(bot, user.id,
+        f"⚠️ پیام شما در گروه حذف شد و {duration_lbl} میوت شدید.\n"
+        f"اخطار: {warn_count}/{MAX_WARNINGS}\n"
+        f"دلیل: {analysis.get('reason','spam')}"
+    )
     return (
         t("warn_spam", name=tag, warn=warn_count, max=MAX_WARNINGS)
         + f"\n🔇 <b>{duration_lbl}</b>",
@@ -169,7 +181,7 @@ async def handle_spam(bot: Bot, message, analysis: dict) -> tuple[str, str]:
 async def handle_level_violation(bot: Bot, message, violation: str) -> tuple[str, str]:
     """
     تخلف سطحی — پیام حذف و اطلاع‌رسانی می‌شه (بدون اخطار/میوت).
-    پیام اطلاع‌رسانی بعد از ۵ دقیقه پاک میشه.
+    پیام اطلاع‌رسانی بعد از ۱۰ دقیقه پاک میشه.
     """
     user, chat_id = message.from_user, message.chat_id
     await _delete(bot, chat_id, message.message_id)
@@ -178,10 +190,22 @@ async def handle_level_violation(bot: Bot, message, violation: str) -> tuple[str
     sent = await bot.send_message(chat_id, text, parse_mode="HTML")
 
     asyncio.get_event_loop().call_later(
-        300,  # ۵ دقیقه
+        600,  # ۱۰ دقیقه
         lambda: asyncio.ensure_future(_delete(bot, chat_id, sent.message_id)),
     )
+    # اطلاع به کاربر در PV
+    await _notify_user(bot, user.id,
+        f"ℹ️ پیام شما در گروه حذف شد.\nدلیل: {violation}"
+    )
     return text, "HTML"
+
+
+async def _notify_user(bot: Bot, user_id: int, text: str):
+    """ارسال پیام به PV کاربر — اگه نشد، نادیده بگیر"""
+    try:
+        await bot.send_message(chat_id=user_id, text=text)
+    except Exception:
+        pass  # کاربر ربات رو بلاک کرده یا start نزده
 
 
 # ─── عملیات پایه ─────────────────────────────────────────────────────────────
