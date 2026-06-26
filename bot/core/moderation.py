@@ -290,14 +290,18 @@ async def handle_level_violation(bot: Bot, message, violation: str) -> tuple[str
     text = f"ℹ️ {tag}، پیام حذف شد: {violation}"
     sent = await bot.send_message(chat_id, text, parse_mode="HTML")
 
-    asyncio.get_event_loop().call_later(
-        600,  # ۱۰ دقیقه
-        lambda: asyncio.ensure_future(_delete(bot, chat_id, sent.message_id)),
-    )
+    # پیام اطلاع‌رسانی بعد از ۱۰ دقیقه پاک می‌شه — از task امن استفاده کن
+    asyncio.ensure_future(_delete_after(bot, chat_id, sent.message_id, 600))
     await _notify_user(bot, user.id,
         f"ℹ️ پیام شما در گروه حذف شد.\nدلیل: {violation}"
     )
     return text, "HTML"
+
+
+async def _delete_after(bot: Bot, chat_id: int, msg_id: int, delay: int):
+    """بعد از delay ثانیه پیام رو پاک کن — coroutine امن برای schedule"""
+    await asyncio.sleep(delay)
+    await _delete(bot, chat_id, msg_id)
 
 
 async def _notify_user(bot: Bot, user_id: int, text: str):

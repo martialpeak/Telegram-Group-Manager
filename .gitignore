@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyc
+
+# Database
+*.db
+
+# Environment
+.env
+.restart_notify.json
+
+# IDE
+.vscode/
+.idea/

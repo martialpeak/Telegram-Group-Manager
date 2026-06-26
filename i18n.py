@@ -28,6 +28,10 @@ _STRINGS: dict[str, dict[str, str]] = {
         "fa": "👋 <b>{name}</b> از گروه خارج شد.",
         "en": "👋 <b>{name}</b> has left the group.",
     },
+    "left_notify": {
+        "fa": "👋 <b>{name}</b> از گروه خارج شد.\n\n🆔 شناسه: <code>{user_id}</code>",
+        "en": "👋 <b>{name}</b> has left the group.\n\n🆔 ID: <code>{user_id}</code>",
+    },
 
     # ── warnings / punishments ───────────────────────
     "warn_insult": {
@@ -179,6 +183,18 @@ _STRINGS: dict[str, dict[str, str]] = {
     "rank_btn": {
         "fa": "🏅 سطح من",
         "en": "🏅 My Level",
+    },
+    "ban_btn": {
+        "fa": "🚫 بن سریع",
+        "en": "🚫 Quick Ban",
+    },
+    "ban_done": {
+        "fa": "🚫 {name} بن شد.",
+        "en": "🚫 {name} has been banned.",
+    },
+    "ban_done_admin": {
+        "fa": "🚫 فقط ادمین‌ها می‌تونن بن کنن.",
+        "en": "🚫 Only admins can ban.",
     },
 
     # ── start ────────────────────────────────────────

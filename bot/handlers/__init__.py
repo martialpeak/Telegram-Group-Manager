@@ -1,6 +1,6 @@
 # handlers package
 from .messages import on_message, on_media_message, on_correction
-from .members import on_new_member, on_left_member
+from .members import on_new_member, on_left_member, on_quick_ban_callback
 from .callbacks import (
     on_feedback_callback, on_report_callback, on_general_callback,
     on_admin_answer_callback, on_admin_answer_text,
@@ -21,7 +21,7 @@ from .commands import (
 
 __all__ = [
     "on_message", "on_media_message", "on_correction",
-    "on_new_member", "on_left_member",
+    "on_new_member", "on_left_member", "on_quick_ban_callback",
     "on_feedback_callback", "on_report_callback", "on_general_callback",
     "on_admin_answer_callback", "on_admin_answer_text",
     "on_upgrade_callback",

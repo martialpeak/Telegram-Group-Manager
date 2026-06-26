@@ -29,24 +29,6 @@ def _is_admin(uid: int) -> bool:
 
 
 
-async def _get_target(update, context) -> tuple:
-    """
-    برمی‌گردونه (user_id, full_name, mention_str) یا (None, None, None)
-    از reply یا آرگومان اول (user_id عددی)
-    """
-    from bot.utils.helpers import mention as _mention
-    if update.message.reply_to_message:
-        u = update.message.reply_to_message.from_user
-        return u.id, u.full_name, _mention(u)
-    if context.args:
-        try:
-            uid = int(context.args[0])
-            return uid, str(uid), f"کاربر <code>{uid}</code>"
-        except ValueError:
-            pass
-    return None, None, None
-
-
 # ─── helper: پیدا کردن target از reply یا user_id ───────────────────────────
 
 async def _get_target(update, context) -> tuple:
@@ -77,7 +59,7 @@ async def _get_target(update, context) -> tuple:
         try:
             chat_member = await context.bot.get_chat(f"@{username}")
             uid = chat_member.id
-            name = getattr(chat_member, "full_name", username) or username
+            name = getattr(chat_member, "full_name", None) or username
             return uid, name, f"@{username}"
         except Exception:
             pass
@@ -475,6 +457,7 @@ async def cmd_ban(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     /ban              → بن پلکانی (ریپلای)
     /ban <user_id>    → بن پلکانی با ID
+    /ban @username    → بن با یوزرنیم
     /ban 30m          → ریپلای + مدت
     /ban <user_id> 1h دلیل → ID + مدت + دلیل
     """
@@ -484,21 +467,17 @@ async def cmd_ban(update: Update, context: ContextTypes.DEFAULT_TYPE):
     args = list(context.args) if context.args else []
     chat_id = update.message.chat_id
 
-    # تشخیص target
-    if update.message.reply_to_message:
-        target_id = update.message.reply_to_message.from_user.id
-        target_mention = mention(update.message.reply_to_message.from_user)
-    elif args:
-        try:
-            target_id = int(args[0])
-            target_mention = f"کاربر <code>{target_id}</code>"
-            args = args[1:]  # بقیه args مدت و دلیل هستن
-        except ValueError:
-            await update.message.reply_text("روی پیام ریپلای بزن یا /ban <user_id> [مدت] [دلیل]")
-            return
-    else:
-        await update.message.reply_text("روی پیام ریپلای بزن یا /ban <user_id> [مدت] [دلیل]")
+    # تشخیص target با helper مشترک (reply / user_id / @username)
+    target_id, target_name, target_mention = await _get_target(update, context)
+    if not target_id:
+        await update.message.reply_text(
+            "روی پیام ریپلای بزن یا /ban <user_id|@username> [مدت] [دلیل]"
+        )
         return
+
+    # اگه target از آرگومان اومده (نه reply)، args[0] مصرف شده و باید حذف بشه
+    if not update.message.reply_to_message and args:
+        args = args[1:]
 
     reason       = "تخلف"
     until_date   = None
