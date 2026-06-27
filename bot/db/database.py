@@ -190,6 +190,37 @@ async def init_db():
 
 # ─── اخطارها ─────────────────────────────────────────────────────────────────
 
+async def find_user_by_username(username: str, chat_id: int = 0) -> dict | None:
+    """
+    جستجوی کاربر با username در message_log.
+    برمی‌گردونه: {user_id, full_name, username} یا None
+    username بدون @ گرفته می‌شه.
+    اگه chat_id مشخص باشه، فقط تو همون گروه می‌گرده.
+    """
+    uname = username.lstrip("@").lower()
+    if not uname:
+        return None
+    async with aiosqlite.connect(DB_PATH) as db:
+        if chat_id:
+            cur = await db.execute(
+                """SELECT user_id, full_name, username FROM message_log
+                   WHERE chat_id=? AND LOWER(username)=?
+                   ORDER BY created_at DESC LIMIT 1""",
+                (chat_id, uname),
+            )
+        else:
+            cur = await db.execute(
+                """SELECT user_id, full_name, username FROM message_log
+                   WHERE LOWER(username)=?
+                   ORDER BY created_at DESC LIMIT 1""",
+                (uname,),
+            )
+        row = await cur.fetchone()
+        if not row:
+            return None
+        return {"user_id": row[0], "full_name": row[1], "username": row[2]}
+
+
 async def add_warning(user_id: int, chat_id: int, reason: str) -> int:
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
@@ -260,6 +291,24 @@ async def search_messages(query: str, chat_id: int, limit: int = 20) -> list[dic
         )
         rows = await cur.fetchall()
         return [{"name": r[0], "text": r[1], "date": r[2]} for r in rows]
+
+
+async def get_recent_messages(chat_id: int, limit: int = 8) -> list[dict]:
+    """
+    آخرین پیام‌های متنی گروه برای ارائه context به AI moderation.
+    فقط پیام‌های normal/insult/spam رو می‌بره (نه request).
+    """
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute(
+            """SELECT full_name, text, message_type FROM message_log
+               WHERE chat_id=? AND text IS NOT NULL AND text != ''
+               AND message_type IN ('normal','insult','spam')
+               ORDER BY created_at DESC LIMIT ?""",
+            (chat_id, limit),
+        )
+        rows = await cur.fetchall()
+        # قدیمی → جدید (ترتیب chronologic برای خوانایی بهتر)
+        return [{"name": r[0], "text": r[1], "type": r[2]} for r in reversed(rows)]
 
 
 # ─── اسپم ────────────────────────────────────────────────────────────────────

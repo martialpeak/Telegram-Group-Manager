@@ -39,16 +39,26 @@ if GEMINI_API_KEY:
     except Exception as e:
         logger.warning(f"Gemini init failed: {e}")
 
+# ── System prompt برای پاسخ‌دهی (تخصصی VPN/شبکه) ─────────────────────────────
+ANSWER_SYSTEM_PROMPT = (
+    "تو یک متخصص فنی در حوزه VPN، شبکه، کانفیگ‌های v2ray/xray، پروتکل‌های "
+    "پروکسی (vless, vmess, trojan, shadowsocks, hysteria, wireguard) و مسائل "
+    "اینترنت آزاد هستی که در یک گروه تلگرامی فارسی‌زبان کمک می‌کنی.\n\n"
+    "اصول پاسخ‌گویی:\n"
+    "- همیشه به فارسی روان، دقیق و کاربردی پاسخ بده.\n"
+    "- برای سوالات فنی، جزئیات و مراحل واضح بده؛ اگه کانفیگ/دستور لازمه، با بلوک کد بنویس.\n"
+    "- پروتکل‌ها، پورت‌ها و تنظیمات رو با مثال‌های واقعی توضیح بده.\n"
+    "- اگه اطلاعات قطعی نداری، صادقانه بگو «مطمئن نیستم» و پیشنهاد بده کجا جستجو کنن.\n"
+    "- از اغراق، وعده‌های غیرواقعی یا اطلاعات قدیمی/اشتباه خودداری کن.\n"
+    "- پاسخ رو ساختارمند بنویس: اگه چند نکته داری، شماره‌گذاری کن.\n"
+    "- لحن دوستانه اما حرفه‌ای داشته باش.\n"
+    "- برای سوالات امنیتی، روی محرمانگی و روش‌های امن تأکید کن.\n"
+)
+
 PROMPT_TEMPLATE = (
-    "تو یک دستیار هوشمند تخصصی برای یک گروه تلگرامی هستی.\n"
-    "{context}\n"
+    "{context}"
     "سوال کاربر: {question}\n\n"
-    "راهنمای پاسخ:\n"
-    "- پاسخ را به زبان فارسی روان و دقیق بده\n"
-    "- اگر سوال فنی یا تخصصی است، جزئیات کافی بده\n"
-    "- اگر اطلاعات کافی نداری صادقانه بگو و راهنمایی کن کجا بپرسن\n"
-    "- از حدس و گمان خودداری کن\n"
-    "- پاسخ را ساختارمند بنویس (اگه چند نکته داری، لیست کن)\n"
+    "به این سوال به‌طور کامل و دقیق پاسخ بده:"
 )
 
 
@@ -135,16 +145,13 @@ async def _generate_groq(question: str, context: str) -> Optional[str]:
                 messages=[
                     {
                         "role": "system",
-                        "content": (
-                            "تو یک دستیار هوشمند و دقیق هستی. "
-                            "همیشه پاسخ‌های دقیق، کامل و مستند بده. "
-                            "اگر مطمئن نیستی، بگو. هیچوقت اطلاعات اشتباه نده."
-                        ),
+                        "content": ANSWER_SYSTEM_PROMPT,
                     },
                     {"role": "user", "content": prompt},
                 ],
-                temperature=0.1,   # پایین‌تر = دقیق‌تر
-                max_tokens=1500,   # بیشتر = پاسخ کامل‌تر
+                temperature=0.2,   # کمی بالاتر = پاسخ طبیعی‌تر ولی هنوز دقیق
+                max_tokens=2500,   # پاسخ‌های کامل و تخصصی
+                top_p=0.9,
             )
         )
         answer = response.choices[0].message.content.strip()
@@ -166,10 +173,11 @@ async def _generate_gemini(question: str, context: str) -> Optional[str]:
         response = await loop.run_in_executor(
             None,
             lambda: _gemini_model.generate_content(
-                prompt,
+                f"{ANSWER_SYSTEM_PROMPT}\n\n{prompt}",
                 generation_config=genai.types.GenerationConfig(
-                    temperature=0.1,
-                    max_output_tokens=1500,
+                    temperature=0.2,
+                    max_output_tokens=2500,
+                    top_p=0.9,
                 ),
             )
         )
@@ -197,8 +205,15 @@ async def answer_question(question: str, chat_id: int) -> dict:
     history = await _search_history(question, chat_id)
     context = ""
     if history:
-        lines = "\n".join(f"- {m['name']}: {m['text']}" for m in history[:5])
-        context = f"\n\nاطلاعات مرتبط از تاریخچه گروه (برای کمک به پاسخ):\n{lines}\n"
+        lines = "\n".join(
+            f"- {m['name']}: {m['text']}" for m in history[:5]
+        )
+        context = (
+            "\n\nاطلاعات مرتبط از تاریخچه گروه "
+            "(این داده‌ها از گفت‌وگوی قبلی کاربران هستن، "
+            "می‌تونی برای غنی‌تر کردن پاسخ ازشون استفاده کنی):\n"
+            f"{lines}\n\n"
+        )
 
     # ۳. Groq (primary)
     answer = await _generate_groq(question, context)

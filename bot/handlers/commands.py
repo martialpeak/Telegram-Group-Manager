@@ -34,7 +34,10 @@ def _is_admin(uid: int) -> bool:
 async def _get_target(update, context) -> tuple:
     """
     برمی‌گردونه (user_id, full_name, mention_str) یا (None, None, None)
-    از reply یا آرگومان اول (user_id عددی یا @username)
+    اولویت تشخیص:
+      ۱. reply → کاربر ریپلای‌شده
+      ۲. user_id عددی → مستقیم
+      ۳. @username → اول از DB (message_log) وگرنه از تلگرام get_chat
     """
     from bot.utils.helpers import mention as _mention
     if update.message.reply_to_message:
@@ -45,6 +48,7 @@ async def _get_target(update, context) -> tuple:
         return None, None, None
 
     raw = args[0]
+    chat_id = update.message.chat_id
 
     # عدد — user_id مستقیم
     try:
@@ -53,9 +57,22 @@ async def _get_target(update, context) -> tuple:
     except ValueError:
         pass
 
-    # @username — از تلگرام بگیر
+    # @username — اول از DB (کاربرایی که ربات قبلاً تو گروه دیدتشون)
     username = raw.lstrip("@")
     if username:
+        uname_lower = username.lower()
+        try:
+            found = await db.find_user_by_username(uname_lower, chat_id)
+            if found:
+                return (
+                    found["user_id"],
+                    found["full_name"] or username,
+                    f"@{username}",
+                )
+        except Exception:
+            pass
+
+        # fallback: مستقیم از تلگرام (فقط اگه ربات قبلاً باهاش تعامل داشته)
         try:
             chat_member = await context.bot.get_chat(f"@{username}")
             uid = chat_member.id
@@ -471,7 +488,13 @@ async def cmd_ban(update: Update, context: ContextTypes.DEFAULT_TYPE):
     target_id, target_name, target_mention = await _get_target(update, context)
     if not target_id:
         await update.message.reply_text(
-            "روی پیام ریپلای بزن یا /ban <user_id|@username> [مدت] [دلیل]"
+            "❌ کاربر پیدا نشد!\n\n"
+            "روش‌های صحیح:\n"
+            "• روی پیام کاربر ریپلای بزن و /ban بنویس\n"
+            "• <code>/ban user_id</code> (شناسه عددی)\n"
+            "• <code>/ban @username</code> (فقط اگه کاربر قبلاً تو گروه پیام داده باشه)\n\n"
+            "نکته: برای یوزرنیم، ربات باید کاربر رو قبلاً تو گروه دیده باشه.",
+            parse_mode="HTML",
         )
         return
 
