@@ -9,16 +9,41 @@ from telegram import Message
 logger = logging.getLogger(__name__)
 
 
+def _escape_html(text: str) -> str:
+    """escape کاراکترهای HTML برای استفاده داخل parse_mode=HTML"""
+    if not text:
+        return ""
+    return (
+        text.replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+    )
+
+
+def safe_mention(user) -> str:
+    """
+    mention امن با HTML parse — همیشه escape شده.
+    اگه username داشت: @username
+    وگرنه: <a href="tg://user?id=...">اسم escape شده</a>
+    """
+    if user.username:
+        return f"@{user.username}"
+    name = _escape_html(getattr(user, "full_name", "") or "کاربر")
+    return f'<a href="tg://user?id={user.id}">{name}</a>'
+
+
 def mention(user) -> str:
     """
     تگ واقعی کاربر — فرمت HTML:
     - اگه username داشت: @username
     - اگه نداشت: inline mention با HTML
     """
-    if user.username:
-        return f"@{user.username}"
-    name = user.full_name.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-    return f'<a href="tg://user?id={user.id}">{name}</a>'
+    return safe_mention(user)
+
+
+def escape_html(text) -> str:
+    """wrapper عمومی برای escape رشته‌های دلخواه"""
+    return _escape_html(str(text) if text is not None else "")
 
 
 async def send_and_delete(

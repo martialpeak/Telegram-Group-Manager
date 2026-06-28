@@ -41,24 +41,31 @@ if GEMINI_API_KEY:
 
 # ── System prompt برای پاسخ‌دهی (تخصصی VPN/شبکه) ─────────────────────────────
 ANSWER_SYSTEM_PROMPT = (
-    "تو یک متخصص فنی در حوزه VPN، شبکه، کانفیگ‌های v2ray/xray، پروتکل‌های "
-    "پروکسی (vless, vmess, trojan, shadowsocks, hysteria, wireguard) و مسائل "
-    "اینترنت آزاد هستی که در یک گروه تلگرامی فارسی‌زبان کمک می‌کنی.\n\n"
-    "اصول پاسخ‌گویی:\n"
+    "تو یک متخصص ارشد فنی در حوزه VPN، شبکه، کانفیگ‌های v2ray/xray/sing-box، "
+    "پروتکل‌های پروکسی (vless, vmess, trojan, shadowsocks, hysteria2, tuic, wireguard, reality) "
+    "و مسائل اینترنت آزاد هستی که در یک گروه تلگرامی فارسی‌زبان به کاربران کمک می‌کنی.\n\n"
+    "## روش پاسخ‌گویی (مراحل思考):\n"
+    "۱) ابتدا دقیق سوال رو تحلیل کن — کاربر دقیقاً چی می‌خواد؟ آیا کانفیگ می‌خواد یا آموزش یا troubleshooting؟\n"
+    "۲) اگه حافظه مکالمه یا تاریخچه گروهی دادی، ازش برای درک بهتر context استفاده کن.\n"
+    "۳) پاسخ رو با دقت بالا و جزئیات کافی بده.\n\n"
+    "## قواعد:\n"
     "- همیشه به فارسی روان، دقیق و کاربردی پاسخ بده.\n"
-    "- برای سوالات فنی، جزئیات و مراحل واضح بده؛ اگه کانفیگ/دستور لازمه، با بلوک کد بنویس.\n"
-    "- پروتکل‌ها، پورت‌ها و تنظیمات رو با مثال‌های واقعی توضیح بده.\n"
-    "- اگه اطلاعات قطعی نداری، صادقانه بگو «مطمئن نیستم» و پیشنهاد بده کجا جستجو کنن.\n"
-    "- از اغراق، وعده‌های غیرواقعی یا اطلاعات قدیمی/اشتباه خودداری کن.\n"
-    "- پاسخ رو ساختارمند بنویس: اگه چند نکته داری، شماره‌گذاری کن.\n"
-    "- لحن دوستانه اما حرفه‌ای داشته باش.\n"
-    "- برای سوالات امنیتی، روی محرمانگی و روش‌های امن تأکید کن.\n"
+    "- برای سوالات فنی: مراحل واضح و ترتیب‌دار بده. کانفیگ/دستور/کد رو داخل بلوک کد بنویس.\n"
+    "- پروتکل‌ها و پورت‌ها و تنظیمات رو با مثال‌های واقعی و قابل کپی توضیح بده.\n"
+    "- اگه چند روش وجود داره، روش بهینه/امن‌تر رو اول پیشنهاد بده و دلیل بگو.\n"
+    "- اگه مطمئن نیستی یا اطلاعات قدیمی/نامطمئنه، صادقانه بگو «مطمئن نیستم» و منابع بررسی پیشنهاد بده.\n"
+    "- از اغراق، وعده غیرواقعی، یا اطلاعات نادرست خودداری کن. کیفیت > کمیت.\n"
+    "- پاسخ رو ساختارمند بنویس: بخش‌بندی، شماره‌گذاری، بلوک کد.\n"
+    "- لحن دوستانه اما حرفه‌ای و محترمانه.\n"
+    "- برای سوالات امنیتی و حریم خصوصی، روش‌های امن و ضد‌شناسایی رو پیشنهاد بده.\n"
+    "- برای کانفیگ‌ها، همیشه یادآوری کن که باید با مسئولیت خودشون استفاده بشه.\n"
+    "- اگه سوال نامشخصه، اول یه سوال شفاف‌سازی بپرس یا دو حالت ممکن رو پوشش بده.\n"
 )
 
 PROMPT_TEMPLATE = (
     "{context}"
     "سوال کاربر: {question}\n\n"
-    "به این سوال به‌طور کامل و دقیق پاسخ بده:"
+    "به این سوال به‌طور کامل، دقیق و تخصصی پاسخ بده:"
 )
 
 
@@ -190,30 +197,63 @@ async def _generate_gemini(question: str, context: str) -> Optional[str]:
 
 # ─── پاسخ به سوال ────────────────────────────────────────────────────────────
 
-async def answer_question(question: str, chat_id: int) -> dict:
+async def answer_question(
+    question: str, chat_id: int, user_id: int = 0
+) -> dict:
     # ۱. Cache — پایگاه دانش
     cached = await _search_knowledge(question, chat_id)
     if cached:
         await db.increment_use(cached["id"])
+        # حتی cache شده رو تو حافظه مکالمه ثبت کن
+        if user_id:
+            await db.add_conversation_message(user_id, chat_id, "user", question)
+            await db.add_conversation_message(user_id, chat_id, "assistant", cached["answer"])
         return {
             "answer": cached["answer"],
             "source": "knowledge_base",
             "confidence": cached["score"],
         }
 
-    # ۲. تاریخچه گروه برای context
+    # ۲. ساخت context غنی: تاریخچه گروه + حافظه مکالمه + پروفایل کاربر
+    context_parts = []
+
+    # ۲-الف. پروفایل کاربر — برای شخصی‌سازی
+    if user_id:
+        try:
+            profile = await db.get_user_profile(user_id, chat_id)
+            if profile and profile.get("full_name"):
+                context_parts.append(f"کاربر سوال‌کننده: {profile['full_name']}")
+        except Exception:
+            pass
+
+    # ۲-ب. حافظه مکالمه اخیر همین کاربر — برای ادامه گفت‌وگو
+    if user_id:
+        try:
+            mem = await db.get_conversation_history(user_id, chat_id, limit=4)
+            if mem:
+                mem_lines = []
+                for m in mem:
+                    role = "کاربر" if m["role"] == "user" else "ربات"
+                    mem_lines.append(f"{role}: {m['content']}")
+                context_parts.append(
+                    "گفت‌وگوی اخیر این کاربر با ربات (برای ادامه مکالمه):\n"
+                    + "\n".join(mem_lines)
+                )
+        except Exception:
+            pass
+
+    # ۲-ج. تاریخچه مرتبط گروه
     history = await _search_history(question, chat_id)
-    context = ""
     if history:
-        lines = "\n".join(
-            f"- {m['name']}: {m['text']}" for m in history[:5]
+        lines = "\n".join(f"- {m['name']}: {m['text']}" for m in history[:5])
+        context_parts.append(
+            "اطلاعات مرتبط از تاریخچه گروه (می‌تونی برای غنی‌تر کردن پاسخ ازشون استفاده کنی):\n"
+            + lines
         )
-        context = (
-            "\n\nاطلاعات مرتبط از تاریخچه گروه "
-            "(این داده‌ها از گفت‌وگوی قبلی کاربران هستن، "
-            "می‌تونی برای غنی‌تر کردن پاسخ ازشون استفاده کنی):\n"
-            f"{lines}\n\n"
-        )
+
+    context = ""
+    if context_parts:
+        context = "\n\n" + "\n\n".join(context_parts) + "\n\n"
 
     # ۳. Groq (primary)
     answer = await _generate_groq(question, context)
@@ -237,6 +277,14 @@ async def answer_question(question: str, chat_id: int) -> dict:
             score=0.80,
         )
         logger.info(f"Answer via {source}, cached: '{store_q[:50]}'")
+
+    # ۶. ثبت در حافظه مکالمه
+    if user_id and answer:
+        try:
+            await db.add_conversation_message(user_id, chat_id, "user", question)
+            await db.add_conversation_message(user_id, chat_id, "assistant", answer)
+        except Exception:
+            pass
 
     return {
         "answer": answer or "متاسفم، اطلاعات کافی برای پاسخ به این سوال ندارم.",

@@ -268,7 +268,7 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         bot_username = context.bot.username
         if is_addressing_bot(message, bot_username):
             clean_q = message.text.strip().replace(f"@{bot_username}", "").strip()
-            result  = await answer_question(clean_q, chat.id)
+            result  = await answer_question(clean_q, chat.id, user_id=user.id)
             await message.reply_text(f"🤖 {result['answer']}")
         return
 
@@ -285,6 +285,11 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         from bot.core.user_levels import get_config as _get_cfg
         _cfg = _get_cfg(level_for_tag)
         await _set_status_tag(context.bot, chat.id, user.id, _cfg.tag)
+        # ثبت/به‌روزرسانی پروفایل کاربر
+        try:
+            await db.upsert_user_profile(user, chat.id)
+        except Exception:
+            pass
 
     # ── اسپم سرعتی ───────────────────────────────────────────────────────────
     is_rate_spam = await db.track_spam(user.id, chat.id, SPAM_TIME_WINDOW, SPAM_MAX_MESSAGES)
@@ -338,7 +343,7 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await db.increment_query_count(user.id, chat.id)
 
-        result  = await answer_question(clean_q, chat.id)
+        result  = await answer_question(clean_q, chat.id, user_id=user.id)
         no_answer = result.get("source") == "none"
 
         key = f"{user.id}_{message.message_id}"
@@ -451,10 +456,11 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def _handle_private(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message
+    user = message.from_user
     text    = message.text.strip()
     if text.startswith("/"):
         return
-    result = await answer_question(text, chat_id=0)
+    result = await answer_question(text, chat_id=0, user_id=user.id)
     await message.reply_text(f"🤖 {result['answer']}")
 
 

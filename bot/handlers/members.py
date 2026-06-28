@@ -9,7 +9,7 @@ from telegram.ext import ContextTypes
 from config import ADMIN_IDS
 import bot.db.database as db
 from bot.core.user_levels import get_config, level_label
-from bot.utils.helpers import send_and_delete
+from bot.utils.helpers import send_and_delete, safe_mention, escape_html
 from i18n import t
 
 logger = logging.getLogger(__name__)
@@ -30,11 +30,20 @@ async def on_new_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
         chat_id = message.chat_id
 
         # ── ست کردن تگ سطح فعلی کاربر ──────────────────────────────────────
-        level = await db.get_user_level(member.id, chat_id)
-        cfg   = get_config(level)
-        from bot.core.moderation import _set_status_tag
-        if level != "simple":
-            await _set_status_tag(context.bot, chat_id, member.id, cfg.tag)
+        try:
+            level = await db.get_user_level(member.id, chat_id)
+            cfg = get_config(level)
+            from bot.core.moderation import _set_status_tag
+            if level != "simple":
+                await _set_status_tag(context.bot, chat_id, member.id, cfg.tag)
+        except Exception as e:
+            logger.warning(f"set status tag for new member failed: {e}")
+
+        # ── ثبت پروفایل کاربر در دیتابیس ───────────────────────────────────
+        try:
+            await db.upsert_user_profile(member, chat_id)
+        except Exception as e:
+            logger.warning(f"upsert profile failed: {e}")
 
         # ── کیبورد خوش‌آمدگویی ────────────────────────────────────────────
         keyboard = InlineKeyboardMarkup([[
@@ -42,12 +51,21 @@ async def on_new_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
             InlineKeyboardButton(t("rank_btn"),  callback_data=f"myrank_{member.id}"),
         ]])
 
-        await send_and_delete(
-            message,
-            t("welcome", name=member.full_name),
-            delay=60,
-            reply_markup=keyboard,
+        # از safe_mention استفاده می‌کنیم تا کاراکترهای HTML اسم خراب نکنن
+        welcome_text = (
+            f"👋 <b>{escape_html(member.full_name)}</b> عزیز، "
+            f"به گروه خوش اومدی! 🎉\n\n"
+            f"📌 برای صحبت با ربات منشنش کن یا روی پیامش ریپلای بزن."
         )
+        try:
+            await send_and_delete(
+                message,
+                welcome_text,
+                delay=120,
+                reply_markup=keyboard,
+            )
+        except Exception as e:
+            logger.error(f"welcome message send failed: {e}")
 
 
 async def on_left_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -60,9 +78,7 @@ async def on_left_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     chat_id = message.chat_id
 
-    # ── کیبورد بن سریع — فقط برای ادمین‌ها (مخفی براشون) ─────────────────
-    # وقتی ادمین روی این پیام کلید بن رو بزنه، کاربر خارج‌شده بن می‌شه
-    # تا نتونه برگرده
+    # ── کیبورد بن سریع — فقط برای ادمین‌ها ─────────────────────────────────
     keyboard = None
     if ADMIN_IDS:
         keyboard = InlineKeyboardMarkup([[
@@ -72,12 +88,20 @@ async def on_left_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ),
         ]])
 
-    await send_and_delete(
-        message,
-        t("left_notify", name=member.full_name, user_id=member.id),
-        delay=120,
-        reply_markup=keyboard,
+    # escape شده تا اسم کاربر HTML رو خراب نکنه
+    left_text = (
+        f"👋 <b>{escape_html(member.full_name)}</b> از گروه خارج شد.\n\n"
+        f"🆔 شناسه: <code>{member.id}</code>"
     )
+    try:
+        await send_and_delete(
+            message,
+            left_text,
+            delay=120,
+            reply_markup=keyboard,
+        )
+    except Exception as e:
+        logger.error(f"left message send failed: {e}")
 
 
 async def on_quick_ban_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -108,18 +132,8 @@ async def on_quick_ban_callback(update: Update, context: ContextTypes.DEFAULT_TY
 
     await query.answer("🚫 بن شد.", show_alert=False)
     try:
-        # اگه پیام روی message log هست، reference بگیر
-        left_msg = query.message
-        left_name = "کاربر"
-        # متن پیام رو parse کن تا اسم کاربر رو دربیاریم
-        import re
-        text = left_msg.text or left_msg.caption or ""
-        m = re.search(r"<b>(.+?)</b>", text)
-        if m:
-            left_name = m.group(1)
-
         await query.edit_message_text(
-            t("ban_done", name=left_name) + f"\n🆔 <code>{user_id}</code>",
+            f"🚫 کاربر بن شد.\n🆔 <code>{user_id}</code>",
             parse_mode="HTML",
         )
     except Exception as e:

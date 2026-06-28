@@ -183,6 +183,43 @@ async def init_db():
 
         CREATE INDEX IF NOT EXISTS idx_mr_status   ON moderation_review(status, created_at);
         CREATE INDEX IF NOT EXISTS idx_afp_action  ON ai_false_positives(action, created_at);
+
+        -- پروفایل غنی‌شده‌ی هر کاربر — برای context بهتر AI و جستجوی سریع‌تر
+        CREATE TABLE IF NOT EXISTS user_profile (
+            user_id      INTEGER NOT NULL,
+            chat_id      INTEGER NOT NULL,
+            username     TEXT,
+            full_name    TEXT,
+            first_seen   TEXT DEFAULT (datetime('now')),
+            last_seen    TEXT DEFAULT (datetime('now')),
+            bio          TEXT,
+            is_premium   INTEGER DEFAULT 0,
+            PRIMARY KEY (user_id, chat_id)
+        );
+
+        -- حافظه مکالمه کوتاه‌مدت هر کاربر با ربات — برای پاسخ‌دهی هوشمندتر
+        CREATE TABLE IF NOT EXISTS conversation_memory (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id     INTEGER NOT NULL,
+            chat_id     INTEGER NOT NULL,
+            role        TEXT    NOT NULL,   -- 'user' | 'assistant'
+            content     TEXT    NOT NULL,
+            created_at  TEXT DEFAULT (datetime('now'))
+        );
+
+        -- خلاصه‌ی بلندمدت هر کاربر — AI می‌تونه ازش برای شخصی‌سازی استفاده کنه
+        CREATE TABLE IF NOT EXISTS user_summary (
+            user_id     INTEGER NOT NULL,
+            chat_id     INTEGER NOT NULL,
+            summary     TEXT,
+            topics      TEXT,   -- علاقه‌مندی‌ها با کاما جدا شده
+            updated_at  TEXT DEFAULT (datetime('now')),
+            PRIMARY KEY (user_id, chat_id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_profile_chat   ON user_profile(chat_id, username);
+        CREATE INDEX IF NOT EXISTS idx_cm_user_chat   ON conversation_memory(user_id, chat_id, created_at);
+        CREATE INDEX IF NOT EXISTS idx_us_chat        ON user_summary(chat_id);
         """)
         await db.commit()
     logger.info("✅ پایگاه داده آماده شد.")
@@ -1058,3 +1095,102 @@ async def get_recent_false_positives(action: str, limit: int = 5) -> list[dict]:
         )
         rows = await cur.fetchall()
         return [{"message_text": r[0], "ai_reason": r[1]} for r in rows]
+
+
+# ─── پروفایل کاربر و حافظه مکالمه ────────────────────────────────────────────
+
+async def upsert_user_profile(user, chat_id: int):
+    """ثبت/به‌روزرسانی پروفایل کاربر — user آبجکت تلگرام User"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            """INSERT INTO user_profile (user_id, chat_id, username, full_name, first_seen, last_seen)
+               VALUES (?,?,?,?,datetime('now'),datetime('now'))
+               ON CONFLICT(user_id, chat_id) DO UPDATE
+               SET username=excluded.username,
+                   full_name=excluded.full_name,
+                   last_seen=datetime('now')""",
+            (user.id, chat_id, getattr(user, "username", None) or "",
+             getattr(user, "full_name", "") or ""),
+        )
+        await db.commit()
+
+
+async def get_user_profile(user_id: int, chat_id: int) -> dict | None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute(
+            """SELECT user_id, username, full_name, first_seen, last_seen, bio
+               FROM user_profile WHERE user_id=? AND chat_id=?""",
+            (user_id, chat_id),
+        )
+        row = await cur.fetchone()
+        if not row:
+            return None
+        return {
+            "user_id": row[0], "username": row[1], "full_name": row[2],
+            "first_seen": row[3], "last_seen": row[4], "bio": row[5],
+        }
+
+
+async def add_conversation_message(
+    user_id: int, chat_id: int, role: str, content: str
+):
+    """افزودن پیام به حافظه مکالمه کاربر با ربات"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            """INSERT INTO conversation_memory (user_id, chat_id, role, content)
+               VALUES (?,?,?,?)""",
+            (user_id, chat_id, role, content[:1000]),
+        )
+        await db.commit()
+
+
+async def get_conversation_history(
+    user_id: int, chat_id: int, limit: int = 6
+) -> list[dict]:
+    """آخرین پیام‌های مکالمه کاربر با ربات — برای context هوشمند"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute(
+            """SELECT role, content FROM conversation_memory
+               WHERE user_id=? AND chat_id=?
+               ORDER BY created_at DESC LIMIT ?""",
+            (user_id, chat_id, limit),
+        )
+        rows = await cur.fetchall()
+        # قدیمی → جدید
+        return [{"role": r[0], "content": r[1]} for r in reversed(rows)]
+
+
+async def clear_conversation(user_id: int, chat_id: int):
+    """پاک کردن حافظه مکالمه کاربر"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "DELETE FROM conversation_memory WHERE user_id=? AND chat_id=?",
+            (user_id, chat_id),
+        )
+        await db.commit()
+
+
+async def upsert_user_summary(
+    user_id: int, chat_id: int, summary: str, topics: str = ""
+):
+    """به‌روزرسانی خلاصه بلندمدت کاربر"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            """INSERT INTO user_summary (user_id, chat_id, summary, topics, updated_at)
+               VALUES (?,?,?,?,datetime('now'))
+               ON CONFLICT(user_id, chat_id) DO UPDATE
+               SET summary=excluded.summary, topics=excluded.topics,
+                   updated_at=datetime('now')""",
+            (user_id, chat_id, summary, topics),
+        )
+        await db.commit()
+
+
+async def get_user_summary(user_id: int, chat_id: int) -> str:
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute(
+            "SELECT summary FROM user_summary WHERE user_id=? AND chat_id=?",
+            (user_id, chat_id),
+        )
+        row = await cur.fetchone()
+        return row[0] if row else ""

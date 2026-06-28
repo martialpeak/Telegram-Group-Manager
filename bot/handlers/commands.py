@@ -123,7 +123,8 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/search [متن] — جستجو در تاریخچه\n"
         "/learn — یادگیری از فیدبک‌ها\n"
         "/settings — پنل تنظیمات\n"
-        "/update — آپدیت ربات از GitHub",
+        "/update — آپدیت ربات از GitHub\n"
+        "/clear — پاک کردن حافظه گفت‌وگوی شما با ربات",
         parse_mode="HTML",
     )
 
@@ -344,6 +345,26 @@ async def cmd_learn(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     count = await learn_from_feedback()
     await update.message.reply_text(f"🧠 {count} مورد جدید یاد گرفته شد.")
+
+
+# ─── /clear — پاک کردن حافظه مکالمه کاربر با ربات ──────────────────────────────
+
+async def cmd_clear(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    پاک کردن تاریخچه گفت‌وگوی شخصی کاربر با ربات.
+    برای شروع مکالمه تازه و حفظ حریم خصوصی.
+    """
+    user = update.message.from_user
+    chat_id = update.message.chat_id
+    try:
+        await db.clear_conversation(user.id, chat_id)
+        await update.message.reply_text(
+            "🧹 حافظه گفت‌وگوی شما با ربات پاک شد.\n"
+            "از الان ربات مکالمه قبلی رو یادش نمیاد."
+        )
+    except Exception as e:
+        logger.warning(f"cmd_clear failed: {e}")
+        await update.message.reply_text("❌ خطا در پاک‌سازی حافظه.")
 
 
 # ─── /warn ───────────────────────────────────────────────────────────────────

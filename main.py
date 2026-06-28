@@ -110,6 +110,7 @@ def main():
     app.add_handler(CommandHandler("levels",     handlers.cmd_levels))
     app.add_handler(CommandHandler("myrank",     handlers.cmd_myrank))
     app.add_handler(CommandHandler("tagall",     handlers.cmd_tagall))
+    app.add_handler(CommandHandler("clear",      handlers.cmd_clear))
 
     # ── Callback ها ───────────────────────────────────────────────────────────
     app.add_handler(CallbackQueryHandler(handlers.on_report_callback,  pattern=r"^rpt_"))
