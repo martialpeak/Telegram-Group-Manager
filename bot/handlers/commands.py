@@ -823,3 +823,74 @@ async def cmd_tagall(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"  🏅 سطح‌دار: {tagged_non_simple} نفر\n"
         f"  👤 ساده: {tagged_simple} نفر"
     )
+
+
+# ─── /testbtn — تست کلیدهای اینلاین (دیباگ) ──────────────────────────────────
+
+async def cmd_testbtn(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    دستور تست برای بررسی کلیدهای اینلاین و تشخیص مشکلات.
+    فقط ادمین.
+    """
+    if not _is_admin(update.message.from_user.id):
+        return
+
+    keyboard = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("✅ تست دکمه ۱", callback_data="tbtn_ok"),
+            InlineKeyboardButton("❌ تست دکمه ۲", callback_data="tbtn_no"),
+        ],
+        [
+            InlineKeyboardButton("🔗 تست لینک", callback_data="tbtn_link"),
+        ],
+    ])
+    try:
+        sent = await update.message.reply_text(
+            "🧪 <b>تست کلیدهای اینلاین</b>\n\n"
+            "اگه این کلیدها رو می‌بینی یعنی کلیدها درست کار می‌کنن.\n"
+            "اگه پیام بدون کلید نشون داده شد، مشکل از دسترسی ربات به گروهه.",
+            parse_mode="HTML",
+            reply_markup=keyboard,
+        )
+        logger.info(f"✅ test buttons sent to chat {update.message.chat_id}, msg {sent.message_id}")
+    except Exception as e:
+        logger.error(f"❌ test buttons failed: {e}")
+        await update.message.reply_text(f"❌ خطا در ارسال کلیدها: <code>{e}</code>", parse_mode="HTML")
+
+
+# ─── /sync — همگام‌سازی از کانال‌های آموزشی ─────────────────────────────────────
+
+async def cmd_sync(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    همگام‌سازی دانش از کانال‌های آموزشی تنظیم‌شده.
+    فقط ادمین.
+    """
+    if not _is_admin(update.message.from_user.id):
+        return
+
+    from config import TRAINING_CHANNELS
+    if not TRAINING_CHANNELS:
+        await update.message.reply_text(
+            "❌ هیچ کانال آموزشی تنظیم نشده!\n\n"
+            "برای تنظیم، فایل .env رو ویرایش کن:\n"
+            "<code>TRAINING_CHANNELS=@channel1,@channel2</code>",
+            parse_mode="HTML",
+        )
+        return
+
+    msg = await update.message.reply_text(
+        f"📚 در حال همگام‌سازی از {len(TRAINING_CHANNELS)} کانال...\n"
+        f"این عملیات ممکنه چند دقیقه طول بکشه."
+    )
+
+    try:
+        from bot.core.knowledge_engine import sync_training_channels
+        total = await sync_training_channels()
+        await msg.edit_text(
+            f"✅ همگام‌سازی کامل شد!\n\n"
+            f"📊 تعداد مطالب یادگرفته‌شده: {total}\n"
+            f"📚 کانال‌ها: {', '.join(TRAINING_CHANNELS)}"
+        )
+    except Exception as e:
+        logger.error(f"sync failed: {e}")
+        await msg.edit_text(f"❌ خطا در همگام‌سازی: <code>{str(e)[:200]}</code>", parse_mode="HTML")

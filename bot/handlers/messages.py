@@ -343,8 +343,29 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await db.increment_query_count(user.id, chat.id)
 
+        # ── پیام لودینگ — نشون می‌ده که ربات در حال فکره ─────────────────────
+        loading = await message.reply_text("🤔 🧠 در حال فکر کردن...")
+
         result  = await answer_question(clean_q, chat.id, user_id=user.id)
         no_answer = result.get("source") == "none"
+
+        # ── fallback: سرچ در وب وقتی AI جواب نداشت ──────────────────────────
+        if no_answer:
+            try:
+                from config import WEB_SEARCH_ENABLED
+                if WEB_SEARCH_ENABLED:
+                    await loading.edit_text("🔍 در حال جست‌وجو در وب...")
+                    from bot.core.knowledge_engine import search_web_fallback
+                    web_answer = await search_web_fallback(clean_q)
+                    if web_answer:
+                        result = {
+                            "answer": web_answer,
+                            "source": "web_search",
+                            "confidence": 0.6,
+                        }
+                        no_answer = False
+            except Exception as e:
+                logger.warning(f"web search fallback failed: {e}")
 
         key = f"{user.id}_{message.message_id}"
         _pending_answers[key] = {
@@ -388,21 +409,51 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 except Exception:
                     pass
             # به کاربر پیام موقت بده
-            await send_and_delete(
-                message,
-                f"🤖 سوالت ثبت شد و به ادمین ارسال شد. به زودی جواب می‌گیری!",
-                delay=300,
-            )
+            try:
+                await loading.edit_text(
+                    "🤖 سوالت ثبت شد و به ادمین ارسال شد. به زودی جواب می‌گیری!"
+                )
+            except Exception:
+                pass
         else:
-            # ربات جواب داره — مستقیم نشون بده
-            answer_text = t("request_handled", response=result["answer"])
-            source_label = "📚" if result.get("source") == "knowledge_base" else "🤖"
+            # ربات جواب داره — پیام لودینگ رو با جواب ادیت کن
+            source_map = {
+                "knowledge_base": "📚",
+                "groq": "🤖",
+                "gemini": "🤖",
+                "web_search": "🌐",
+            }
+            source_label = source_map.get(result.get("source"), "🤖")
+            answer_text = result["answer"]
             from telegram import InlineKeyboardButton, InlineKeyboardMarkup
             keyboard = InlineKeyboardMarkup([[
                 InlineKeyboardButton("✅ درسته",   callback_data=f"fb_ok_{key}"),
                 InlineKeyboardButton("❌ اشتباهه", callback_data=f"fb_no_{key}"),
             ]])
-            await message.reply_text(f"{source_label} {answer_text}", reply_markup=keyboard)
+            try:
+                # اگه جواب خیلی طولانیه، لودینگ رو پاک کن و پیام جدید بفرست
+                if len(answer_text) > 3500:
+                    await loading.delete()
+                    await message.reply_text(
+                        f"{source_label} {answer_text}",
+                        reply_markup=keyboard,
+                    )
+                else:
+                    await loading.edit_text(
+                        f"{source_label} {answer_text}",
+                        reply_markup=keyboard,
+                    )
+            except Exception as e:
+                logger.warning(f"loading edit failed: {e}")
+                # fallback: پیام جدید
+                try:
+                    await loading.delete()
+                except Exception:
+                    pass
+                await message.reply_text(
+                    f"{source_label} {answer_text}",
+                    reply_markup=keyboard,
+                )
 
         await db.log_message(
             user.id, chat.id, user.username or "",

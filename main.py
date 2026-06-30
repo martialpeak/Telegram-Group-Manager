@@ -111,10 +111,12 @@ def main():
     app.add_handler(CommandHandler("myrank",     handlers.cmd_myrank))
     app.add_handler(CommandHandler("tagall",     handlers.cmd_tagall))
     app.add_handler(CommandHandler("clear",      handlers.cmd_clear))
+    app.add_handler(CommandHandler("testbtn",    handlers.cmd_testbtn))
+    app.add_handler(CommandHandler("sync",       handlers.cmd_sync))
 
     # ── Callback ها ───────────────────────────────────────────────────────────
     app.add_handler(CallbackQueryHandler(handlers.on_report_callback,  pattern=r"^rpt_"))
-    app.add_handler(CallbackQueryHandler(handlers.on_general_callback, pattern=r"^(rules|myrank_)"))
+    app.add_handler(CallbackQueryHandler(handlers.on_general_callback, pattern=r"^(rules|myrank_|tbtn_)"))
     app.add_handler(CallbackQueryHandler(handlers.on_feedback_callback, pattern=r"^fb_"))
     app.add_handler(CallbackQueryHandler(handlers.on_feedback_callback, pattern=r"^vote_"))
     app.add_handler(CallbackQueryHandler(handlers.on_admin_answer_callback, pattern=r"^adm_"))

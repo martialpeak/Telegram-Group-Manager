@@ -43,6 +43,17 @@ SEARCH_TOP_K        = int(os.getenv("SEARCH_TOP_K", "5"))
 _raw = os.getenv("ADMIN_IDS", "")
 ADMIN_IDS = [int(x.strip()) for x in _raw.split(",") if x.strip().isdigit()]
 
+# ── کانال‌های آموزشی — منبع یادگیری ربات ──────────────────────────────────────
+# با کاما جدا شده: @channel1,@channel2
+_raw_channels = os.getenv("TRAINING_CHANNELS", "")
+TRAINING_CHANNELS = [
+    c.strip() for c in _raw_channels.split(",") if c.strip()
+]
+
+# ── تنظیمات سرچ در وب ─────────────────────────────────────────────────────────
+WEB_SEARCH_ENABLED = os.getenv("WEB_SEARCH_ENABLED", "true").lower() == "true"
+WEB_SEARCH_MAX_RESULTS = int(os.getenv("WEB_SEARCH_MAX_RESULTS", "3"))
+
 # ── پیام‌ها ───────────────────────────────────────────
 MESSAGES = {
     "warn_insult": (

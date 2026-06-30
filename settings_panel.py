@@ -35,6 +35,9 @@ def _main_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton("🔑 Groq API Key",   callback_data="cfg_groq_key"),
         ],
         [
+            InlineKeyboardButton("⚡ Quick Models",    callback_data="cfg_models_menu"),
+        ],
+        [
             InlineKeyboardButton("⚠️ Max Warnings",   callback_data="cfg_max_warn"),
             InlineKeyboardButton("🕐 Spam Window",    callback_data="cfg_spam_window"),
         ],
@@ -87,6 +90,31 @@ def _level_detail_keyboard(level: str) -> InlineKeyboardMarkup:
         ],
         [InlineKeyboardButton("🔙 برگشت به سطوح", callback_data="cfg_levels_menu")],
     ])
+
+
+# مدل‌های Groq قابل‌انتخاب (سریع‌ترین انتخاب با یه کلیک)
+GROQ_MODELS = [
+    ("llama-3.3-70b-versatile", "🧠 Llama 3.3 70B (قوی‌ترین - پیشنهادی)"),
+    ("llama-3.1-8b-instant",    "⚡ Llama 3.1 8B (سریع‌ترین)"),
+    ("deepseek-r1-distill-llama-70b", "🔬 DeepSeek R1 (استدلال قوی)"),
+    ("qwen-2.5-coder-32b",      "💻 Qwen 2.5 Coder 32B"),
+    ("mixtral-8x7b-32768",      "🔀 Mixtral 8x7B"),
+    ("gemma2-9b-it",            "✨ Gemma2 9B"),
+]
+
+
+def _models_keyboard() -> InlineKeyboardMarkup:
+    from dotenv import dotenv_values
+    current = dotenv_values(ENV_PATH).get("GROQ_MODEL", "llama-3.3-70b-versatile")
+    rows = []
+    for model_id, label in GROQ_MODELS:
+        marker = "✅ " if model_id == current else "▫️ "
+        rows.append([InlineKeyboardButton(
+            f"{marker}{label}",
+            callback_data=f"cfg_model_{model_id}",
+        )])
+    rows.append([InlineKeyboardButton("🔙 برگشت", callback_data="cfg_back")])
+    return InlineKeyboardMarkup(rows)
 
 
 def _level_summary_text(level: str) -> str:
@@ -174,6 +202,53 @@ async def on_settings_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             "🏅 <b>تنظیم محدودیت‌های سطوح کاربری</b>\nسطح موردنظر را انتخاب کن:",
             parse_mode="HTML",
             reply_markup=_levels_keyboard(),
+        )
+        return
+
+    # ── منوی انتخاب سریع مدل Groq ─────────────────────────────────────────
+    if data == "cfg_models_menu":
+        context.user_data.pop("settings_key", None)
+        await query.edit_message_text(
+            "🤖 <b>انتخاب مدل Groq</b>\n\n"
+            "مدل‌های قوی‌تر دقیق‌تر ولی کندترن.\n"
+            "مدل‌های سریع‌تر برای پاسخ‌های کوتاه مناسب‌ترن.\n\n"
+            "✅ = مدل فعلی",
+            parse_mode="HTML",
+            reply_markup=_models_keyboard(),
+        )
+        return
+
+    # ── انتخاب مدل با یه کلیک: cfg_model_<model_id> ─────────────────────
+    if data.startswith("cfg_model_"):
+        # model_id ممکنه خودش dash داشته باشه، پس کل داده بعد از cfg_model_ رو بگیر
+        model_id = data[len("cfg_model_"):]
+        # اعتبارسنجی
+        valid_ids = [m[0] for m in GROQ_MODELS]
+        if model_id not in valid_ids:
+            await query.answer("مدل نامعتبر!", show_alert=True)
+            return
+        _set("GROQ_MODEL", model_id)
+        # reload کانفیگ در حافظه
+        import config as _config
+        _config.GROQ_MODEL = model_id
+        # reload کلاینت groq در knowledge_engine و ai_analyzer
+        try:
+            import bot.core.knowledge_engine as _ke
+            import bot.core.ai_analyzer as _aa
+            if _config.GROQ_API_KEY:
+                from groq import Groq
+                _client = Groq(api_key=_config.GROQ_API_KEY)
+                _ke._groq_client = _client
+                _aa._groq_client = _client
+        except Exception as e:
+            logger.warning(f"reload groq client failed: {e}")
+        await query.answer(f"✅ مدل به {model_id} تغییر کرد", show_alert=False)
+        await query.edit_message_text(
+            f"🤖 <b>انتخاب مدل Groq</b>\n\n"
+            f"✅ مدل فعلی: <code>{model_id}</code>\n\n"
+            "تغییرات بلافاصله اعمال شد.",
+            parse_mode="HTML",
+            reply_markup=_models_keyboard(),
         )
         return
 
@@ -403,9 +478,20 @@ def _validate(key: str, value: str) -> str:
         if len(value) < 10:
             return "API Key معتبر نیست"
     elif key == "GROQ_MODEL":
-        valid = ["llama-3.1-8b-instant", "llama-3.3-70b-versatile", "gemma2-9b-it"]
+        # لیست مدل‌های Groq قابل‌استفاده (به‌روزرسانی ۲۰۲۵)
+        valid = [
+            "llama-3.3-70b-versatile",
+            "llama-3.1-8b-instant",
+            "llama3-70b-8192",
+            "llama3-8b-8192",
+            "gemma2-9b-it",
+            "gemma2-9b-it",
+            "deepseek-r1-distill-llama-70b",
+            "qwen-2.5-coder-32b",
+            "mixtral-8x7b-32768",
+        ]
         if value not in valid:
-            return f"مدل باید یکی از اینها باشد: {', '.join(valid)}"
+            return f"مدل باید یکی از اینها باشد:\n{', '.join(valid)}"
     return ""
 
 

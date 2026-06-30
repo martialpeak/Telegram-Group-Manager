@@ -1194,3 +1194,19 @@ async def get_user_summary(user_id: int, chat_id: int) -> str:
         )
         row = await cur.fetchone()
         return row[0] if row else ""
+
+
+async def get_recently_active_members(chat_id: int, hours: int = 48) -> list[dict]:
+    """
+    کاربرانی که در X ساعت اخیر پیام دادن (برای ردیابی خروج/حضور).
+    """
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute(
+            """SELECT DISTINCT user_id, MAX(created_at) as last_seen
+               FROM message_log
+               WHERE chat_id=? AND created_at >= datetime('now', ?)
+               GROUP BY user_id""",
+            (chat_id, f"-{hours} hours"),
+        )
+        rows = await cur.fetchall()
+        return [{"user_id": r[0], "last_seen": r[1]} for r in rows]

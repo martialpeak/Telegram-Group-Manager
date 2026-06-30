@@ -134,6 +134,17 @@ async def on_general_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     query = update.callback_query
     data  = query.data
 
+    # ── تست کلیدهای اینلاین ────────────────────────────────────────────────
+    if data == "tbtn_ok":
+        await query.answer("✅ دکمه اول کار کرد!", show_alert=True)
+        return
+    if data == "tbtn_no":
+        await query.answer("❌ دکمه دوم کار کرد!", show_alert=True)
+        return
+    if data == "tbtn_link":
+        await query.answer("🔗 دکمه لینک کار کرد!", show_alert=True)
+        return
+
     if data == "rules":
         await query.answer(t("rules_text"), show_alert=True)
 
