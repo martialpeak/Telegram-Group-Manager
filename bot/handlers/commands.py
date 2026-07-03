@@ -383,10 +383,27 @@ async def cmd_warn(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         reason = " ".join(context.args[1:]) or "تخلف"
     warn_count = await db.add_warning(target_id, chat_id, reason)
+    # ثبت رویداد اخطار
+    try:
+        await db.log_action(
+            chat_id=chat_id, action="warn", user_id=target_id,
+            actor_id=update.message.from_user.id,
+            target_name=target_mention, reason=reason,
+        )
+    except Exception:
+        pass
 
     if warn_count >= MAX_WARNINGS:
         await mod._ban(context.bot, chat_id, target_id)
         await db.reset_warnings(target_id, chat_id)
+        try:
+            await db.log_action(
+                chat_id=chat_id, action="ban", user_id=target_id,
+                actor_id=update.message.from_user.id,
+                target_name=target_mention, reason=f"اخطار مکرر ({warn_count})",
+            )
+        except Exception:
+            pass
         await update.message.reply_text(
             t("banned", name=target_mention), parse_mode="HTML"
         )
@@ -454,6 +471,15 @@ async def cmd_mute(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await mod._mute(context.bot, chat_id, target_id, minutes=minutes)
     await db.add_punishment(target_id, chat_id, "mute", minutes * 60, "میوت دستی ادمین")
     await mod.apply_mute_tag(context.bot, chat_id, target_id, duration_lbl)
+    # ثبت رویداد میوت
+    try:
+        await db.log_action(
+            chat_id=chat_id, action="mute", user_id=target_id,
+            actor_id=update.message.from_user.id,
+            target_name=target_mention, reason=f"میوت دستی {duration_lbl}",
+        )
+    except Exception:
+        pass
     await update.message.reply_text(
         f"🔇 {target_mention} به مدت <b>{duration_lbl}</b> میوت شد.",
         parse_mode="HTML",
@@ -546,6 +572,16 @@ async def cmd_ban(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if until_date else -1
     )
     await db.add_punishment(target_id, chat_id, "ban", duration_secs, reason)
+    # ثبت رویداد بن با دلیل
+    try:
+        await db.log_action(
+            chat_id=chat_id, action="ban", user_id=target_id,
+            actor_id=update.message.from_user.id,
+            target_name=target_name,
+            reason=f"{reason} ({duration_txt})",
+        )
+    except Exception:
+        pass
 
     if until_date:
         await update.message.reply_text(
@@ -563,6 +599,7 @@ async def cmd_ban(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_unban(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not _is_admin(update.message.from_user.id):
         return
+    chat_id = update.message.chat_id
     target_id = None
     if update.message.reply_to_message:
         target_id = update.message.reply_to_message.from_user.id
@@ -574,11 +611,38 @@ async def cmd_unban(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not target_id:
         await update.message.reply_text("روی پیام ریپلای بزن یا /unban <user_id>")
         return
+
+    # آخرین دلیل بن رو از حافظه بخون
+    ban_info = await db.get_last_ban_reason(target_id, chat_id)
+
     try:
         await context.bot.unban_chat_member(
-            chat_id=update.message.chat_id, user_id=target_id, only_if_banned=True,
+            chat_id=chat_id, user_id=target_id, only_if_banned=True,
         )
-        await update.message.reply_text(f"✅ کاربر {target_id} آنبن شد.")
+        # ثبت رویداد آنبن
+        try:
+            await db.log_action(
+                chat_id=chat_id, action="unban", user_id=target_id,
+                actor_id=update.message.from_user.id,
+                target_name=str(target_id),
+            )
+        except Exception:
+            pass
+        # نمایش دلیل بن قبلی (اگه هست)
+        if ban_info:
+            date_str = ban_info.get("date", "")[:16] if ban_info.get("date") else ""
+            await update.message.reply_text(
+                f"✅ کاربر <code>{target_id}</code> آنبن شد.\n\n"
+                f"📋 <b>دلیل بن قبلی:</b>\n"
+                f"📝 {ban_info['reason']}\n"
+                f"📅 {date_str}",
+                parse_mode="HTML",
+            )
+        else:
+            await update.message.reply_text(
+                f"✅ کاربر <code>{target_id}</code> آنبن شد.\n\n"
+                f"📋 دلیل بنی ثبت نشده بود."
+            )
     except Exception as e:
         await update.message.reply_text(f"❌ آنبن ناموفق: {e}")
 
@@ -894,3 +958,129 @@ async def cmd_sync(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"sync failed: {e}")
         await msg.edit_text(f"❌ خطا در همگام‌سازی: <code>{str(e)[:200]}</code>", parse_mode="HTML")
+
+
+# ─── /recent — نمایش رویدادهای اخیر گروه ──────────────────────────────────────
+
+ACTION_LABELS = {
+    "join":    "➕ ورود",
+    "leave":   "➖ خروج",
+    "ban":     "🚫 بن",
+    "unban":   "✅ آن‌بن",
+    "mute":    "🔇 میوت",
+    "unmute":  "🔊 آن‌میوت",
+    "warn":    "⚠️ اخطار",
+    "unwarn":  "🧹 پاک‌سازی اخطار",
+    "report":  "🚨 گزارش",
+}
+
+
+async def cmd_recent(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    نمایش آخرین رویدادهای گروه (ورود، خروج، بن، میوت، ...).
+    فقط ادمین. در گروه اجرا می‌شه.
+    """
+    if not _is_admin(update.message.from_user.id):
+        return
+
+    chat = update.message.chat
+    if chat.type == ChatType.PRIVATE:
+        await update.message.reply_text("این دستور فقط در گروه کار می‌کند.")
+        return
+
+    # تعداد رویدادها (پیش‌فرض ۱۵، حداکثر ۵۰)
+    limit = 15
+    if context.args:
+        try:
+            limit = max(5, min(50, int(context.args[0])))
+        except ValueError:
+            pass
+
+    actions = await db.get_recent_actions(chat.id, limit=limit)
+    if not actions:
+        await update.message.reply_text("📭 هنوز هیچ رویدادی ثبت نشده.")
+        return
+
+    text = f"📋 <b>رویدادهای اخیر گروه</b> ({len(actions)} مورد)\n"
+    text += "━━━━━━━━━━━━━━━\n\n"
+
+    for a in actions:
+        label = ACTION_LABELS.get(a["action"], a["action"])
+        date = (a["created_at"] or "")[:16]
+        name = a.get("target_name") or "نامشخص"
+        # اگه user_id هست، قابل کلیکش کن
+        if a.get("user_id"):
+            name = f'<a href="tg://user?id={a["user_id"]}">{name}</a>'
+        else:
+            name = f"<code>{name}</code>"
+
+        line = f"{label} — {name}\n   🕐 {date}"
+        if a.get("reason"):
+            line += f"\n   📝 {a['reason'][:80]}"
+        text += line + "\n\n"
+
+    # اگه متن خیلی طولانیه، تقسیم کن
+    if len(text) > 4000:
+        for i in range(0, len(text), 4000):
+            await update.message.reply_text(text[i:i+4000], parse_mode="HTML")
+    else:
+        await update.message.reply_text(text, parse_mode="HTML")
+
+
+# ─── /addchannel — افزودن کانال آموزشی ────────────────────────────────────────
+
+async def cmd_addchannel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """افزودن کانال آموزشی برای یادگیری ربات. فقط ادمین."""
+    if not _is_admin(update.message.from_user.id):
+        return
+    if not context.args:
+        await update.message.reply_text(
+            "استفاده: <code>/addchannel @channelname</code>",
+            parse_mode="HTML",
+        )
+        return
+    channel = context.args[0].strip()
+    from config import add_training_channel, TRAINING_CHANNELS
+    added = add_training_channel(channel)
+    if added:
+        await update.message.reply_text(
+            f"✅ کانال {channel} به کانال‌های آموزشی اضافه شد.\n\n"
+            f"📚 کانال‌های فعلی: {', '.join(TRAINING_CHANNELS) or 'هیچ'}\n\n"
+            f"برای یادگیری از این کانال، دستور /sync رو بزن.",
+            parse_mode="HTML",
+        )
+    else:
+        await update.message.reply_text(
+            f"⚠️ کانال {channel} از قبل موجود است.\n"
+            f"📚 کانال‌های فعلی: {', '.join(TRAINING_CHANNELS) or 'هیچ'}",
+            parse_mode="HTML",
+        )
+
+
+# ─── /delchannel — حذف کانال آموزشی ───────────────────────────────────────────
+
+async def cmd_delchannel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """حذف کانال آموزشی. فقط ادمین."""
+    if not _is_admin(update.message.from_user.id):
+        return
+    if not context.args:
+        await update.message.reply_text(
+            "استفاده: <code>/delchannel @channelname</code>",
+            parse_mode="HTML",
+        )
+        return
+    channel = context.args[0].strip()
+    from config import remove_training_channel, TRAINING_CHANNELS
+    removed = remove_training_channel(channel)
+    if removed:
+        await update.message.reply_text(
+            f"✅ کانال {channel} حذف شد.\n"
+            f"📚 کانال‌های فعلی: {', '.join(TRAINING_CHANNELS) or 'هیچ'}",
+            parse_mode="HTML",
+        )
+    else:
+        await update.message.reply_text(
+            f"⚠️ کانال {channel} در لیست نبود.\n"
+            f"📚 کانال‌های فعلی: {', '.join(TRAINING_CHANNELS) or 'هیچ'}",
+            parse_mode="HTML",
+        )

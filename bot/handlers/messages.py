@@ -345,6 +345,8 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # ── پیام لودینگ — نشون می‌ده که ربات در حال فکره ─────────────────────
         loading = await message.reply_text("🤔 🧠 در حال فکر کردن...")
+        import time as _time
+        _start = _time.time()
 
         result  = await answer_question(clean_q, chat.id, user_id=user.id)
         no_answer = result.get("source") == "none"
@@ -366,6 +368,13 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         no_answer = False
             except Exception as e:
                 logger.warning(f"web search fallback failed: {e}")
+
+        # ── تاخیر حداقل — برای دیدن بهتر لودینگ ──────────────────────────────
+        from config import AI_MIN_RESPONSE_DELAY
+        _elapsed = _time.time() - _start
+        if _elapsed < AI_MIN_RESPONSE_DELAY:
+            import asyncio as _asyncio
+            await _asyncio.sleep(AI_MIN_RESPONSE_DELAY - _elapsed)
 
         key = f"{user.id}_{message.message_id}"
         _pending_answers[key] = {

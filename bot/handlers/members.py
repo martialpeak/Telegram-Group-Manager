@@ -45,6 +45,15 @@ async def on_new_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             logger.warning(f"upsert profile failed: {e}")
 
+        # ── ثبت رویداد ورود ────────────────────────────────────────────────
+        try:
+            await db.log_action(
+                chat_id=chat_id, action="join", user_id=member.id,
+                target_name=member.full_name,
+            )
+        except Exception:
+            pass
+
         # ── کیبورد خوش‌آمدگویی ────────────────────────────────────────────
         keyboard = InlineKeyboardMarkup([[
             InlineKeyboardButton(t("rules_btn"), callback_data="rules"),
@@ -77,6 +86,15 @@ async def on_left_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     chat_id = message.chat_id
+
+    # ── ثبت رویداد خروج ────────────────────────────────────────────────────
+    try:
+        await db.log_action(
+            chat_id=chat_id, action="leave", user_id=member.id,
+            target_name=member.full_name,
+        )
+    except Exception:
+        pass
 
     # ── کیبورد بن سریع — فقط برای ادمین‌ها ─────────────────────────────────
     keyboard = None
@@ -129,6 +147,15 @@ async def on_quick_ban_callback(update: Update, context: ContextTypes.DEFAULT_TY
     from bot.core import moderation as mod
     await mod._ban(context.bot, chat_id, user_id, until_date=None)
     await db.add_punishment(user_id, chat_id, "ban", -1, "بن از پیام خروج")
+    # ثبت رویداد بن
+    try:
+        await db.log_action(
+            chat_id=chat_id, action="ban", user_id=user_id,
+            actor_id=query.from_user.id,
+            target_name=f"کاربر {user_id}", reason="بن از پیام خروج",
+        )
+    except Exception:
+        pass
 
     await query.answer("🚫 بن شد.", show_alert=False)
     try:

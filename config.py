@@ -50,9 +50,47 @@ TRAINING_CHANNELS = [
     c.strip() for c in _raw_channels.split(",") if c.strip()
 ]
 
+
+def add_training_channel(channel: str) -> bool:
+    """افزودن کانال آموزشی و ذخیره در .env. True اگر موفق بود."""
+    import os as _os
+    from dotenv import set_key as _set_key, dotenv_values as _dv
+    _env = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), ".env")
+    channel = channel.strip()
+    if not channel.startswith("@"):
+        channel = "@" + channel
+    # اگه از قبل هست، چیزی اضافه نکن
+    existing = [c.strip() for c in _dv(_env).get("TRAINING_CHANNELS", "").split(",") if c.strip()]
+    if channel in existing:
+        return False
+    existing.append(channel)
+    _set_key(_env, "TRAINING_CHANNELS", ",".join(existing))
+    TRAINING_CHANNELS[:] = existing
+    return True
+
+
+def remove_training_channel(channel: str) -> bool:
+    """حذف کانال آموزشی. True اگر حذف شد."""
+    import os as _os
+    from dotenv import set_key as _set_key, dotenv_values as _dv
+    _env = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), ".env")
+    channel = channel.strip()
+    if not channel.startswith("@"):
+        channel = "@" + channel
+    existing = [c.strip() for c in _dv(_env).get("TRAINING_CHANNELS", "").split(",") if c.strip()]
+    if channel not in existing:
+        return False
+    existing.remove(channel)
+    _set_key(_env, "TRAINING_CHANNELS", ",".join(existing))
+    TRAINING_CHANNELS[:] = existing
+    return True
+
 # ── تنظیمات سرچ در وب ─────────────────────────────────────────────────────────
 WEB_SEARCH_ENABLED = os.getenv("WEB_SEARCH_ENABLED", "true").lower() == "true"
 WEB_SEARCH_MAX_RESULTS = int(os.getenv("WEB_SEARCH_MAX_RESULTS", "3"))
+
+# ── تاخیر حداقل پاسخ AI (ثانیه) — برای نمایش بهتر لودینگ ─────────────────────
+AI_MIN_RESPONSE_DELAY = float(os.getenv("AI_MIN_RESPONSE_DELAY", "4"))
 
 # ── پیام‌ها ───────────────────────────────────────────
 MESSAGES = {

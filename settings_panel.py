@@ -38,6 +38,9 @@ def _main_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton("⚡ Quick Models",    callback_data="cfg_models_menu"),
         ],
         [
+            InlineKeyboardButton("📚 Training Channels", callback_data="cfg_channels_menu"),
+        ],
+        [
             InlineKeyboardButton("⚠️ Max Warnings",   callback_data="cfg_max_warn"),
             InlineKeyboardButton("🕐 Spam Window",    callback_data="cfg_spam_window"),
         ],
@@ -202,6 +205,29 @@ async def on_settings_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             "🏅 <b>تنظیم محدودیت‌های سطوح کاربری</b>\nسطح موردنظر را انتخاب کن:",
             parse_mode="HTML",
             reply_markup=_levels_keyboard(),
+        )
+        return
+
+    # ── منوی مدیریت کانال‌های آموزشی ──────────────────────────────────────
+    if data == "cfg_channels_menu":
+        context.user_data.pop("settings_key", None)
+        from config import TRAINING_CHANNELS
+        if TRAINING_CHANNELS:
+            channels_text = "\n".join(f"✅ {c}" for c in TRAINING_CHANNELS)
+        else:
+            channels_text = "📭 هیچ کانالی تنظیم نشده."
+        await query.edit_message_text(
+            f"📚 <b>مدیریت کانال‌های آموزشی</b>\n\n"
+            f"این کانال‌ها منبع یادگیری ربات هستن. "
+            f"محتوای اونا با دستور <code>/sync</code> خونده می‌شه.\n\n"
+            f"<b>کانال‌های فعلی:</b>\n{channels_text}\n\n"
+            f"برای افزودن: <code>/addchannel @channelname</code>\n"
+            f"برای حذف: <code>/delchannel @channelname</code>\n"
+            f"برای همگام‌سازی: <code>/sync</code>",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("🔙 برگشت", callback_data="cfg_back"),
+            ]]),
         )
         return
 

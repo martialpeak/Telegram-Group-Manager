@@ -44,28 +44,38 @@ ANSWER_SYSTEM_PROMPT = (
     "تو یک متخصص ارشد فنی در حوزه VPN، شبکه، کانفیگ‌های v2ray/xray/sing-box، "
     "پروتکل‌های پروکسی (vless, vmess, trojan, shadowsocks, hysteria2, tuic, wireguard, reality) "
     "و مسائل اینترنت آزاد هستی که در یک گروه تلگرامی فارسی‌زبان به کاربران کمک می‌کنی.\n\n"
-    "## روش پاسخ‌گویی (مراحل思考):\n"
-    "۱) ابتدا دقیق سوال رو تحلیل کن — کاربر دقیقاً چی می‌خواد؟ آیا کانفیگ می‌خواد یا آموزش یا troubleshooting؟\n"
-    "۲) اگه حافظه مکالمه یا تاریخچه گروهی دادی، ازش برای درک بهتر context استفاده کن.\n"
-    "۳) پاسخ رو با دقت بالا و جزئیات کافی بده.\n\n"
-    "## قواعد:\n"
+    "## روش پاسخ‌گویی (تحلیل دقیق):\n"
+    "۱) قدم اول: دقیق بفهم کاربر چی می‌خواد. یکی از این‌هاست؟\n"
+    "   - آموزش/راهنما (چطور یک چیزی رو انجام بده)\n"
+    "   - troubleshooting (یه مشکل داره)\n"
+    "   - درخواست کانفیگ/سرور\n"
+    "   - سوال عمومی/توضیحی\n"
+    "   - گفتگو/بحث\n"
+    "۲) اگه حافظه مکالمه دادی، سوال فعلی رو به اون ربط بده. مثلاً اگه کاربر می‌گه "
+    "\"اون رو چطور نصب کنم؟\" و قبلاً درباره v2ray صحبت می‌کرد، منظور v2ray است.\n"
+    "۳) اگه سوال مبهمه یا اطلاعات ناقصه، اول ابهام‌زدایی کن: یا دو حالت رو پوشش بده "
+    "یا یه سوال شفاف‌سازی بپرس.\n"
+    "۴) پاسخ رو با دقت، جزئیات و ساختار مناسب بده.\n\n"
+    "## قواعد مهم:\n"
     "- همیشه به فارسی روان، دقیق و کاربردی پاسخ بده.\n"
-    "- برای سوالات فنی: مراحل واضح و ترتیب‌دار بده. کانفیگ/دستور/کد رو داخل بلوک کد بنویس.\n"
+    "- برای سوالات فنی: مراحل واضح و ترتیب‌دار. کانفیگ/دستور/کد رو داخل بلوک کد.\n"
     "- پروتکل‌ها و پورت‌ها و تنظیمات رو با مثال‌های واقعی و قابل کپی توضیح بده.\n"
     "- اگه چند روش وجود داره، روش بهینه/امن‌تر رو اول پیشنهاد بده و دلیل بگو.\n"
-    "- اگه مطمئن نیستی یا اطلاعات قدیمی/نامطمئنه، صادقانه بگو «مطمئن نیستم» و منابع بررسی پیشنهاد بده.\n"
-    "- از اغراق، وعده غیرواقعی، یا اطلاعات نادرست خودداری کن. کیفیت > کمیت.\n"
+    "- هرگز اطلاعات invented/ساختی نده. اگه مطمئن نیستی بگو «مطمئن نیستم».\n"
     "- پاسخ رو ساختارمند بنویس: بخش‌بندی، شماره‌گذاری، بلوک کد.\n"
     "- لحن دوستانه اما حرفه‌ای و محترمانه.\n"
-    "- برای سوالات امنیتی و حریم خصوصی، روش‌های امن و ضد‌شناسایی رو پیشنهاد بده.\n"
-    "- برای کانفیگ‌ها، همیشه یادآوری کن که باید با مسئولیت خودشون استفاده بشه.\n"
-    "- اگه سوال نامشخصه، اول یه سوال شفاف‌سازی بپرس یا دو حالت ممکن رو پوشش بده.\n"
+    "- برای سوالات امنیتی، روش‌های امن و ضد‌شناسایی رو پیشنهاد بده.\n"
+    "- هرگز وعده‌های غیرواقعی نده (مثل \"۱۰۰٪ کار می‌کنه\" یا \"هیچ‌وقت مسدود نمی‌شه\").\n"
+    "- اگه سوال خارج از حوزه‌ی تخصصیه، صادقانه بگو و راهنمایی کن کجا بپرسه.\n"
+    "- اگه چند بخش داری، از header‌ (مانند **۱.** یا ▶) استفاده کن.\n"
+    "- مهم: روی کیفیت، دقت و صحت تمرکز کن، نه سرعت یا طول پاسخ.\n"
 )
 
 PROMPT_TEMPLATE = (
     "{context}"
     "سوال کاربر: {question}\n\n"
-    "به این سوال به‌طور کامل، دقیق و تخصصی پاسخ بده:"
+    "به این سوال به‌طور کامل، دقیق و تخصصی پاسخ بده. "
+    "اول نیت کاربر رو تحلیل کن، بعد پاسخ بده:"
 )
 
 
@@ -364,13 +374,17 @@ async def _import_channel_content(channel: str) -> int:
 async def search_web_fallback(question: str) -> str | None:
     """
     وقتی AI جوابی نداشت، در وب سرچ می‌کنه و خلاصه‌ای برمی‌گردونه.
-    از DuckDuckGo HTML API استفاده می‌کنه (بدون نیاز به API key).
+    روش: DuckDuckgo Instant Answer → اگر نبود، HTML results → خلاصه با AI.
     """
     import httpx
     import re as _re
+    from config import WEB_SEARCH_MAX_RESULTS
+
+    snippets = []
+
     try:
         async with httpx.AsyncClient(timeout=15) as client:
-            # DuckDuckGo Instant Answer API
+            # ۱. DuckDuckGo Instant Answer API
             resp = await client.get(
                 "https://api.duckduckgo.com/",
                 params={
@@ -381,24 +395,105 @@ async def search_web_fallback(question: str) -> str | None:
                 },
             )
             data = resp.json()
-            # اول abstract رو بررسی کن
             abstract = data.get("AbstractText") or data.get("Abstract")
             if abstract and len(abstract) > 30:
                 source = data.get("AbstractURL", "")
                 result = abstract
                 if source:
                     result += f"\n\n📚 منبع: {source}"
+                # ذخیره در کش برای دفعه بعد
+                await _cache_web_answer(question, result)
                 return result
-            # اگه abstract نبود، related topics رو بررسی کن
-            topics = data.get("RelatedTopics", [])
-            if topics:
-                snippets = []
-                for t in topics[:3]:
-                    if isinstance(t, dict) and t.get("Text"):
-                        snippets.append(t["Text"][:200])
-                if snippets:
-                    return "🔍 یافته‌های مرتبط:\n\n" + "\n\n".join(snippets)
-        return None
+            # related topics
+            for t in (data.get("RelatedTopics") or [])[:WEB_SEARCH_MAX_RESULTS]:
+                if isinstance(t, dict) and t.get("Text"):
+                    snippets.append(t["Text"][:250])
     except Exception as e:
-        logger.warning(f"web search failed: {e}")
+        logger.warning(f"duckduckgo instant answer failed: {e}")
+
+    # ۲. اگه Instant Answer چیزی نداشت، HTML results رو امتحان کن
+    if not snippets:
+        try:
+            ddg_html = await _ddg_html_search(question, WEB_SEARCH_MAX_RESULTS)
+            snippets.extend(ddg_html)
+        except Exception as e:
+            logger.warning(f"ddg html search failed: {e}")
+
+    if not snippets:
         return None
+
+    # ۳. اگه AI در دسترسه، snippet‌ها رو خلاصه کن
+    summary = await _summarize_snippets(question, snippets)
+    if summary:
+        await _cache_web_answer(question, summary)
+        return summary
+
+    # ۴. fallback: فقط snippet‌ها رو بچسبون
+    text = "🔍 یافته‌های مرتبط از وب:\n\n" + "\n\n".join(snippets)
+    await _cache_web_answer(question, text)
+    return text
+
+
+async def _ddg_html_search(query: str, max_results: int = 3) -> list[str]:
+    """استخراج snippet از صفحه HTML DuckDuckGo"""
+    import httpx
+    import re as _re
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+    }
+    async with httpx.AsyncClient(timeout=15, headers=headers) as client:
+        resp = await client.get(
+            "https://html.duckduckgo.com/html/",
+            params={"q": query},
+        )
+    # snippet‌ها داخل تگ a class="result__a" و div class="result__snippet"
+    snippets = []
+    matches = _re.findall(
+        r'class="result__snippet"[^>]*>(.*?)</a>',
+        resp.text,
+        _re.DOTALL,
+    )
+    for m in matches[:max_results]:
+        # حذف تگ‌های HTML
+        clean = _re.sub(r"<[^>]+>", "", m).strip()
+        if clean and len(clean) > 20:
+            snippets.append(clean[:300])
+    return snippets
+
+
+async def _summarize_snippets(question: str, snippets: list[str]) -> str | None:
+    """استفاده از AI برای خلاصه‌سازی نتایج وب به جواب واحد"""
+    context = "\n\n".join(f"[{i+1}] {s}" for i, s in enumerate(snippets))
+    prompt = (
+        f"بر اساس این نتایج جست‌وجو، به سوال زیر پاسخ بده:\n\n"
+        f"سوال: {question}\n\n"
+        f"نتایج جست‌وجو:\n{context}\n\n"
+        "پاسخ رو به فارسی و بر اساس این اطلاعات بنویس. "
+        "اگه اطلاعات کافی نیست، صادقانه بگو. "
+        "منابع رو در انتهای پاسخ ذکر کن."
+    )
+    # اول Groq
+    if _groq_client:
+        answer = await _generate_groq(prompt, "")
+        if answer:
+            return "🌐 (بر اساس جست‌وجو در وب)\n\n" + answer
+    # fallback Gemini
+    if _gemini_model:
+        answer = await _generate_gemini(prompt, "")
+        if answer:
+            return "🌐 (بر اساس جست‌وجو در وب)\n\n" + answer
+    return None
+
+
+async def _cache_web_answer(question: str, answer: str):
+    """ذخیره جواب وب در پایگاه دانش برای دفعه بعد"""
+    try:
+        normalized = _normalize_question(question)
+        store_q = normalized if len(normalized) >= 3 else question
+        await db.save_knowledge(
+            question=store_q, answer=answer,
+            chat_id=0,  # global برای همه گروه‌ها
+            source="web_search", score=0.7,
+        )
+    except Exception:
+        pass

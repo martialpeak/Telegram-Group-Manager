@@ -16,7 +16,8 @@ from .commands import (
     cmd_stats, cmd_violations,
     cmd_mystats, cmd_myrank,
     cmd_setlevel, cmd_levels,
-    cmd_tagall, cmd_clear, cmd_testbtn, cmd_sync,
+    cmd_tagall, cmd_clear, cmd_testbtn, cmd_sync, cmd_recent,
+    cmd_addchannel, cmd_delchannel,
 )
 
 __all__ = [
@@ -34,5 +35,6 @@ __all__ = [
     "cmd_stats", "cmd_violations",
     "cmd_mystats", "cmd_myrank",
     "cmd_setlevel", "cmd_levels",
-    "cmd_tagall", "cmd_clear", "cmd_testbtn", "cmd_sync",
+    "cmd_tagall", "cmd_clear", "cmd_testbtn", "cmd_sync", "cmd_recent",
+    "cmd_addchannel", "cmd_delchannel",
 ]

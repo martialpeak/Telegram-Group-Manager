@@ -113,6 +113,9 @@ def main():
     app.add_handler(CommandHandler("clear",      handlers.cmd_clear))
     app.add_handler(CommandHandler("testbtn",    handlers.cmd_testbtn))
     app.add_handler(CommandHandler("sync",       handlers.cmd_sync))
+    app.add_handler(CommandHandler("recent",     handlers.cmd_recent))
+    app.add_handler(CommandHandler("addchannel", handlers.cmd_addchannel))
+    app.add_handler(CommandHandler("delchannel", handlers.cmd_delchannel))
 
     # ── Callback ها ───────────────────────────────────────────────────────────
     app.add_handler(CallbackQueryHandler(handlers.on_report_callback,  pattern=r"^rpt_"))

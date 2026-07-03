@@ -184,6 +184,18 @@ async def init_db():
         CREATE INDEX IF NOT EXISTS idx_mr_status   ON moderation_review(status, created_at);
         CREATE INDEX IF NOT EXISTS idx_afp_action  ON ai_false_positives(action, created_at);
 
+        -- لاگ رویدادهای مهم گروه (خروج، ورود، بن، میوت، اخطار)
+        CREATE TABLE IF NOT EXISTS recent_actions (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            chat_id     INTEGER NOT NULL,
+            user_id     INTEGER,
+            action      TEXT    NOT NULL,   -- join|leave|ban|unban|mute|unmute|warn|unwarn|report
+            actor_id    INTEGER,             -- کی این کار رو انجام داد (ادمین یا سیستم)
+            target_name TEXT,                -- نام کاربر هدف (برای نمایش بعد از خروج)
+            reason      TEXT,
+            created_at  TEXT DEFAULT (datetime('now'))
+        );
+
         -- پروفایل غنی‌شده‌ی هر کاربر — برای context بهتر AI و جستجوی سریع‌تر
         CREATE TABLE IF NOT EXISTS user_profile (
             user_id      INTEGER NOT NULL,
@@ -220,6 +232,8 @@ async def init_db():
         CREATE INDEX IF NOT EXISTS idx_profile_chat   ON user_profile(chat_id, username);
         CREATE INDEX IF NOT EXISTS idx_cm_user_chat   ON conversation_memory(user_id, chat_id, created_at);
         CREATE INDEX IF NOT EXISTS idx_us_chat        ON user_summary(chat_id);
+        CREATE INDEX IF NOT EXISTS idx_ra_chat        ON recent_actions(chat_id, created_at);
+        CREATE INDEX IF NOT EXISTS idx_ra_target      ON recent_actions(user_id, chat_id, action);
         """)
         await db.commit()
     logger.info("✅ پایگاه داده آماده شد.")
@@ -1210,3 +1224,73 @@ async def get_recently_active_members(chat_id: int, hours: int = 48) -> list[dic
         )
         rows = await cur.fetchall()
         return [{"user_id": r[0], "last_seen": r[1]} for r in rows]
+
+
+# ─── لاگ رویدادها (Recent Actions) ───────────────────────────────────────────
+
+async def log_action(
+    chat_id: int, action: str, user_id: int = None, actor_id: int = None,
+    target_name: str = "", reason: str = ""
+):
+    """ثبت یک رویداد در recent_actions"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            """INSERT INTO recent_actions
+               (chat_id, user_id, action, actor_id, target_name, reason)
+               VALUES (?,?,?,?,?,?)""",
+            (chat_id, user_id, action, actor_id, target_name, reason),
+        )
+        await db.commit()
+
+
+async def get_recent_actions(chat_id: int, limit: int = 20) -> list[dict]:
+    """گرفتن آخرین رویدادهای گروه — برای نمایش به ادمین"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute(
+            """SELECT id, user_id, action, actor_id, target_name, reason, created_at
+               FROM recent_actions WHERE chat_id=? ORDER BY created_at DESC LIMIT ?""",
+            (chat_id, limit),
+        )
+        rows = await cur.fetchall()
+        return [
+            {
+                "id": r[0], "user_id": r[1], "action": r[2], "actor_id": r[3],
+                "target_name": r[4], "reason": r[5], "created_at": r[6],
+            }
+            for r in rows
+        ]
+
+
+async def get_last_ban_reason(user_id: int, chat_id: int) -> dict | None:
+    """
+    آخرین دلیل بن یک کاربر رو برمی‌گردونه.
+    هم از punishment_history و هم از recent_actions می‌خونه.
+    """
+    # اول از recent_actions (دلیل کامل‌تر)
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute(
+            """SELECT reason, target_name, created_at, actor_id
+               FROM recent_actions
+               WHERE user_id=? AND chat_id=? AND action='ban'
+               ORDER BY created_at DESC LIMIT 1""",
+            (user_id, chat_id),
+        )
+        row = await cur.fetchone()
+        if row and row[0]:
+            return {
+                "reason": row[0] or "نامشخص",
+                "name": row[1] or "",
+                "date": row[2],
+                "actor_id": row[3],
+            }
+        # fallback به punishment_history
+        cur = await db.execute(
+            """SELECT reason, created_at FROM punishment_history
+               WHERE user_id=? AND chat_id=? AND type='ban'
+               ORDER BY created_at DESC LIMIT 1""",
+            (user_id, chat_id),
+        )
+        row = await cur.fetchone()
+        if row:
+            return {"reason": row[0] or "نامشخص", "name": "", "date": row[1], "actor_id": None}
+    return None
