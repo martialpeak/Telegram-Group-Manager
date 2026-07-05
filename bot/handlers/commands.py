@@ -950,6 +950,19 @@ async def cmd_sync(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         from bot.core.knowledge_engine import sync_training_channels
         total = await sync_training_channels()
+        if total == -1:
+            await msg.edit_text(
+                "❌ <b>خطا: TELEGRAM_API_ID یا TELEGRAM_API_HASH تنظیم نشده!</b>\n\n"
+                "برای فعال‌سازی یادگیری از کانال‌ها:\n"
+                "۱. به https://my.telegram.org/apps برو\n"
+                "۲. یه app بساز و <code>api_id</code> و <code>api_hash</code> رو بگیر\n"
+                "۳. توی فایل <code>.env</code> این‌ها رو اضافه کن:\n"
+                "<code>TELEGRAM_API_ID=عدد</code>\n"
+                "<code>TELEGRAM_API_HASH=هش</code>\n"
+                "۴. ربات رو restart کن و دوباره /sync بزن",
+                parse_mode="HTML",
+            )
+            return
         await msg.edit_text(
             f"✅ همگام‌سازی کامل شد!\n\n"
             f"📊 تعداد مطالب یادگرفته‌شده: {total}\n"

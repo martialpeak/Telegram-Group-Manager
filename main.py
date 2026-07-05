@@ -156,6 +156,16 @@ def main():
         group=2,
     )
 
+    # ── یادگیری real-time از کانال‌های آموزشی ──────────────────────────────────
+    # channel_post از کانال‌ها، message از گروه‌ها — هر دو رو هندل کن
+    app.add_handler(
+        MessageHandler(
+            (filters.TEXT & ~filters.COMMAND & filters.ChatType.CHANNEL),
+            handlers.on_channel_message,
+        ),
+        group=3,
+    )
+
     # ── عضو جدید و خروج ──────────────────────────────────────────────────────
     app.add_handler(
         MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, handlers.on_new_member)

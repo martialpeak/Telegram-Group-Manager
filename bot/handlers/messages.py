@@ -569,3 +569,49 @@ async def on_correction(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def get_pending_answers() -> dict:
     return _pending_answers
+
+
+# ─── یادگیری real-time از کانال‌های آموزشی ──────────────────────────────────────
+
+async def on_channel_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    وقتی ربات پیامی از کانال‌های آموزشی دریافت می‌کنه، خودکار ذخیره‌اش می‌کنه.
+    ربات باید ادمین/عضو کانال باشه یا کانال public باشه.
+    """
+    message = update.channel_post or update.message
+    if not message or not message.text:
+        return
+
+    text = message.text.strip()
+    if len(text) < 50:  # فقط مطالب آموزشی معنی‌دار
+        return
+
+    from config import TRAINING_CHANNELS
+    if not TRAINING_CHANNELS:
+        return
+
+    # تشخیص اینکه این پیام از کانال آموزشی هست یا نه
+    chat = message.chat
+    chat_username = ""
+    if chat.username:
+        chat_username = f"@{chat.username}"
+    is_training = (
+        chat_username and chat_username.lower() in [c.lower() for c in TRAINING_CHANNELS]
+    )
+    if not is_training:
+        return
+
+    # ذخیره در پایگاه دانش
+    try:
+        first_line = text.split("\n")[0][:80].strip() or text[:80].strip()
+        import bot.db.database as _db
+        await _db.save_knowledge(
+            question=first_line,
+            answer=text,
+            chat_id=0,  # global
+            source=f"channel:{chat_username}",
+            score=0.85,
+        )
+        logger.info(f"📚 مطلب از کانال {chat_username} یاد گرفته شد: {first_line[:40]}")
+    except Exception as e:
+        logger.warning(f"channel message save failed: {e}")

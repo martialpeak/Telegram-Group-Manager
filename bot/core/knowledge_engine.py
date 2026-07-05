@@ -327,46 +327,53 @@ async def learn_from_feedback() -> int:
 
 # ─── همگام‌سازی از کانال‌های آموزشی ────────────────────────────────────────────
 
-async def sync_training_channels() -> int:
+async def sync_training_channels(limit_per_channel: int = 100) -> int:
     """
     مطالب کانال‌های آموزشی تنظیم‌شده رو می‌خونه و به پایگاه دانش اضافه می‌کنه.
-    ربات باید عضو کانال‌ها باشه (یا اون‌ها public باشن).
-    هر مطلب رو به‌عنوان یک جفت question/answer ذخیره می‌کنه.
+    از Telethon برای خواندن history استفاده می‌کنه.
+    هر مطلب به‌صورت خام (متن کامل) ذخیره می‌شه تا بعداً در پاسخ‌ها استفاده بشه.
     """
     from config import TRAINING_CHANNELS
     if not TRAINING_CHANNELS:
         return 0
 
+    from config import TELEGRAM_API_ID, TELEGRAM_API_HASH
+    if not TELEGRAM_API_ID or not TELEGRAM_API_HASH:
+        logger.warning("sync نیاز به TELEGRAM_API_ID/HASH داره")
+        return -1  # کد خطای خاص
+
+    from bot.core.channel_reader import read_channel_messages, close_client
     total = 0
-    for channel in TRAINING_CHANNELS:
-        try:
-            # گرفتن پیام‌های اخیر کانال
-            import asyncio
-            # python-telegram-bot راهی مستقیم برای forwardHistory نداره،
-            # ولی می‌تونیم با get_chat و شمارش اعضا وضعیت رو بررسی کنیم.
-            # برای مطالب، از یک تابع کمکی استفاده می‌کنیم.
-            count = await _import_channel_content(channel)
-            total += count
-            logger.info(f"📚 از {channel}: {count} مطلب یاد گرفته شد")
-        except Exception as e:
-            logger.warning(f"sync {channel} failed: {e}")
+    try:
+        for channel in TRAINING_CHANNELS:
+            try:
+                messages = await read_channel_messages(channel, limit=limit_per_channel)
+                count = 0
+                for msg in messages:
+                    text = msg["text"]
+                    # فقط مطالب آموزشی (طولانی) رو ذخیره کن
+                    if len(text) < 50:
+                        continue
+                    # title از خط اول بگیر (یا ۸۰ کاراکتر اول)
+                    first_line = text.split("\n")[0][:80].strip()
+                    if not first_line:
+                        first_line = text[:80].strip()
+                    # ذخیره به‌عنوان knowledge
+                    await db.save_knowledge(
+                        question=first_line,
+                        answer=text,
+                        chat_id=0,  # global برای همه گروه‌ها
+                        source=f"channel:{channel}",
+                        score=0.85,
+                    )
+                    count += 1
+                total += count
+                logger.info(f"📚 از {channel}: {count} مطلب ذخیره شد")
+            except Exception as e:
+                logger.warning(f"sync {channel} failed: {e}")
+    finally:
+        await close_client()
     return total
-
-
-async def _import_channel_content(channel: str) -> int:
-    """
-    محتوای کانال رو از طریق getChat و ذخیره‌سازی پیام‌های متنی آموزشی استخراج می‌کنه.
-    نکته: python-telegram-bot محدودیت داره در خواندن تاریخچه کامل کانال.
-    این تابع فعلاً پیام‌های اخیر قابل‌دسترس رو ذخیره می‌کنه.
-    """
-    # NOTE: خواندن تاریخچه کامل کانال نیاز به Telegram API raw یا Telethon داره.
-    # اینجا فعلاً یک کانال/گروه public رو بررسی می‌کنیم و مطالب educational رو ذخیره می‌کنیم.
-    # برای پیاده‌سازی کامل، نیاز به Telethon (client-based) هست.
-    import aiosqlite
-    from config import TRAINING_CHANNELS
-    # صرفاً ثبت اولیه — در آینده با Telethon کامل می‌شه
-    logger.info(f"📥 marked {channel} for training import")
-    return 0
 
 
 # ─── سرچ در وب (fallback) ─────────────────────────────────────────────────────
@@ -381,6 +388,7 @@ async def search_web_fallback(question: str) -> str | None:
     from config import WEB_SEARCH_MAX_RESULTS
 
     snippets = []
+    logger.info(f"🔍 starting web search for: '{question[:50]}'")
 
     try:
         async with httpx.AsyncClient(timeout=15) as client:
@@ -394,6 +402,7 @@ async def search_web_fallback(question: str) -> str | None:
                     "skip_disambig": "1",
                 },
             )
+            logger.info(f"DDG instant answer: HTTP {resp.status_code}")
             data = resp.json()
             abstract = data.get("AbstractText") or data.get("Abstract")
             if abstract and len(abstract) > 30:
@@ -401,13 +410,14 @@ async def search_web_fallback(question: str) -> str | None:
                 result = abstract
                 if source:
                     result += f"\n\n📚 منبع: {source}"
-                # ذخیره در کش برای دفعه بعد
                 await _cache_web_answer(question, result)
+                logger.info("✅ DDG instant answer found")
                 return result
             # related topics
             for t in (data.get("RelatedTopics") or [])[:WEB_SEARCH_MAX_RESULTS]:
                 if isinstance(t, dict) and t.get("Text"):
                     snippets.append(t["Text"][:250])
+            logger.info(f"DDG: {len(snippets)} related snippets")
     except Exception as e:
         logger.warning(f"duckduckgo instant answer failed: {e}")
 
@@ -416,10 +426,21 @@ async def search_web_fallback(question: str) -> str | None:
         try:
             ddg_html = await _ddg_html_search(question, WEB_SEARCH_MAX_RESULTS)
             snippets.extend(ddg_html)
+            logger.info(f"DDG HTML: {len(ddg_html)} snippets")
         except Exception as e:
             logger.warning(f"ddg html search failed: {e}")
 
+    # ۲-ب. اگه DDG کار نکرد (احتمالاً فیلتر)، Wikipedia API رو امتحان کن
     if not snippets:
+        try:
+            wiki_snippets = await _wikipedia_search(question, WEB_SEARCH_MAX_RESULTS)
+            snippets.extend(wiki_snippets)
+            logger.info(f"Wikipedia: {len(wiki_snippets)} snippets")
+        except Exception as e:
+            logger.warning(f"wikipedia search failed: {e}")
+
+    if not snippets:
+        logger.warning("❌ web search: no snippets found at all")
         return None
 
     # ۳. اگه AI در دسترسه، snippet‌ها رو خلاصه کن
@@ -458,6 +479,41 @@ async def _ddg_html_search(query: str, max_results: int = 3) -> list[str]:
         clean = _re.sub(r"<[^>]+>", "", m).strip()
         if clean and len(clean) > 20:
             snippets.append(clean[:300])
+    return snippets
+
+
+async def _wikipedia_search(query: str, max_results: int = 3) -> list[str]:
+    """سرچ در Wikipedia API (fa و en)"""
+    import httpx
+    snippets = []
+    # اول فارسی
+    for lang in ["fa", "en"]:
+        if len(snippets) >= max_results:
+            break
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                # opensearch
+                resp = await client.get(
+                    f"https://{lang}.wikipedia.org/w/api.php",
+                    params={
+                        "action": "query",
+                        "list": "search",
+                        "srsearch": query,
+                        "format": "json",
+                        "srlimit": max_results,
+                    },
+                )
+                data = resp.json()
+                items = data.get("query", {}).get("search", [])
+                for item in items:
+                    # حذف تگ‌های HTML از snippet
+                    import re as _re
+                    snippet = _re.sub(r"<[^>]+>", "", item.get("snippet", ""))
+                    if snippet and len(snippet) > 20:
+                        title = item.get("title", "")
+                        snippets.append(f"{title}: {snippet[:250]}")
+        except Exception as e:
+            logger.warning(f"wikipedia {lang} search failed: {e}")
     return snippets
 
 

@@ -92,6 +92,10 @@ WEB_SEARCH_MAX_RESULTS = int(os.getenv("WEB_SEARCH_MAX_RESULTS", "3"))
 # ── تاخیر حداقل پاسخ AI (ثانیه) — برای نمایش بهتر لودینگ ─────────────────────
 AI_MIN_RESPONSE_DELAY = float(os.getenv("AI_MIN_RESPONSE_DELAY", "4"))
 
+# ── Telethon (برای خواندن تاریخچه کانال‌ها) ──────────────────────────────────
+TELEGRAM_API_ID   = os.getenv("TELEGRAM_API_ID", "").strip()
+TELEGRAM_API_HASH = os.getenv("TELEGRAM_API_HASH", "").strip()
+
 # ── پیام‌ها ───────────────────────────────────────────
 MESSAGES = {
     "warn_insult": (
