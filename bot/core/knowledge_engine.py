@@ -330,49 +330,47 @@ async def learn_from_feedback() -> int:
 async def sync_training_channels(limit_per_channel: int = 100) -> int:
     """
     مطالب کانال‌های آموزشی تنظیم‌شده رو می‌خونه و به پایگاه دانش اضافه می‌کنه.
-    از Telethon برای خواندن history استفاده می‌کنه.
-    هر مطلب به‌صورت خام (متن کامل) ذخیره می‌شه تا بعداً در پاسخ‌ها استفاده بشه.
+    از scraping نسخه‌ی وب کانال (t.me/s/) استفاده می‌کنه — بدون نیاز به API.
+    فقط کانال‌های public (با یوزرنیم) کار می‌کنن.
     """
     from config import TRAINING_CHANNELS
     if not TRAINING_CHANNELS:
         return 0
 
-    from config import TELEGRAM_API_ID, TELEGRAM_API_HASH
-    if not TELEGRAM_API_ID or not TELEGRAM_API_HASH:
-        logger.warning("sync نیاز به TELEGRAM_API_ID/HASH داره")
-        return -1  # کد خطای خاص
-
-    from bot.core.channel_reader import read_channel_messages, close_client
+    from bot.core.channel_reader import read_channel_messages
     total = 0
-    try:
-        for channel in TRAINING_CHANNELS:
-            try:
-                messages = await read_channel_messages(channel, limit=limit_per_channel)
-                count = 0
-                for msg in messages:
-                    text = msg["text"]
-                    # فقط مطالب آموزشی (طولانی) رو ذخیره کن
-                    if len(text) < 50:
-                        continue
-                    # title از خط اول بگیر (یا ۸۰ کاراکتر اول)
-                    first_line = text.split("\n")[0][:80].strip()
-                    if not first_line:
-                        first_line = text[:80].strip()
-                    # ذخیره به‌عنوان knowledge
-                    await db.save_knowledge(
-                        question=first_line,
-                        answer=text,
-                        chat_id=0,  # global برای همه گروه‌ها
-                        source=f"channel:{channel}",
-                        score=0.85,
-                    )
-                    count += 1
-                total += count
-                logger.info(f"📚 از {channel}: {count} مطلب ذخیره شد")
-            except Exception as e:
-                logger.warning(f"sync {channel} failed: {e}")
-    finally:
-        await close_client()
+    for channel in TRAINING_CHANNELS:
+        try:
+            messages = await read_channel_messages(channel, limit=limit_per_channel)
+            if not messages:
+                logger.warning(
+                    f"📚 کانال {channel}: پیامی استخراج نشد "
+                    f"(شما کانال public نیست یا فیلتره)"
+                )
+                continue
+            count = 0
+            for msg in messages:
+                text = msg["text"]
+                # فقط مطالب آموزشی (طولانی) رو ذخیره کن
+                if len(text) < 50:
+                    continue
+                # title از خط اول بگیر (یا ۸۰ کاراکتر اول)
+                first_line = text.split("\n")[0][:80].strip()
+                if not first_line:
+                    first_line = text[:80].strip()
+                # ذخیره به‌عنوان knowledge
+                await db.save_knowledge(
+                    question=first_line,
+                    answer=text,
+                    chat_id=0,  # global برای همه گروه‌ها
+                    source=f"channel:{channel}",
+                    score=0.85,
+                )
+                count += 1
+            total += count
+            logger.info(f"📚 از {channel}: {count} مطلب ذخیره شد")
+        except Exception as e:
+            logger.warning(f"sync {channel} failed: {e}")
     return total
 
 

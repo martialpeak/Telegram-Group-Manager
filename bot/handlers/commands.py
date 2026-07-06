@@ -950,17 +950,14 @@ async def cmd_sync(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         from bot.core.knowledge_engine import sync_training_channels
         total = await sync_training_channels()
-        if total == -1:
+        if total == 0:
             await msg.edit_text(
-                "❌ <b>خطا: TELEGRAM_API_ID یا TELEGRAM_API_HASH تنظیم نشده!</b>\n\n"
-                "برای فعال‌سازی یادگیری از کانال‌ها:\n"
-                "۱. به https://my.telegram.org/apps برو\n"
-                "۲. یه app بساز و <code>api_id</code> و <code>api_hash</code> رو بگیر\n"
-                "۳. توی فایل <code>.env</code> این‌ها رو اضافه کن:\n"
-                "<code>TELEGRAM_API_ID=عدد</code>\n"
-                "<code>TELEGRAM_API_HASH=هش</code>\n"
-                "۴. ربات رو restart کن و دوباره /sync بزن",
-                parse_mode="HTML",
+                "⚠️ هیچ مطلبی یاد گرفته نشد!\n\n"
+                "علت‌های ممکن:\n"
+                "• کانال public نیست (باید یوزرنیم داشته باشه)\n"
+                "• سرور به t.me دسترسی نداره (فیلتر)\n"
+                "• کانال خالی هست یا مطالب خیلی کوتاه هستن\n\n"
+                f"📚 کانال‌های تنظیم‌شده: {', '.join(TRAINING_CHANNELS)}",
             )
             return
         await msg.edit_text(
