@@ -41,6 +41,9 @@ def _main_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton("📚 Training Channels", callback_data="cfg_channels_menu"),
         ],
         [
+            InlineKeyboardButton("🎯 Answer Mode",       callback_data="cfg_answer_mode"),
+        ],
+        [
             InlineKeyboardButton("⚠️ Max Warnings",   callback_data="cfg_max_warn"),
             InlineKeyboardButton("🕐 Spam Window",    callback_data="cfg_spam_window"),
         ],
@@ -205,6 +208,54 @@ async def on_settings_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             "🏅 <b>تنظیم محدودیت‌های سطوح کاربری</b>\nسطح موردنظر را انتخاب کن:",
             parse_mode="HTML",
             reply_markup=_levels_keyboard(),
+        )
+        return
+
+    # ── منوی مدیریت کانال‌های آموزشی ──────────────────────────────────────
+    if data == "cfg_answer_mode":
+        context.user_data.pop("settings_key", None)
+        from config import ANSWER_MODE
+        modes = [
+            ("auto", "🤖 هوشمند (پیشنهادی)", "AI اصلی، سوالات اطلاعاتی از وب"),
+            ("ai",   "🧠 فقط هوش مصنوعی",   "همیشه AI، بدون سرچ وب"),
+            ("web",  "🌐 فقط سرچ در وب",     "همیشه از وب جواب بگیر"),
+        ]
+        rows = []
+        for mid, label, desc in modes:
+            marker = "✅ " if mid == ANSWER_MODE else "▫️ "
+            rows.append([InlineKeyboardButton(
+                f"{marker}{label}",
+                callback_data=f"cfg_amode_{mid}",
+            )])
+        rows.append([InlineKeyboardButton("🔙 برگشت", callback_data="cfg_back")])
+        await query.edit_message_text(
+            "🎯 <b>منبع پاسخ‌دهی</b>\n\n"
+            "انتخاب کن ربات از کجا جواب بده:\n\n"
+            f"حالت فعلی: <code>{ANSWER_MODE}</code>",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(rows),
+        )
+        return
+
+    # ── تغییر منبع پاسخ: cfg_amode_<mode> ────────────────────────────────
+    if data.startswith("cfg_amode_"):
+        mode = data[len("cfg_amode_"):]
+        if mode not in ("auto", "ai", "web"):
+            await query.answer("حالت نامعتبر!", show_alert=True)
+            return
+        _set("ANSWER_MODE", mode)
+        import config as _config
+        _config.ANSWER_MODE = mode
+        mode_labels = {"auto": "هوشمند", "ai": "فقط AI", "web": "فقط وب"}
+        await query.answer(f"✅ منبع: {mode_labels[mode]}", show_alert=False)
+        await query.edit_message_text(
+            f"🎯 <b>منبع پاسخ‌دهی</b>\n\n"
+            f"✅ حالت فعلی: <code>{mode}</code> ({mode_labels[mode]})\n\n"
+            "تغییرات بلافاصله اعمال شد.",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("🔙 برگشت", callback_data="cfg_back"),
+            ]]),
         )
         return
 

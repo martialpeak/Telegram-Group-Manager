@@ -265,15 +265,54 @@ async def answer_question(
     if context_parts:
         context = "\n\n" + "\n\n".join(context_parts) + "\n\n"
 
-    # ۳. Groq (primary)
-    answer = await _generate_groq(question, context)
-    source = "groq"
+    # ── تعیین منبع پاسخ: auto / ai / web ──────────────────────────────────
+    from config import ANSWER_MODE
+    use_web_first = False
+    if ANSWER_MODE == "web":
+        use_web_first = True
+    elif ANSWER_MODE == "auto":
+        # سوالات اطلاعاتی/لحظه‌ای → اول سرچ وب
+        if needs_web_search(question):
+            use_web_first = True
+            logger.info(f"🔍 سوال اطلاعاتی تشخیص داده شد → سرچ وب اول: '{question[:50]}'")
 
-    # ۴. Gemini (fallback)
+    answer = None
+    source = "none"
+
+    # ۳-الف. سرچ وب (اگه اولویت باهاشه)
+    if use_web_first:
+        try:
+            from config import WEB_SEARCH_ENABLED
+            if WEB_SEARCH_ENABLED:
+                web_answer = await search_web_fallback(question)
+                if web_answer:
+                    answer = web_answer
+                    source = "web_search"
+        except Exception as e:
+            logger.warning(f"web search failed: {e}")
+
+    # ۳-ب. AI (اگه سرچ وب جواب نداشت یا اولویت با AI بود)
+    if not answer:
+        answer = await _generate_groq(question, context)
+        source = "groq" if answer else "none"
+
+    # ۴. Gemini (fallback نهایی)
     if not answer:
         logger.info("Groq unavailable, trying Gemini...")
         answer = await _generate_gemini(question, context)
-        source = "gemini"
+        source = "gemini" if answer else "none"
+
+    # ۴-ب. fallback آخر: سرچ وب (اگه AI هم جواب نداشت)
+    if not answer and ANSWER_MODE != "ai":
+        try:
+            from config import WEB_SEARCH_ENABLED
+            if WEB_SEARCH_ENABLED:
+                web_answer = await search_web_fallback(question)
+                if web_answer:
+                    answer = web_answer
+                    source = "web_search"
+        except Exception as e:
+            logger.warning(f"web search fallback failed: {e}")
 
     # ۵. ذخیره در cache با سوال normalize شده برای match بهتر
     if answer:
@@ -375,6 +414,46 @@ async def sync_training_channels(limit_per_channel: int = 100) -> int:
 
 
 # ─── سرچ در وب (fallback) ─────────────────────────────────────────────────────
+
+# کلماتی که نشون می‌ده سوال به اطلاعات لحظه‌ای/واقعی نیاز داره
+# (AI نمی‌تونه جواب بده، حتماً باید سرچ بشه)
+_REALTIME_PATTERNS = [
+    # آب‌وهوا
+    "هواشناسی", "آب و هوا", "آب‌وهوا", "دمای هوا", "طقس", "باران", "برف",
+    "weather",
+    # قیمت‌ها
+    "قیمت دلار", "دلار", "یورو", "قیمت طلا", "طلا", "نرخ ارز", "بورس",
+    "شاخص بورس", "قیمت سکه", "دلار آزاد", "قیمت بنزین",
+    # زمان/تاریخ
+    "ساعت چند", "امروز چندمه", "تاریخ امروز", "چه روزیه",
+    "چند روز تا", "چند روز مانده",
+    # اخبار/رویدادهای جاری
+    "خبر", "اخبار", "آخرین", "تازه‌ترین", "الان چه", "امروز چه",
+    "news", "latest", "today",
+    # وضعیت لحظه‌ای
+    "وضعیت", "لحظه", "الان", "همین الان", "در حال حاضر",
+    # نتایج زنده
+    "نتیجه", "بازی", "مسابقه", "نتایج",
+    # افراد/سوالات آنلاین
+    "چه کسی", "کیست", "بیوگرافی", "ویکی‌پدیا",
+    # تبدیل‌ها
+    "چقدر است", "چند تومن", "چند ریال",
+]
+
+
+def needs_web_search(question: str) -> bool:
+    """
+    تشخیص می‌ده که آیا این سوال نیاز به سرچ در وب داره یا نه.
+    سوالاتی مثل هواشناسی، قیمت، اخبار، اطلاعات لحظه‌ای.
+    """
+    q = question.lower().strip()
+    if len(q) < 3:
+        return False
+    for pattern in _REALTIME_PATTERNS:
+        if pattern in q:
+            return True
+    return False
+
 
 async def search_web_fallback(question: str) -> str | None:
     """

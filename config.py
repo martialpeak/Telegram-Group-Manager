@@ -89,6 +89,12 @@ def remove_training_channel(channel: str) -> bool:
 WEB_SEARCH_ENABLED = os.getenv("WEB_SEARCH_ENABLED", "true").lower() == "true"
 WEB_SEARCH_MAX_RESULTS = int(os.getenv("WEB_SEARCH_MAX_RESULTS", "3"))
 
+# ── منبع پاسخ‌دهی ─────────────────────────────────────────────────────────────
+# auto = AI اصلی، ولی سوالات اطلاعاتی (هواشناسی/قیمت/اخبار) رو از وب میاره
+# ai   = فقط هوش مصنوعی
+# web  = فقط سرچ در وب
+ANSWER_MODE = os.getenv("ANSWER_MODE", "auto").lower().strip()
+
 # ── تاخیر حداقل پاسخ AI (ثانیه) — برای نمایش بهتر لودینگ ─────────────────────
 AI_MIN_RESPONSE_DELAY = float(os.getenv("AI_MIN_RESPONSE_DELAY", "4"))
 

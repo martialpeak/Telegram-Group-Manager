@@ -83,7 +83,7 @@ def is_addressing_bot(message: Message, bot_username: str) -> bool:
     """
     بررسی اینکه پیام خطاب به ربات هست یا نه.
     ۱. mention مستقیم: @botname در متن — همیشه فعال
-    ۲. ریپلای روی پیام ربات — فقط اگه محتوا سوال یا درخواست باشه
+    ۲. ریپلای روی پیام ربات — تقریباً همیشه جواب بده (مگر تعارفات خالص)
     """
     import re
     text = (message.text or message.caption or "").strip()
@@ -102,38 +102,26 @@ def is_addressing_bot(message: Message, bot_username: str) -> bool:
 
     clean = re.sub(r"\s+", " ", text).strip()
 
-    # خیلی کوتاه — رد کن
-    if len(clean) < 3:
+    # خالی — رد کن
+    if not clean:
         return False
 
-    # پیام‌های تک‌کلمه‌ای تعارفی — رد کن
+    # فقط ایموجی یا علامت — رد کن
+    if len(clean.replace(" ", "")) < 2:
+        return False
+
+    # پیام‌های تک‌کلمه‌ای تعارفی خالص — رد کن
     _GREETINGS_ONLY = re.compile(
         r"^(ممنون|مرسی|تشکر|اوکی|ok|okay|thanks|thank\s?you|"
-        r"👍|👎|❤️|😊|🙏|👌|✅|❌|ارادت|نه|آره|بله|عالی|باشه)$",
+        r"👍|👎|❤️|😊|🙏|👌|✅|❌|ارادت|نه|آره|بله|عالی|باشه|خوب|بسیار)$",
         re.IGNORECASE,
     )
     if _GREETINGS_ONLY.match(clean):
         return False
 
-    # علامت سوال → حتماً جواب بده
-    if "?" in clean or "؟" in clean:
-        return True
-
-    # کلمات سوالی/درخواستی → جواب بده
-    _QUESTION_WORDS = [
-        "چطور", "چگونه", "چیه", "چیست", "چیا", "کجا", "کِی", "کی ",
-        "چرا", "چند", "آیا", "بگو", "توضیح", "راهنما", "کمک",
-        "میشه", "می‌شه", "ممکنه", "میتونی", "می‌تونی",
-        "how", "what", "why", "where", "when", "which", "who", "can you", "tell me",
-    ]
-    if any(w in clean.lower() for w in _QUESTION_WORDS):
-        return True
-
-    # پیام طولانی‌تر از ۲۰ کاراکتر که ریپلای روی ربات هست → احتمالاً سوال
-    if len(clean) >= 20 and len(clean.split()) >= 3:
-        return True
-
-    return False
+    # هر پیام دیگه که ریپلای روی ربات باشه → جواب بده
+    # (آسان‌گیرتر شد — قبلاً شرط طول/کلمه داشت که خیلی سخت‌گیرانه بود)
+    return True
 
 
 def build_vote_keyboard(fb_id: int, ups: int, downs: int):
