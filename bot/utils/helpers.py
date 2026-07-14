@@ -7,7 +7,7 @@ import logging
 import re
 from html import escape as _html_escape
 
-from telegram import Update
+from telegram import Update, Message
 from telegram.ext import ContextTypes
 
 
