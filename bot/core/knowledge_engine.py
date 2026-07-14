@@ -271,19 +271,22 @@ async def _generate_gemini(question: str, context: str) -> Optional[str]:
 async def answer_question(
     question: str, chat_id: int, user_id: int = 0
 ) -> dict:
-    # ۱. Cache — پایگاه دانش
-    cached = await _search_knowledge(question, chat_id)
-    if cached:
-        await db.increment_use(cached["id"])
-        # حتی cache شده رو تو حافظه مکالمه ثبت کن
-        if user_id:
-            await db.add_conversation_message(user_id, chat_id, "user", question)
-            await db.add_conversation_message(user_id, chat_id, "assistant", cached["answer"])
-        return {
-            "answer": cached["answer"],
-            "source": "knowledge_base",
-            "confidence": cached["score"],
-        }
+    # ۱. Cache — پایگاه دانش (فقط برای سوالات غیرلحظه‌ای)
+    is_realtime = needs_web_search(question)
+    if not is_realtime:
+        cached = await _search_knowledge(question, chat_id)
+        if cached:
+            await db.increment_use(cached["id"])
+            if user_id:
+                await db.add_conversation_message(user_id, chat_id, "user", question)
+                await db.add_conversation_message(user_id, chat_id, "assistant", cached["answer"])
+            return {
+                "answer": cached["answer"],
+                "source": "knowledge_base",
+                "confidence": cached["score"],
+            }
+    else:
+        logger.info(f"⏭️ سوال لحظه‌ای تشخیص داده شد → رد شدن از کش: '{question[:50]}'")
 
     # ۲. ساخت context غنی: تاریخچه گروه + حافظه مکالمه + پروفایل کاربر
     context_parts = []
@@ -655,6 +658,50 @@ async def _google_search(query: str, max_results: int = 3) -> list[str]:
             return snippets[:max_results]
     except Exception as e:
         logger.warning(f"Google search failed: {e}")
+        return []
+
+
+# ─── Bing Search (وقتی DDG و Google فیلترن) ──────────────────────────────────
+
+async def _bing_search(query: str, max_results: int = 3) -> list[str]:
+    """استخراج snippet از Bing Search"""
+    import httpx
+    import re as _re
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
+    try:
+        async with httpx.AsyncClient(timeout=15, headers=headers, follow_redirects=True) as client:
+            resp = await client.get(
+                "https://www.bing.com/search",
+                params={"q": query, "count": max_results},
+            )
+            logger.info(f"Bing search: HTTP {resp.status_code}")
+            if resp.status_code != 200:
+                return []
+            snippets = []
+            matches = _re.findall(
+                r'<p[^>]*>(.*?)</p>',
+                resp.text,
+                _re.DOTALL,
+            )
+            for m in matches[:max_results * 2]:
+                clean = _re.sub(r"<[^>]+>", "", m).strip()
+                if clean and len(clean) > 50 and not clean.startswith("http"):
+                    snippets.append(clean[:300])
+            if not snippets:
+                matches = _re.findall(
+                    r'<div[^>]*class="[^"]*b_caption[^"]*"[^>]*>(.*?)</div>',
+                    resp.text,
+                    _re.DOTALL,
+                )
+                for m in matches[:max_results]:
+                    clean = _re.sub(r"<[^>]+>", "", m).strip()
+                    if clean and len(clean) > 30:
+                        snippets.append(clean[:300])
+            return snippets[:max_results]
+    except Exception as e:
+        logger.warning(f"Bing search failed: {e}")
         return []
 
 
