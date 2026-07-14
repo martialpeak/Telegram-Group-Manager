@@ -632,7 +632,7 @@ def _apply_level_change(level: str, field: str, value: str):
 # ── /update — آپدیت ربات از داخل تلگرام ─────────────
 async def cmd_update(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
-    git pull + pip install + systemctl restart
+    git pull + pip install + restart
     فقط ادمین — هم در PV هم در گروه
     """
     if update.effective_user.id not in ADMIN_IDS:
@@ -644,29 +644,43 @@ async def cmd_update(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     bot_dir = os.path.dirname(os.path.abspath(__file__))
 
-    async def _run(cmd: list[str]) -> tuple[int, str]:
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            cwd=bot_dir,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.STDOUT,
-        )
-        out, _ = await asyncio.wait_for(proc.communicate(), timeout=120)
-        return proc.returncode, out.decode(errors="replace").strip()
+    async def _run(cmd: list[str], timeout: int = 60) -> tuple[int, str]:
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                cwd=bot_dir,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+            )
+            out, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+            return proc.returncode, out.decode(errors="replace").strip()
+        except asyncio.TimeoutError:
+            try:
+                proc.kill()
+            except Exception:
+                pass
+            return -1, "timeout"
 
     try:
         # ۱. وضعیت فعلی
-        _, current = await _run(["git", "rev-parse", "--short", "HEAD"])
+        rc, current = await _run(["git", "rev-parse", "--short", "HEAD"], timeout=10)
+        if rc != 0:
+            await msg.edit_text("❌ خطا در خواندن وضعیت git.")
+            return
 
-        # ۲. fetch
+        # ۲. fetch (با timeout کوتاه)
         await msg.edit_text("🔄 دریافت تغییرات از GitHub...")
-        rc, _ = await _run(["git", "fetch", "origin"])
+        rc, _ = await _run(["git", "fetch", "origin"], timeout=30)
         if rc != 0:
             await msg.edit_text("❌ خطا در git fetch. اتصال به GitHub را بررسی کن.")
             return
 
         # ۳. مقایسه
-        _, remote = await _run(["git", "rev-parse", "--short", "origin/main"])
+        rc, remote = await _run(["git", "rev-parse", "--short", "origin/main"], timeout=10)
+        if rc != 0:
+            await msg.edit_text("❌ خطا در مقایسه نسخه‌ها.")
+            return
+
         if current == remote:
             await msg.edit_text(
                 f"✅ ربات به‌روز است.\n📌 نسخه فعلی: <code>{current}</code>",
@@ -676,23 +690,25 @@ async def cmd_update(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # ۴. pull
         await msg.edit_text("⬇️ دانلود آپدیت...")
-        rc, pull_out = await _run(["git", "pull", "--ff-only", "origin", "main"])
+        rc, pull_out = await _run(["git", "pull", "--ff-only", "origin", "main"], timeout=60)
         if rc != 0:
             await msg.edit_text(f"❌ خطا در git pull:\n<code>{pull_out[:300]}</code>", parse_mode="HTML")
             return
 
-        _, new_ver = await _run(["git", "rev-parse", "--short", "HEAD"])
+        rc, new_ver = await _run(["git", "rev-parse", "--short", "HEAD"], timeout=10)
 
         # ۵. نمایش changelog
-        _, changes = await _run(["git", "log", "--oneline", f"{current}..HEAD"])
+        _, changes = await _run(["git", "log", "--oneline", f"{current}..HEAD"], timeout=10)
         changes_txt = changes[:400] if changes else "بدون تغییر"
 
-        # ۶. آپدیت پکیج‌ها
-        await msg.edit_text("📦 آپدیت پکیج‌های Python...")
-        venv_pip = os.path.join(bot_dir, "venv", "bin", "pip")
-        if not os.path.exists(venv_pip):
-            venv_pip = sys.executable.replace("python", "pip")
-        await _run([venv_pip, "install", "-q", "-r", os.path.join(bot_dir, "requirements.txt")])
+        # ۶. آپدیت پکیج‌ها (فقط اگه requirements.txt تغییر کرده)
+        rc2, _ = await _run(["git", "diff", "--name-only", f"{current}..HEAD", "requirements.txt"], timeout=10)
+        if "requirements.txt" in (rc2 or ""):
+            await msg.edit_text("📦 آپدیت پکیج‌های Python...")
+            venv_pip = os.path.join(bot_dir, "venv", "bin", "pip")
+            if not os.path.exists(venv_pip):
+                venv_pip = sys.executable.replace("python", "pip")
+            await _run([venv_pip, "install", "-q", "-r", os.path.join(bot_dir, "requirements.txt")], timeout=120)
 
         # ۷. ذخیره اطلاعات برای پیام بعد از restart
         import json
