@@ -18,7 +18,7 @@ from .commands import (
     cmd_setlevel, cmd_levels,
     cmd_tagall, cmd_clear, cmd_testbtn, cmd_sync, cmd_recent,
     cmd_addchannel, cmd_delchannel,
-    cmd_punishment, cmd_setpunishment, cmd_mypunishment,
+    cmd_punishment, cmd_setpunishment,
 )
 
 __all__ = [
@@ -38,5 +38,5 @@ __all__ = [
     "cmd_setlevel", "cmd_levels",
     "cmd_tagall", "cmd_clear", "cmd_testbtn", "cmd_sync", "cmd_recent",
     "cmd_addchannel", "cmd_delchannel",
-    "cmd_punishment", "cmd_setpunishment", "cmd_mypunishment",
+    "cmd_punishment", "cmd_setpunishment",
 ]

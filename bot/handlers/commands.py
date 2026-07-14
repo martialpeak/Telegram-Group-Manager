@@ -118,10 +118,9 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "📌 یا ریپلای روی پیام ربات\n\n"
 
         "━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        "   <b>👤 دستورات کاربران</b>\n"
+        "👤 دستورات کاربران</b>\n"
         "━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        "🏅 /myrank — سطح و امتیاز شما\n"
-        "🏆 /mypunishment — رنک جریمه شما\n"
+        "🏅 /myrank — پروفایل شما (سطح + جریمه)\n"
         "📊 /mystats — آمار روزانه شما\n"
         "📋 /levels — نمایش سطوح کاربری\n"
         "⚠️ /punishment — نمایش رنک‌های جریمه\n"
@@ -1028,40 +1027,7 @@ async def cmd_setpunishment(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-# ─── /myrank — نمایش رنک جریمه کاربر ─────────────────────────────────────────
-
-async def cmd_mypunishment(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """نمایش رنک جریمه خود کاربر"""
-    user = update.message.from_user
-    chat_id = update.message.chat_id
-
-    rank = await db.get_punishment_rank(user.id, chat_id)
-    violations = await db.get_violation_count(user.id, chat_id)
-
-    from bot.core.punishment_ranks import get_rank_config, get_rank_name
-
-    rank_info = get_rank_config(rank)
-    limit = "نامحدود" if rank_info.daily_limit == -1 else str(rank_info.daily_limit)
-
-    ask_icon = "✅" if rank_info.can_ask_bot else "❌"
-    link_icon = "✅" if rank_info.can_send_link else "❌"
-    fwd_icon = "✅" if rank_info.can_forward else "❌"
-
-    await update.message.reply_text(
-        f"🏆 <b>رنک جریمه شما</b>\n"
-        f"━━━━━━━━━━━━━━━━━\n\n"
-        f"👤 کاربر: <a href=\"tg://user?id={user.id}\">{esc(user.full_name)}</a>\n"
-        f"🏆 رنک: {get_rank_name(rank)}\n"
-        f"📊 تخلفات: {violations}\n"
-        f"💬 محدودیت روزانه: {limit}\n\n"
-        f"💬 سوال از ربات: {ask_icon}\n"
-        f"🔗 ارسال لینک: {link_icon}\n"
-        f"↩️ فوروارد: {fwd_icon}",
-        parse_mode="HTML",
-    )
-
-
-# ─── /sync — همگام‌سازی از کانال‌های آموزشی ─────────────────────────────────────
+# ─── /punishment — نمایش رنک‌های جریمه ────────────────────────────────────────
 
 async def cmd_sync(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """

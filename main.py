@@ -121,7 +121,6 @@ def main():
     app.add_handler(CommandHandler("delchannel", handlers.cmd_delchannel))
     app.add_handler(CommandHandler("punishment", handlers.cmd_punishment))
     app.add_handler(CommandHandler("setpunishment", handlers.cmd_setpunishment))
-    app.add_handler(CommandHandler("mypunishment", handlers.cmd_mypunishment))
 
     # ── Callback ها ───────────────────────────────────────────────────────────
     app.add_handler(CallbackQueryHandler(handlers.on_report_callback,  pattern=r"^rpt_"))
