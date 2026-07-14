@@ -12,6 +12,8 @@ DB_PATH = "group_manager.db"
 
 async def init_db():
     async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("PRAGMA journal_mode=WAL")
+        await db.execute("PRAGMA busy_timeout=5000")
         await db.executescript("""
         CREATE TABLE IF NOT EXISTS warnings (
             id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -92,13 +94,22 @@ async def init_db():
         );
 
         CREATE TABLE IF NOT EXISTS punishment_history (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id     INTEGER NOT NULL,
-            chat_id     INTEGER NOT NULL,
-            type        TEXT    NOT NULL,
-            duration    INTEGER NOT NULL,
-            reason      TEXT,
-            created_at  TEXT DEFAULT (datetime('now'))
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id    INTEGER NOT NULL,
+            chat_id    INTEGER NOT NULL,
+            type       TEXT NOT NULL,
+            duration   INTEGER,
+            reason     TEXT DEFAULT '',
+            created_at TEXT DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS punishment_ranks (
+            user_id    INTEGER NOT NULL,
+            chat_id    INTEGER NOT NULL,
+            rank       TEXT NOT NULL DEFAULT 'clean',
+            set_by     INTEGER,
+            updated_at TEXT DEFAULT (datetime('now')),
+            PRIMARY KEY (user_id, chat_id)
         );
 
         CREATE TABLE IF NOT EXISTS user_levels (
@@ -1184,6 +1195,26 @@ async def clear_conversation(user_id: int, chat_id: int):
         await db.commit()
 
 
+async def cleanup_old_conversations(days: int = 30):
+    """پاکسازی خودکار مکالمات قدیمی‌تر از X روز"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "DELETE FROM conversation_memory WHERE created_at < datetime('now', ?)",
+            (f"-{days} days",),
+        )
+        await db.commit()
+
+
+async def cleanup_old_message_logs(days: int = 90):
+    """پاکسازی لاگ پیام‌های قدیمی‌تر از X روز"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "DELETE FROM message_log WHERE created_at < datetime('now', ?)",
+            (f"-{days} days",),
+        )
+        await db.commit()
+
+
 async def upsert_user_summary(
     user_id: int, chat_id: int, summary: str, topics: str = ""
 ):
@@ -1261,9 +1292,61 @@ async def get_recent_actions(chat_id: int, limit: int = 20) -> list[dict]:
         ]
 
 
+# ─── رنک جریمه ──────────────────────────────────────────────────────────────
+
+async def get_punishment_rank(user_id: int, chat_id: int) -> str:
+    """گرفتن رنک جریمه فعلی کاربر"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute(
+            "SELECT rank FROM punishment_ranks WHERE user_id=? AND chat_id=?",
+            (user_id, chat_id),
+        )
+        row = await cur.fetchone()
+        return row[0] if row else "clean"
+
+
+async def set_punishment_rank(user_id: int, chat_id: int, rank: str, set_by: int):
+    """تنظیم رنک جریمه کاربر"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            """INSERT INTO punishment_ranks (user_id, chat_id, rank, set_by, updated_at)
+               VALUES (?,?,?,?,datetime('now'))
+               ON CONFLICT(user_id, chat_id) DO UPDATE
+               SET rank=excluded.rank, set_by=excluded.set_by,
+                   updated_at=excluded.updated_at""",
+            (user_id, chat_id, rank, set_by),
+        )
+        await db.commit()
+
+
+async def get_violation_count(user_id: int, chat_id: int) -> int:
+    """شمارش کل تخلفات یک کاربر"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute(
+            """SELECT COUNT(*) FROM punishment_history
+               WHERE user_id=? AND chat_id=?""",
+            (user_id, chat_id),
+        )
+        row = await cur.fetchone()
+        return row[0] if row else 0
+
+
+async def get_chat_punishment_ranks(chat_id: int) -> list[dict]:
+    """لیست رنک جریمه همه کاربران گروه"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute(
+            """SELECT user_id, rank, updated_at FROM punishment_ranks
+               WHERE chat_id=? AND rank != 'clean'
+               ORDER BY updated_at DESC""",
+            (chat_id,),
+        )
+        rows = await cur.fetchall()
+        return [{"user_id": r[0], "rank": r[1], "updated_at": r[2]} for r in rows]
+
+
 async def get_last_ban_reason(user_id: int, chat_id: int) -> dict | None:
     """
-    آخرین دلیل بن یک کاربر رو برمی‌گردونه.
+    آخرین دلیل بن یک کاربر رو برمیگردونه.
     هم از punishment_history و هم از recent_actions می‌خونه.
     """
     # اول از recent_actions (دلیل کامل‌تر)

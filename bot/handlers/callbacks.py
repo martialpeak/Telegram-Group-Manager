@@ -12,7 +12,7 @@ from config import ADMIN_IDS
 import bot.db.database as db
 from bot.core import moderation as mod
 from bot.core.user_levels import get_config, level_label
-from bot.utils.helpers import mention, build_vote_keyboard
+from bot.utils.helpers import mention, build_vote_keyboard, esc
 from bot.handlers.messages import get_pending_answers
 from i18n import t
 

@@ -4,10 +4,16 @@
 
 import asyncio
 import logging
-from telegram import Message
+import re
+from html import escape as _html_escape
 
-logger = logging.getLogger(__name__)
+from telegram import Update
+from telegram.ext import ContextTypes
 
+
+def esc(text: str) -> str:
+    """escape HTML special characters for Telegram parse_mode=HTML"""
+    return _html_escape(str(text))
 
 def _escape_html(text: str) -> str:
     """escape کاراکترهای HTML برای استفاده داخل parse_mode=HTML"""
@@ -75,7 +81,7 @@ async def send_and_delete(
         except Exception:
             pass
 
-    asyncio.ensure_future(_delete_later())
+    asyncio.create_task(_delete_later())
     return sent
 
 

@@ -154,7 +154,7 @@ async def _generate_groq(question: str, context: str) -> Optional[str]:
         return None
     prompt = PROMPT_TEMPLATE.format(context=context, question=question)
     try:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         response = await loop.run_in_executor(
             None,
             lambda: _groq_client.chat.completions.create(
@@ -186,7 +186,7 @@ async def _generate_gemini(question: str, context: str) -> Optional[str]:
     import google.generativeai as genai
     prompt = PROMPT_TEMPLATE.format(context=context, question=question)
     try:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         response = await loop.run_in_executor(
             None,
             lambda: _gemini_model.generate_content(

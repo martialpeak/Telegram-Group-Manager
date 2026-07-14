@@ -207,7 +207,7 @@ async def _analyze_groq(
     user_content = f"Message to classify: {text}"
     if conversation_context:
         user_content += f"\n\n---\n{conversation_context}"
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     response = await loop.run_in_executor(
         None,
         lambda: _groq_client.chat.completions.create(
@@ -233,7 +233,7 @@ async def _analyze_gemini(
     user_content = f"Message to classify: {text}"
     if conversation_context:
         user_content += f"\n\n---\n{conversation_context}"
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     response = await loop.run_in_executor(
         None,
         lambda: _gemini_model.generate_content(

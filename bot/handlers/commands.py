@@ -583,14 +583,22 @@ async def cmd_ban(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception:
         pass
 
+    # نمایش لول جریمه
+    from bot.core.punishment_levels import get_next_punishment_level, get_level_name
+    warnings = await db.get_warnings(target_id, chat_id)
+    level = get_next_punishment_level(len(warnings))
+
     if until_date:
         await update.message.reply_text(
-            t("banned_temp", name=target_mention, duration=duration_txt, reason=reason),
+            t("banned_temp", name=target_mention, duration=duration_txt, reason=reason)
+            + f"\n\n🎯 لول جریمه: {get_level_name(level)}",
             parse_mode="HTML",
         )
     else:
         await update.message.reply_text(
-            t("banned", name=target_mention), parse_mode="HTML"
+            t("banned", name=target_mention)
+            + f"\n\n🎯 لول جریمه: {get_level_name(level)}",
+            parse_mode="HTML",
         )
 
 
@@ -691,7 +699,7 @@ async def cmd_violations(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     top_lines = ""
     for i, u in enumerate(v["top_violators"], 1):
-        top_lines += f"  {i}. {u['name']} — {u['count']} تخلف\n"
+        top_lines += f"  {i}. {esc(u['name'])} — {u['count']} تخلف\n"
     if not top_lines:
         top_lines = "  هنوز تخلفی ثبت نشده\n"
 
@@ -920,6 +928,114 @@ async def cmd_testbtn(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"❌ test buttons failed: {e}")
         await update.message.reply_text(f"❌ خطا در ارسال کلیدها: <code>{e}</code>", parse_mode="HTML")
+
+
+# ─── /punishment — نمایش رنک‌های جریمه ────────────────────────────────────────
+
+async def cmd_punishment(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """نمایش سیستم رنک جریمه"""
+    from bot.core.punishment_ranks import get_all_ranks_summary
+
+    text = get_all_ranks_summary()
+    await update.message.reply_text(text, parse_mode="HTML")
+
+
+# ─── /setpunishment — تنظیم رنک جریمه ────────────────────────────────────────
+
+async def cmd_setpunishment(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """تنظیم رنک جریمه کاربر — فقط ادمین"""
+    if not _is_admin(update.message.from_user.id):
+        return
+
+    from bot.core.punishment_ranks import RANK_ORDER, get_rank_name, get_rank_config
+
+    args = list(context.args) if context.args else []
+
+    # تشخیص target
+    if update.message.reply_to_message:
+        target_id = update.message.reply_to_message.from_user.id
+        target_mention = mention(update.message.reply_to_message.from_user)
+        rank_arg = args[0].lower() if args else None
+    elif args:
+        try:
+            target_id = int(args[0])
+            target_mention = f"کاربر <code>{target_id}</code>"
+            rank_arg = args[1].lower() if len(args) > 1 else None
+        except ValueError:
+            await update.message.reply_text(
+                f"استفاده: /setpunishment <user_id> <رنک>\n"
+                f"رنک‌ها: {' | '.join(RANK_ORDER)}"
+            )
+            return
+    else:
+        await update.message.reply_text(
+            f"روی پیام ریپلای بزن یا /setpunishment <user_id> <رنک>\n"
+            f"رنک‌ها: {' | '.join(RANK_ORDER)}"
+        )
+        return
+
+    if not rank_arg:
+        await update.message.reply_text(
+            f"رنک رو مشخص کن.\n"
+            f"رنک‌ها: {' | '.join(RANK_ORDER)}"
+        )
+        return
+
+    if rank_arg not in RANK_ORDER:
+        await update.message.reply_text(
+            f"❌ رنک نامعتبر!\n"
+            f"رنک‌های معتبر: {' | '.join(RANK_ORDER)}"
+        )
+        return
+
+    chat_id = update.message.chat_id
+    await db.set_punishment_rank(target_id, chat_id, rank_arg, update.message.from_user.id)
+
+    # نمایش اطلاعات رنک
+    rank_info = get_rank_config(rank_arg)
+    limit = "نامحدود" if rank_info.daily_limit == -1 else str(rank_info.daily_limit)
+
+    await update.message.reply_text(
+        f"✅ رنک جریمه {target_mention} به {get_rank_name(rank_arg)} تغییر کرد.\n\n"
+        f"📊 محدودیت روزانه: {limit}\n"
+        f"💬 سوال از ربات: {'✅' if rank_info.can_ask_bot else '❌'}\n"
+        f"🔗 ارسال لینک: {'✅' if rank_info.can_send_link else '❌'}\n"
+        f"↩️ فوروارد: {'✅' if rank_info.can_forward else '❌'}",
+        parse_mode="HTML",
+    )
+
+
+# ─── /myrank — نمایش رنک جریمه کاربر ─────────────────────────────────────────
+
+async def cmd_mypunishment(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """نمایش رنک جریمه خود کاربر"""
+    user = update.message.from_user
+    chat_id = update.message.chat_id
+
+    rank = await db.get_punishment_rank(user.id, chat_id)
+    violations = await db.get_violation_count(user.id, chat_id)
+
+    from bot.core.punishment_ranks import get_rank_config, get_rank_name
+
+    rank_info = get_rank_config(rank)
+    limit = "نامحدود" if rank_info.daily_limit == -1 else str(rank_info.daily_limit)
+
+    ask_icon = "✅" if rank_info.can_ask_bot else "❌"
+    link_icon = "✅" if rank_info.can_send_link else "❌"
+    fwd_icon = "✅" if rank_info.can_forward else "❌"
+
+    await update.message.reply_text(
+        f"🏆 <b>رنک جریمه شما</b>\n"
+        f"━━━━━━━━━━━━━━━━━\n\n"
+        f"👤 کاربر: <a href=\"tg://user?id={user.id}\">{esc(user.full_name)}</a>\n"
+        f"🏆 رنک: {get_rank_name(rank)}\n"
+        f"📊 تخلفات: {violations}\n"
+        f"💬 محدودیت روزانه: {limit}\n\n"
+        f"💬 سوال از ربات: {ask_icon}\n"
+        f"🔗 ارسال لینک: {link_icon}\n"
+        f"↩️ فوروارد: {fwd_icon}",
+        parse_mode="HTML",
+    )
 
 
 # ─── /sync — همگام‌سازی از کانال‌های آموزشی ─────────────────────────────────────

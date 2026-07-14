@@ -31,12 +31,15 @@ async def _expire_warnings_job(context=None):
 
 
 async def _daily_scheduler():
-    """هر ۲۴ ساعت یه بار _expire_warnings_job رو اجرا کن"""
+    """هر ۲۴ ساعت یه بار job های پاکسازی رو اجرا کن"""
     import asyncio
     while True:
         await asyncio.sleep(86400)  # ۲۴ ساعت
         try:
             await _expire_warnings_job()
+            await db.cleanup_old_conversations(days=30)
+            await db.cleanup_old_message_logs(days=90)
+            logger.info("🗑️ پاکسازی روزانه DB انجام شد.")
         except Exception as e:
             logger.warning(f"daily scheduler error: {e}")
 
@@ -45,7 +48,7 @@ async def post_init(application):
     await db.init_db()
     # scheduler برای پاک کردن اخطارهای قدیمی — هر ۲۴ ساعت
     import asyncio
-    asyncio.ensure_future(_daily_scheduler())
+    asyncio.create_task(_daily_scheduler())
     logger.info("✅ پایگاه داده آماده شد.")
     logger.info("🚀 ربات در حال اجرا است.")
 
@@ -116,6 +119,9 @@ def main():
     app.add_handler(CommandHandler("recent",     handlers.cmd_recent))
     app.add_handler(CommandHandler("addchannel", handlers.cmd_addchannel))
     app.add_handler(CommandHandler("delchannel", handlers.cmd_delchannel))
+    app.add_handler(CommandHandler("punishment", handlers.cmd_punishment))
+    app.add_handler(CommandHandler("setpunishment", handlers.cmd_setpunishment))
+    app.add_handler(CommandHandler("mypunishment", handlers.cmd_mypunishment))
 
     # ── Callback ها ───────────────────────────────────────────────────────────
     app.add_handler(CallbackQueryHandler(handlers.on_report_callback,  pattern=r"^rpt_"))

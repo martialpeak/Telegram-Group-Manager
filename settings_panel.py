@@ -57,6 +57,7 @@ def _main_keyboard() -> InlineKeyboardMarkup:
         ],
         [
             InlineKeyboardButton("🏅 Level Limits",   callback_data="cfg_levels_menu"),
+            InlineKeyboardButton("⚠️ Punishment",     callback_data="cfg_punishment"),
         ],
         [
             InlineKeyboardButton("❌ Close",          callback_data="cfg_close"),
@@ -389,6 +390,31 @@ async def on_settings_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             "⚙️ <b>پنل تنظیمات ربات</b>\nیک مورد را برای تغییر انتخاب کنید:",
             parse_mode="HTML",
             reply_markup=_main_keyboard(),
+        )
+        return
+
+    # ── نمایش لول‌های جریمه ──────────────────────────────────────
+    if data == "cfg_punishment":
+        context.user_data.pop("settings_key", None)
+        from bot.core.punishment_levels import PUNISHMENT_LEVELS
+
+        text = "⚠️ <b>تنظیم لول‌های جریمه</b>\n\n"
+        text += "در حال حاضر سیستم مجازات پلکانی فعاله:\n\n"
+
+        for level, pl in sorted(PUNISHMENT_LEVELS.items()):
+            duration = "دائمی" if pl.duration_minutes is None else f"{pl.duration_minutes} دقیقه"
+            text += (
+                f"{pl.icon} <b>لول {pl.level}: {pl.name}</b>\n"
+                f"   ⏱️ {duration} | ⭐ -{pl.points_penalty} امتیاز\n\n"
+            )
+        text += "💡 برای تغییر مدت میوت‌ها، از دستور /settings استفاده کنید."
+
+        await query.edit_message_text(
+            text,
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("🔙 برگشت", callback_data="cfg_back"),
+            ]]),
         )
         return
 

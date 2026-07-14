@@ -291,7 +291,7 @@ async def handle_level_violation(bot: Bot, message, violation: str) -> tuple[str
     sent = await bot.send_message(chat_id, text, parse_mode="HTML")
 
     # پیام اطلاع‌رسانی بعد از ۱۰ دقیقه پاک می‌شه — از task امن استفاده کن
-    asyncio.ensure_future(_delete_after(bot, chat_id, sent.message_id, 600))
+    asyncio.create_task(_delete_after(bot, chat_id, sent.message_id, 600))
     await _notify_user(bot, user.id,
         f"ℹ️ پیام شما در گروه حذف شد.\nدلیل: {violation}"
     )

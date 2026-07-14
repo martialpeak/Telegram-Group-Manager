@@ -27,6 +27,32 @@ _pending_answers: dict[str, dict] = {}
 # cache کاربرانی که تگ گرفتن در این session — جلوگیری از API call مکرر
 _tagged_users: set[tuple[int, int]] = set()
 
+# ── TTL برای جلوگیری از memory leak ──────────────────────────────────────────
+import time as _time_mod
+
+_PENDING_TTL = 3600       # ۱ ساعت — بعد از اون فیدبک منقضی می‌شه
+_TAGGED_TTL = 7200        # ۲ ساعت — بعد از اون دوباره تگ ست می‌شه
+_pending_timestamps: dict[str, float] = {}
+_tagged_timestamps: dict[tuple[int, int], float] = {}
+
+
+def _cleanup_pending():
+    """پاکسازی entry های منقضی از _pending_answers"""
+    now = _time_mod.time()
+    expired = [k for k, t in _pending_timestamps.items() if now - t > _PENDING_TTL]
+    for k in expired:
+        _pending_answers.pop(k, None)
+        _pending_timestamps.pop(k, None)
+
+
+def _cleanup_tagged():
+    """پاکسازی entry های منقضی از _tagged_users"""
+    now = _time_mod.time()
+    expired = [k for k, t in _tagged_timestamps.items() if now - t > _TAGGED_TTL]
+    for k in expired:
+        _tagged_users.discard(k)
+        _tagged_timestamps.pop(k, None)
+
 _MIN_CORRECTION_LEN = 10
 _MAX_CORRECTION_LEN = 1000
 _MAX_FB_PER_HOUR    = 5
@@ -277,9 +303,11 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # ── auto-tag: اولین پیام هر کاربر در این session تگش ست می‌شه ──────────
+    _cleanup_tagged()  # پاکسازی entry های منقضی
     tag_key = (user.id, chat.id)
     if tag_key not in _tagged_users:
         _tagged_users.add(tag_key)
+        _tagged_timestamps[tag_key] = _time_mod.time()
         level_for_tag = await db.get_user_level(user.id, chat.id)
         from bot.core.moderation import _set_status_tag
         from bot.core.user_levels import get_config as _get_cfg
@@ -377,6 +405,7 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await _asyncio.sleep(AI_MIN_RESPONSE_DELAY - _elapsed)
 
         key = f"{user.id}_{message.message_id}"
+        _cleanup_pending()  # پاکسازی entry های منقضی
         _pending_answers[key] = {
             "question": clean_q,
             "answer":   result["answer"],
@@ -386,6 +415,7 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "user_name": user.full_name,
             "chat_title": chat.title or "PV",
         }
+        _pending_timestamps[key] = _time_mod.time()
 
         if no_answer:
             # ربات جواب نداره — به ادمین اطلاع بده
