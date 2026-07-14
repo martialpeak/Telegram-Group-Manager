@@ -178,6 +178,67 @@ async def _generate_groq(question: str, context: str) -> Optional[str]:
         return None
 
 
+# ─── تولید پاسخ عمومی (برای خلاصه‌سازی وب) ────────────────────────────────
+
+async def _generate_groq_general(prompt: str) -> Optional[str]:
+    """تولید پاسخ با Groq برای سوالات عمومی (نه VPN)"""
+    if not _groq_client:
+        return None
+    general_system = (
+        "تو یک دستیار هوشمند فارسی‌زبان هستی که به سوالات کاربران پاسخ میدی. "
+        "به فارسی روان و دقیق پاسخ بده. اگه مطمئن نیستی، صادقانه بگو."
+    )
+    try:
+        loop = asyncio.get_running_loop()
+        response = await loop.run_in_executor(
+            None,
+            lambda: _groq_client.chat.completions.create(
+                model=GROQ_MODEL,
+                messages=[
+                    {"role": "system", "content": general_system},
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.3,
+                max_tokens=3500,
+                top_p=0.9,
+            )
+        )
+        answer = response.choices[0].message.content.strip()
+        return answer if answer and len(answer) > 5 else None
+    except Exception as e:
+        logger.warning(f"Groq general answer failed: {e}")
+        return None
+
+
+async def _generate_gemini_general(prompt: str) -> Optional[str]:
+    """تولید پاسخ با Gemini برای سوالات عمومی (نه VPN)"""
+    if not _gemini_model:
+        return None
+    general_system = (
+        "تو یک دستیار هوشمند فارسی‌زبان هستی که به سوالات کاربران پاسخ میدی. "
+        "به فارسی روان و دقیق پاسخ بده. اگه مطمئن نیستی، صادقانه بگو."
+    )
+    import google.generativeai as genai
+    try:
+        loop = asyncio.get_running_loop()
+        response = await loop.run_in_executor(
+            None,
+            lambda: _gemini_model.generate_content(
+                f"{general_system}\n\n{prompt}",
+                generation_config=genai.types.GenerationConfig(
+                    temperature=0.3,
+                    max_output_tokens=3500,
+                    top_p=0.9,
+                ),
+            )
+        )
+        answer = response.text.strip()
+        return answer if answer and len(answer) > 5 else None
+    except Exception as e:
+        logger.warning(f"Gemini general answer failed: {e}")
+        return None
+
+
 # ─── تولید پاسخ با Gemini ────────────────────────────────────────────────────
 
 async def _generate_gemini(question: str, context: str) -> Optional[str]:
@@ -449,8 +510,20 @@ def needs_web_search(question: str) -> bool:
     q = question.lower().strip()
     if len(q) < 3:
         return False
+    # الگوهای مشخص
     for pattern in _REALTIME_PATTERNS:
         if pattern in q:
+            return True
+    # اگه سوال خیلی کوتاه نیست و شامل کلمات کلیدی فنی نیست، احتمالاً به وب نیاز داره
+    # (فقط برای سوالات انگلیسی یا فارسی که ظاهراً اطلاعات عمومی می‌خوان)
+    if len(q.split()) > 3:
+        # بررسی اینکه آیا سوال مربوط به VPN/شبکه هست یا نه
+        vpn_keywords = ["v2ray", "xray", "sing-box", "vless", "vmess", "trojan", "shadowsocks",
+                       "hysteria", "tuic", "wireguard", "reality", "کانفیگ", "پروکسی", "سرور",
+                       "VPN", "فیلترشکن", "روت"]
+        has_vpn_keyword = any(kw.lower() in q for kw in vpn_keywords)
+        if not has_vpn_keyword:
+            # اگه مربوط به VPN نیست، احتمالاً به وب نیاز داره
             return True
     return False
 
@@ -458,7 +531,7 @@ def needs_web_search(question: str) -> bool:
 async def search_web_fallback(question: str) -> str | None:
     """
     وقتی AI جوابی نداشت، در وب سرچ می‌کنه و خلاصه‌ای برمی‌گردونه.
-    روش: DuckDuckgo Instant Answer → اگر نبود، HTML results → خلاصه با AI.
+    روش: DuckDuckgo → Google → Wikipedia → خلاصه با AI.
     """
     import httpx
     import re as _re
@@ -467,9 +540,9 @@ async def search_web_fallback(question: str) -> str | None:
     snippets = []
     logger.info(f"🔍 starting web search for: '{question[:50]}'")
 
+    # ۱. DuckDuckGo Instant Answer API
     try:
         async with httpx.AsyncClient(timeout=15) as client:
-            # ۱. DuckDuckGo Instant Answer API
             resp = await client.get(
                 "https://api.duckduckgo.com/",
                 params={
@@ -507,7 +580,16 @@ async def search_web_fallback(question: str) -> str | None:
         except Exception as e:
             logger.warning(f"ddg html search failed: {e}")
 
-    # ۲-ب. اگه DDG کار نکرد (احتمالاً فیلتر)، Wikipedia API رو امتحان کن
+    # ۲-ب. اگه DDG کار نکرد (احتمالاً فیلتر)، Google search رو امتحان کن
+    if not snippets:
+        try:
+            google_snippets = await _google_search(question, WEB_SEARCH_MAX_RESULTS)
+            snippets.extend(google_snippets)
+            logger.info(f"Google: {len(google_snippets)} snippets")
+        except Exception as e:
+            logger.warning(f"google search failed: {e}")
+
+    # ۲-ج. اگه Google هم کار نکرد، Wikipedia API رو امتحان کن
     if not snippets:
         try:
             wiki_snippets = await _wikipedia_search(question, WEB_SEARCH_MAX_RESULTS)
@@ -530,6 +612,50 @@ async def search_web_fallback(question: str) -> str | None:
     text = "🔍 یافته‌های مرتبط از وب:\n\n" + "\n\n".join(snippets)
     await _cache_web_answer(question, text)
     return text
+
+
+# ─── Google Search (وقتی DDG فیلتره) ──────────────────────────────────────────
+
+async def _google_search(query: str, max_results: int = 3) -> list[str]:
+    """استخراج snippet از Google Search"""
+    import httpx
+    import re as _re
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
+    try:
+        async with httpx.AsyncClient(timeout=15, headers=headers, follow_redirects=True) as client:
+            resp = await client.get(
+                "https://www.google.com/search",
+                params={"q": query, "hl": "fa", "num": max_results},
+            )
+            logger.info(f"Google search: HTTP {resp.status_code}")
+            if resp.status_code != 200:
+                return []
+            snippets = []
+            matches = _re.findall(
+                r'<div[^>]*class="BNeawe[^"]*"[^>]*>(.*?)</div>',
+                resp.text,
+                _re.DOTALL,
+            )
+            for m in matches[:max_results]:
+                clean = _re.sub(r"<[^>]+>", "", m).strip()
+                if clean and len(clean) > 30 and not clean.startswith("http"):
+                    snippets.append(clean[:300])
+            if not snippets:
+                matches = _re.findall(
+                    r'<span[^>]*>(.*?)</span>',
+                    resp.text,
+                    _re.DOTALL,
+                )
+                for m in matches[:max_results * 2]:
+                    clean = _re.sub(r"<[^>]+>", "", m).strip()
+                    if clean and len(clean) > 50 and not clean.startswith("http"):
+                        snippets.append(clean[:300])
+            return snippets[:max_results]
+    except Exception as e:
+        logger.warning(f"Google search failed: {e}")
+        return []
 
 
 async def _ddg_html_search(query: str, max_results: int = 3) -> list[str]:
@@ -607,14 +733,20 @@ async def _summarize_snippets(question: str, snippets: list[str]) -> str | None:
     )
     # اول Groq
     if _groq_client:
-        answer = await _generate_groq(prompt, "")
-        if answer:
-            return "🌐 (بر اساس جست‌وجو در وب)\n\n" + answer
+        try:
+            answer = await _generate_groq_general(prompt)
+            if answer:
+                return "🌐 (بر اساس جست‌وجو در وب)\n\n" + answer
+        except Exception as e:
+            logger.warning(f"Groq summarize failed: {e}")
     # fallback Gemini
     if _gemini_model:
-        answer = await _generate_gemini(prompt, "")
-        if answer:
-            return "🌐 (بر اساس جست‌وجو در وب)\n\n" + answer
+        try:
+            answer = await _generate_gemini_general(prompt)
+            if answer:
+                return "🌐 (بر اساس جست‌وجو در وب)\n\n" + answer
+        except Exception as e:
+            logger.warning(f"Gemini summarize failed: {e}")
     return None
 
 
