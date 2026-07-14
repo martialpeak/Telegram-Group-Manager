@@ -91,40 +91,63 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.message.chat
 
     level_info = ""
+    rank_info = ""
     if chat.type != ChatType.PRIVATE:
         level = await db.get_user_level(user.id, chat.id)
         cfg   = get_config(level)
         q     = "نامحدود" if cfg.daily_queries == -1 else str(cfg.daily_queries)
-        level_info = f"\n🏅 سطح شما: {level_label(level)} | سوال روزانه: {q}\n"
+        level_info = f"🏅 <b>سطح شما:</b> {level_label(level)} | سوال روزانه: {q}\n"
+
+        # نمایش رنک جریمه
+        from bot.core.punishment_ranks import get_rank_name
+        rank = await db.get_punishment_rank(user.id, chat.id)
+        rank_info = f"🏆 <b>رنک جریمه:</b> {get_rank_name(rank)}\n"
 
     await update.message.reply_text(
-        "<b>🤖 ربات هوشمند مدیریت گروه</b>\n"
-        f"{level_info}\n"
-        "<b>📌 برای پرسیدن سوال:</b>\n"
-        f"• منشن: <code>@{bot_username} سوالت</code>\n"
-        "• یا ریپلای روی پیام ربات\n\n"
-        "<b>📌 دستورات:</b>\n"
-        "/myrank — سطح و آمار شما\n"
-        "/mystats — آمار روزانه شما\n"
-        "/levels — نمایش سطوح\n"
-        "/report — گزارش پیام (ریپلای)\n\n"
-        "<b>📌 دستورات ادمین:</b>\n"
-        "/setlevel — تغییر سطح کاربر\n"
-        "/warn — اخطار دستی (ریپلای)\n"
-        "/unwarn — پاک کردن اخطار (ریپلای)\n"
-        "/mute [دقیقه] — میوت دستی (ریپلای)\n"
-        "/unmute — رفع میوت (ریپلای)\n"
-        "/ban [مدت] [دلیل] — بن (ریپلای)\n"
-        "/unban — آنبن (ریپلای یا user_id)\n"
-        "/warnings — نمایش اخطارها (ریپلای)\n"
-        "/reports — گزارش‌های در انتظر\n"
-        "/stats — آمار گروه\n"
-        "/violations — آمار تخلفات\n"
-        "/search [متن] — جستجو در تاریخچه\n"
-        "/learn — یادگیری از فیدبک‌ها\n"
-        "/settings — پنل تنظیمات\n"
-        "/update — آپدیت ربات از GitHub\n"
-        "/clear — پاک کردن حافظه گفت‌وگوی شما با ربات",
+        "━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        "   <b>🤖 ربات هوشمند مدیریت گروه</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+
+        f"{level_info}"
+        f"{rank_info}"
+        "\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        "   <b>💬 پرسش و پاسخ</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"📌 منشن کن: <code>@{bot_username} سوالت</code>\n"
+        "📌 یا ریپلای روی پیام ربات\n\n"
+
+        "━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        "   <b>👤 دستورات کاربران</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        "🏅 /myrank — سطح و امتیاز شما\n"
+        "🏆 /mypunishment — رنک جریمه شما\n"
+        "📊 /mystats — آمار روزانه شما\n"
+        "📋 /levels — نمایش سطوح کاربری\n"
+        "⚠️ /punishment — نمایش رنک‌های جریمه\n"
+        "🚨 /report — گزارش پیام (ریپلای)\n"
+        "💬 /clear — پاک کردن حافظه گفت‌وگو\n\n"
+
+        "━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        "   <b>🔧 دستورات ادمین</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        "🏅 /setlevel — تغییر سطح کاربر\n"
+        "🏆 /setpunishment — تنظیم رنک جریمه\n"
+        "⚠️ /warn — اخطار دستی (ریپلای)\n"
+        "🧹 /unwarn — پاک کردن اخطار (ریپلای)\n"
+        "🔇 /mute [دقیقه] — میوت (ریپلای)\n"
+        "🔊 /unmute — رفع میوت (ریپلای)\n"
+        "🚫 /ban [مدت] [دلیل] — بن (ریپلای)\n"
+        "✅ /unban — آنبن (ریپلای یا user_id)\n"
+        "📋 /warnings — نمایش اخطارها\n"
+        "📋 /reports — گزارش‌های در انتظر\n"
+        "📊 /stats — آمار گروه\n"
+        "🔍 /violations — آمار تخلفات\n"
+        "🔎 /search [متن] — جستجو در تاریخچه\n"
+        "📚 /learn — یادگیری از فیدبک‌ها\n"
+        "⚙️ /settings — پنل تنظیمات\n"
+        "🔄 /update — آپدیت ربات از GitHub\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━",
         parse_mode="HTML",
     )
 
