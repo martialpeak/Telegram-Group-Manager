@@ -1300,10 +1300,27 @@ async def _ddg_html_search(query: str, max_results: int = 5) -> list[dict]:
 
 # ─── Brave Search ─────────────────────────────────────────────────────────────
 
+# ─── Rate limiter برای جستجو ─────────────────────────────────────────────────
+
+import time as _time
+_last_search_time = 0.0
+_SEARCH_MIN_INTERVAL = 2.0  # حداقل ۲ ثانیه بین هر درخواست جستجو
+
+async def _rate_limit_search():
+    """جلوگیری از rate limit شدن"""
+    global _last_search_time
+    now = _time.time()
+    elapsed = now - _last_search_time
+    if elapsed < _SEARCH_MIN_INTERVAL:
+        await asyncio.sleep(_SEARCH_MIN_INTERVAL - elapsed)
+    _last_search_time = _time.time()
+
+
 async def _brave_search(query: str, max_results: int = 5) -> list[dict]:
     """استخراج نتایج از Brave Search"""
     import httpx
     import re as _re
+    await _rate_limit_search()
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
@@ -1351,6 +1368,7 @@ async def _startpage_search(query: str, max_results: int = 5) -> list[dict]:
     """استخراج نتایج از Startpage"""
     import httpx
     import re as _re
+    await _rate_limit_search()
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
