@@ -415,7 +415,28 @@ async def on_upgrade_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         except (IndexError, ValueError):
             return
 
+        # کم کردن ۵۰ امتیاز
+        try:
+            current_pts = await db.get_points(user_id, chat_id)
+        except Exception:
+            current_pts = 0
+        new_pts = await db.add_points(user_id, chat_id, -50)
+
+        # حذف درخواست ارتقاء
         await db.delete_upgrade_pending(user_id, chat_id)
+
+        # اعلام به کاربر
+        user_mention = f'<a href="tg://user?id={user_id}">{user_id}</a>'
+        try:
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=f"❌ درخواست ارتقاء {user_mention} رد شد.\n"
+                     f"⭐ امتیاز: {current_pts} → {new_pts} (−50)",
+                parse_mode="HTML",
+            )
+        except Exception as e:
+            logger.warning(f"upgrade reject announce failed: {e}")
+
         try:
             await query.message.delete()
         except Exception:
