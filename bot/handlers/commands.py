@@ -1040,7 +1040,7 @@ async def cmd_setpunishment(update: Update, context: ContextTypes.DEFAULT_TYPE):
         restriction_text = labels.get(rank_arg, "🔇 سکوت")
 
     # اعمال محدودیت
-    _log2.info(f"🔒 Restricting user {target_id} in chat {chat_id} rank={rank_arg}")
+    _log2.info(f"🔒 Restricting user {target_id} in chat {chat_id} rank={rank_arg} chat_type={getattr(update.message.chat, 'type', 'unknown')}")
     try:
         from telegram import ChatPermissions
         perms = ChatPermissions(**perm_kwargs)
