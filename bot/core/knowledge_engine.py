@@ -793,107 +793,106 @@ async def _currency_api_search(query: str) -> str | None:
             date = raw_date[:16] if len(raw_date) > 16 else raw_date
             
             if is_crypto:
-                # گرفتن قیمت USDT از CoinGecko (دلاری)
-                try:
-                    cg_resp = await client.get(
-                        "https://api.coingecko.com/api/v3/simple/price",
-                        params={"ids": "tether", "vs_currencies": "usd"},
-                    )
-                    if cg_resp.status_code == 200:
-                        cg_data = cg_resp.json()
-                        usdt_usd = cg_data.get("tether", {}).get("usd", 1.0)
-                    else:
+                # اول از کانال تلگرام قیمت بگیر
+                channel_prices = await _read_channel_currency()
+                
+                if channel_prices and "USDT" in channel_prices:
+                    market_price = channel_prices["USDT"]
+                    market_toman = market_price / 10
+                    logger.info(f"💰 Using channel price for USDT: {market_price} IRR")
+                else:
+                    # fallback به CoinGecko
+                    try:
+                        cg_resp = await client.get(
+                            "https://api.coingecko.com/api/v3/simple/price",
+                            params={"ids": "tether", "vs_currencies": "usd"},
+                        )
+                        if cg_resp.status_code == 200:
+                            cg_data = cg_resp.json()
+                            usdt_usd = cg_data.get("tether", {}).get("usd", 1.0)
+                        else:
+                            usdt_usd = 1.0
+                    except Exception:
                         usdt_usd = 1.0
-                except Exception:
-                    usdt_usd = 1.0
+                    market_price = usd_to_irr * usdt_usd
+                    market_toman = market_price / 10
                 
-                # گرفتن نرخ آزاد دلار (بازار)
-                try:
-                    fm_resp = await client.get(
-                        "https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json",
-                    )
-                    if fm_resp.status_code == 200:
-                        fm_data = fm_resp.json()
-                        free_market_irr = fm_data.get("usd", {}).get("irr", usd_to_irr)
-                    else:
-                        free_market_irr = usd_to_irr
-                except Exception:
-                    free_market_irr = usd_to_irr
+                # سایر ارزها از کانال
+                usd_price = channel_prices.get("USD", 0) / 10 if channel_prices and "USD" in channel_prices else usd_to_irr / 10
+                eur_price = channel_prices.get("EUR", 0) / 10 if channel_prices and "EUR" in channel_prices else 0
+                gbp_price = channel_prices.get("GBP", 0) / 10 if channel_prices and "GBP" in channel_prices else 0
                 
-                # قیمت تقریبی بازار (نرخ آزاد + حاشیه بازار ایران)
-                # به دلیل تحریم‌ها و محدودیت‌های ارزی، قیمت بازار ~35% بالاتر از نرخ آزاد بین‌المللی است
-                MARKET_PREMIUM = 1.35
-                market_irr = free_market_irr * MARKET_PREMIUM * usdt_usd
-                market_toman = market_irr / 10
+                other_lines = []
+                if usd_price > 0: other_lines.append(f"   💵 دلار: {usd_price:,.0f} تومان")
+                if eur_price > 0: other_lines.append(f"   💶 یورو: {eur_price:,.0f} تومان")
+                if gbp_price > 0: other_lines.append(f"   💷 پوند: {gbp_price:,.0f} تومان")
+                other_prices = "\n".join(other_lines)
+                
+                source = "📊 منبع: @Price33" if channel_prices else "📊 منبع: CoinGecko"
                 
                 result = (
-                    f"💰 قیمت {target_name} ({target_symbol})\n"
+                    f"💰 قیمت تتر (USDT)\n"
                     f"━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-                    f"💵 قیمت جهانی:\n"
-                    f"   1 USDT = {usdt_usd:.4f} USD\n\n"
-                    f"📊 قیمت بازار (تقریبی):\n"
-                    f"   {market_irr:,.0f} ریال\n"
-                    f"   ({market_toman:,.0f} تومان)\n\n"
-                    f"🏦 نرخ رسمی (بانک مرکزی):\n"
-                    f"   {usd_to_irr:,.0f} ریال ({usd_to_irr/10:,.0f} تومان)\n\n"
-                    f"📅 تاریخ: {date}\n"
-                    f"📊 منبع: CoinGecko + Currency API\n\n"
-                    f"⚠️ قیمت تقریبی است. برای قیمت دقیق، صرافی‌ها رو چک کنید."
+                    f"📊 قیمت بازار:\n"
+                    f"   {market_toman:,.0f} تومان\n"
+                    f"   ({market_price:,.0f} ریال)\n\n"
+                    f"📊 سایر ارزها:\n"
+                    f"{other_prices}\n\n"
+                    f"📅 {date}\n"
+                    f"{source}"
                 )
                 return result
             else:
-                # ارز رسمی - قیمت بازار
+                # ارز رسمی - قیمت بازار از کانال @Price33
                 target_to_usd = rates.get(target_code, 1)
                 target_to_irr_official = usd_to_irr / target_to_usd if target_code != "USD" else usd_to_irr
                 
                 # اول از کانال تلگرام قیمت بگیر
-                from config import CURRENCY_CHANNEL_USERNAME
-                channel_prices = await _read_channel_currency(CURRENCY_CHANNEL_USERNAME) if CURRENCY_CHANNEL_USERNAME else None
+                channel_prices = await _read_channel_currency()
                 
                 if channel_prices and target_code in channel_prices:
-                    free_target_to_irr = channel_prices[target_code]
-                    free_usd_to_irr = channel_prices.get("USD", usd_to_irr)
-                    logger.info(f"💰 Using Telegram channel price for {target_code}")
+                    # قیمت مستقیم از کانال (تبدیل شده به ریال)
+                    market_price = channel_prices[target_code]
+                    market_toman = market_price / 10
+                    logger.info(f"💰 Using Telegram channel price for {target_code}: {market_price} IRR")
                 else:
-                    # گرفتن نرخ آزاد برای قیمت بازار
-                    try:
-                        fm_resp = await client.get(
-                            "https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json",
-                        )
-                        if fm_resp.status_code == 200:
-                            fm_data = fm_resp.json()
-                            free_usd_to_irr = fm_data.get("usd", {}).get("irr", usd_to_irr)
-                        else:
-                            free_usd_to_irr = usd_to_irr
-                    except Exception:
-                        free_usd_to_irr = usd_to_irr
-                    free_target_to_irr = free_usd_to_irr / target_to_usd if target_code != "USD" else free_usd_to_irr
+                    # fallback به API بین‌المللی
+                    market_price = usd_to_irr / target_to_usd if target_code != "USD" else usd_to_irr
+                    market_toman = market_price / 10
+                    logger.info(f"💰 Fallback to API for {target_code}: {market_price} IRR")
                 
                 # قیمت بازار = نرخ آزاد × نرخ ارز
                 free_target_to_irr = free_usd_to_irr / target_to_usd if target_code != "USD" else free_usd_to_irr
                 market_toman = free_target_to_irr / 10
                 
-                # سایر ارزها با نرخ بازار
-                free_eur_to_irr = free_usd_to_irr / rates.get("EUR", 1)
-                free_gbp_to_irr = free_usd_to_irr / rates.get("GBP", 1)
-                free_try_to_irr = free_usd_to_irr / rates.get("TRY", 1)
+                # سایر ارزها از کانال
+                eur_price = channel_prices.get("EUR", 0) / 10 if channel_prices and "EUR" in channel_prices else rates.get("EUR", 0)
+                gbp_price = channel_prices.get("GBP", 0) / 10 if channel_prices and "GBP" in channel_prices else rates.get("GBP", 0)
+                try_price = channel_prices.get("TRY", 0) / 10 if channel_prices and "TRY" in channel_prices else rates.get("TRY", 0)
+                usdt_price = channel_prices.get("USDT", 0) / 10 if channel_prices and "USDT" in channel_prices else 0
+                
+                # فرمت قیمت‌ها
+                price_lines = []
+                if eur_price > 0: price_lines.append(f"   💶 یورو: {eur_price:,.0f} تومان")
+                if gbp_price > 0: price_lines.append(f"   💷 پوند: {gbp_price:,.0f} تومان")
+                if try_price > 0: price_lines.append(f"   💴 لیر: {try_price:,.0f} تومان")
+                if usdt_price > 0: price_lines.append(f"   💵 تتر: {usdt_price:,.0f} تومان")
+                other_prices = "\n".join(price_lines)
+                
+                source = "📊 منبع: @Price33" if channel_prices else f"📊 منبع: Exchange Rate API"
                 
                 result = (
                     f"💰 قیمت {target_name} ({target_symbol})\n"
                     f"━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-                    f"📊 نرخ بازار (آزاد):\n"
-                    f"   {free_target_to_irr:,.0f} ریال\n"
-                    f"   ({market_toman:,.0f} تومان)\n\n"
-                    f"🏦 نرخ رسمی (بانک مرکزی):\n"
-                    f"   {target_to_irr_official:,.0f} ریال ({target_to_irr_official/10:,.0f} تومان)\n\n"
-                    f"📊 سایر ارزها (بازار):\n"
-                    f"   💵 دلار: {free_usd_to_irr:,.0f} ریال\n"
-                    f"   💶 یورو: {free_eur_to_irr:,.0f} ریال\n"
-                    f"   💷 پوند: {free_gbp_to_irr:,.0f} ریال\n"
-                    f"   💴 لیر: {free_try_to_irr:,.0f} ریال\n\n"
-                    f"📅 تاریخ: {date}\n"
-                    f"📊 منبع: Exchange Rate API\n\n"
-                    f"⚠️ قیمت تقریبی است. برای قیمت دقیق، صرافی‌ها رو چک کنید."
+                    f"📊 قیمت بازار:\n"
+                    f"   {market_toman:,.0f} تومان\n"
+                    f"   ({market_price:,.0f} ریال)\n\n"
+                    f"🏦 نرخ رسمی:\n"
+                    f"   {target_to_irr_official/10:,.0f} تومان\n\n"
+                    f"📊 سایر ارزها:\n"
+                    f"{other_prices}\n\n"
+                    f"📅 {date}\n"
+                    f"{source}"
                 )
                 return result
     except Exception as e:
@@ -904,62 +903,79 @@ async def _currency_api_search(query: str) -> str | None:
     return None
 
 
-# ─── خواندن قیمت ارز از کانال تلگرام ──────────────────────────────────────
+# ─── خواندن قیمت ارز از کانال تلگرام (@Price33) ────────────────────────────
 
-async def _read_channel_currency(channel_username: str) -> dict | None:
-    """خواندن آخرین قیمت ارز از کانال تلگرام"""
+async def _read_channel_currency(channel_username: str = "Price33") -> dict | None:
+    """خواندن آخرین قیمت ارز از کانال تلگرام با اسکرپر وب"""
     import httpx
     import re
     
     try:
-        from config import TELEGRAM_BOT_TOKEN
-        async with httpx.AsyncClient(timeout=15) as client:
-            # دریافت آخرین پیام‌های کانال
-            resp = await client.get(
-                f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getUpdates",
-                params={"limit": 10, "allowed_updates": '["channel_post"]'},
-            )
+        url = f"https://t.me/s/{channel_username}"
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
+        
+        async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
+            resp = await client.get(url, headers=headers)
             if resp.status_code != 200:
+                logger.warning(f"Channel scrape failed: HTTP {resp.status_code}")
                 return None
             
-            data = resp.json()
-            if not data.get("ok"):
+            html = resp.text
+            
+            # پیدا کردن آخرین پیام
+            messages = re.findall(r'<div class="tgme_widget_message_text[^"]*"[^>]*>(.*?)</div>', html, re.DOTALL)
+            if not messages:
+                logger.warning("No messages found in channel")
                 return None
             
-            # جستجو در پیام‌ها برای قیمت ارز
+            last_msg = messages[-1]  # آخرین پیام
+            
+            # تبدیل اعداد عربی/فارسی به انگلیسی
+            arabic_nums = "٠١٢٣٤٥٦٧٨٩"
+            persian_nums = "۰۱۲۳۴۵۶۷۸۹"
+            for i, (ar, fa) in enumerate(zip(arabic_nums, persian_nums)):
+                last_msg = last_msg.replace(ar, str(i)).replace(fa, str(i))
+            
+            # حذف HTML tags
+            last_msg = re.sub(r'<[^>]+>', '', last_msg)
+            
+            # الگوهای استخراج قیمت (تومان)
+            # فرمت: يورو : 214,000 یا دلار آمريکا : 187,300
+            patterns = [
+                (r"(?:يورو|یورو)[:\s]*(\d[\d,]+)", "EUR"),
+                (r"(?:دلار|دلار آمريکا|دلار آمریکا)[:\s]*(\d[\d,]+)", "USD"),
+                (r"(?:تتر|USDT)[:\s]*(\d[\d,]+)", "USDT"),
+                (r"(?:پوند|پوند انگليس|پوند انگلیس)[:\s]*(\d[\d,]+)", "GBP"),
+                (r"(?:درهم|درهم امارات)[:\s]*(\d[\d,]+)", "AED"),
+                (r"(?:يوآن|یوان|يوآن چين|یوان چین)[:\s]*(\d[\d,]+)", "CNY"),
+                (r"(?:لير|لير ترکيه|لیر ترکیه)[:\s]*(\d[\d,]+)", "TRY"),
+                (r"(?:دینار|دینار کویت)[:\s]*(\d[\d,]+)", "KWD"),
+            ]
+            
             prices = {}
-            for update in data.get("result", []):
-                post = update.get("channel_post", {})
-                text = post.get("text", "")
-                chat = post.get("chat", {})
-                username = chat.get("username", "")
-                
-                # فقط کانال‌های مرتبط با قیمت ارز
-                if username not in channel_username:
-                    continue
-                
-                # استخراج قیمت‌ها با regex
-                # الگو: دلار: ۱۲۳,۴۵۶ یا $123,456 یا 123456 تومان
-                patterns = [
-                    (r"دلار[:\s]*(\d[\d,]+)", "USD"),
-                    (r"یورو[:\s]*(\d[\d,]+)", "EUR"),
-                    (r"پوند[:\s]*(\d[\d,]+)", "GBP"),
-                    (r"لیر[:\s]*(\d[\d,]+)", "TRY"),
-                    (r"تتر[:\s]*(\d[\d,]+)", "USDT"),
-                ]
-                
-                for pattern, code in patterns:
-                    match = re.search(pattern, text)
-                    if match:
-                        price_str = match.group(1).replace(",", "")
-                        try:
-                            prices[code] = int(price_str)
-                        except ValueError:
-                            pass
+            for pattern, code in patterns:
+                match = re.search(pattern, last_msg)
+                if match:
+                    price_str = match.group(1).replace(",", "")
+                    try:
+                        # قیمت به تومان است، ضرب در 10 برای ریال
+                        prices[code] = int(price_str) * 10
+                        logger.info(f"💰 Channel price: {code} = {prices[code]} IRR")
+                    except ValueError:
+                        pass
+            
+            if prices:
+                logger.info(f"✅ Loaded {len(prices)} prices from @{channel_username}")
+            else:
+                logger.warning(f"No prices found in channel message: {last_msg[:200]}")
             
             return prices if prices else None
     except Exception as e:
         logger.warning(f"channel currency read failed: {e}")
+        import traceback
+        logger.warning(f"traceback: {traceback.format_exc()}")
     return None
 
 
