@@ -944,7 +944,7 @@ async def _currency_api_search(query: str) -> str | None:
                 if gbp_price > 0: other_lines.append(f"   💷 پوند: {gbp_price:,.0f} تومان")
                 other_prices = "\n".join(other_lines)
                 
-                source = "📊 منبع: @Price33" if channel_prices else "📊 منبع: CoinGecko"
+                source = ""
                 
                 result = (
                     f"💰 قیمت تتر (USDT)\n"
@@ -991,7 +991,7 @@ async def _currency_api_search(query: str) -> str | None:
                 if usdt_price > 0: price_lines.append(f"   💵 تتر: {usdt_price:,.0f} تومان")
                 other_prices = "\n".join(price_lines)
                 
-                source = "📊 منبع: @Price33" if channel_prices else f"📊 منبع: Exchange Rate API"
+                source = ""
                 
                 result = (
                     f"💰 قیمت {target_name} ({target_symbol})\n"
