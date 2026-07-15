@@ -586,7 +586,7 @@ async def search_web_fallback(question: str) -> str | None:
             # related topics
             for t in (data.get("RelatedTopics") or [])[:WEB_SEARCH_MAX_RESULTS]:
                 if isinstance(t, dict) and t.get("Text"):
-                    snippets.append(t["Text"][:250])
+                    snippets.append({"title": "", "url": t.get("FirstURL", ""), "snippet": t["Text"][:250]})
             logger.info(f"DDG: {len(snippets)} related snippets")
     except Exception as e:
         logger.warning(f"duckduckgo instant answer failed: {e}")
@@ -603,17 +603,27 @@ async def search_web_fallback(question: str) -> str | None:
     # ۲-ب. اگه DDG کار نکرد (احتمالاً فیلتر)، Google search رو امتحان کن
     if not snippets:
         try:
-            google_snippets = await _google_search(question, WEB_SEARCH_MAX_RESULTS)
-            snippets.extend(google_snippets)
-            logger.info(f"Google: {len(google_snippets)} snippets")
+            google_results = await _google_search(question, WEB_SEARCH_MAX_RESULTS)
+            snippets.extend(google_results)
+            logger.info(f"Google: {len(google_results)} results")
         except Exception as e:
             logger.warning(f"google search failed: {e}")
 
-    # ۲-ج. اگه Google هم کار نکرد، Wikipedia API رو امتحان کن
+    # ۲-ج. اگه Google هم کار نکرد، Bing search رو امتحان کن
+    if not snippets:
+        try:
+            bing_results = await _bing_search(question, WEB_SEARCH_MAX_RESULTS)
+            snippets.extend(bing_results)
+            logger.info(f"Bing: {len(bing_results)} results")
+        except Exception as e:
+            logger.warning(f"bing search failed: {e}")
+
+    # ۲-د. اگه Bing هم کار نکرد، Wikipedia API رو امتحان کن
     if not snippets:
         try:
             wiki_snippets = await _wikipedia_search(question, WEB_SEARCH_MAX_RESULTS)
-            snippets.extend(wiki_snippets)
+            for s in wiki_snippets:
+                snippets.append({"title": "", "url": "", "snippet": s})
             logger.info(f"Wikipedia: {len(wiki_snippets)} snippets")
         except Exception as e:
             logger.warning(f"wikipedia search failed: {e}")
@@ -628,8 +638,21 @@ async def search_web_fallback(question: str) -> str | None:
         await _cache_web_answer(question, summary)
         return summary
 
-    # ۴. fallback: فقط snippet‌ها رو بچسبون
-    text = "🔍 یافته‌های مرتبط از وب:\n\n" + "\n\n".join(snippets)
+    # ۴. fallback: فقط snippet‌ها و لینک‌ها رو نشون بده
+    text = "🔍 یافته‌های مرتبط از وب:\n\n"
+    for s in snippets[:5]:
+        if isinstance(s, dict):
+            title = s.get("title", "")
+            url = s.get("url", "")
+            snippet = s.get("snippet", "")
+            if title:
+                text += f"📌 {title}\n"
+            if url:
+                text += f"🔗 {url}\n"
+            if snippet:
+                text += f"{snippet}\n\n"
+        else:
+            text += f"{s}\n\n"
     await _cache_web_answer(question, text)
     return text
 
@@ -1038,13 +1061,14 @@ async def _yandex_search(query: str, max_results: int = 3) -> list[str]:
 
 # ─── Google Search (وقتی DDG فیلتره) ──────────────────────────────────────────
 
-async def _google_search(query: str, max_results: int = 3) -> list[str]:
-    """استخراج snippet از Google Search"""
+async def _google_search(query: str, max_results: int = 5) -> list[dict]:
+    """استخراج snippet + URL از Google Search"""
     import httpx
     import re as _re
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
+    results = []
     try:
         async with httpx.AsyncClient(timeout=15, headers=headers, follow_redirects=True) as client:
             resp = await client.get(
@@ -1054,48 +1078,63 @@ async def _google_search(query: str, max_results: int = 3) -> list[str]:
             logger.info(f"Google search: HTTP {resp.status_code}")
             if resp.status_code != 200:
                 return []
-            snippets = []
-            # Multiple regex patterns for different Google layouts
-            patterns = [
-                r'<div[^>]*class="BNeawe[^"]*"[^>]*>(.*?)</div>',
+            
+            html = resp.text
+            
+            # استخراج لینک‌ها و عنوان‌ها
+            # الگوی اصلی: <a href="/url?q=URL...">TITLE</a>
+            link_pattern = r'<a[^>]*href="/url\?q=([^&"]+)[^"]*"[^>]*>(.*?)</a>'
+            links = _re.findall(link_pattern, html, _re.DOTALL)
+            
+            # الگوی snippets
+            snippet_patterns = [
                 r'<div[^>]*class="[^"]*VwiC3b[^"]*"[^>]*>(.*?)</div>',
+                r'<div[^>]*class="[^"]*BNeawe[^"]*"[^>]*>(.*?)</div>',
                 r'<span[^>]*class="[^"]*aCOpRe[^"]*"[^>]*>(.*?)</span>',
-                r'<div[^>]*data-sncf="[^"]*"[^>]*>(.*?)</div>',
             ]
-            for pattern in patterns:
-                if snippets:
-                    break
-                matches = _re.findall(pattern, resp.text, _re.DOTALL)
-                for m in matches[:max_results]:
-                    clean = _re.sub(r"<[^>]+>", "", m).strip()
-                    if clean and len(clean) > 30 and not clean.startswith("http"):
-                        snippets.append(clean[:300])
-            # final fallback
-            if not snippets:
-                matches = _re.findall(
-                    r'<span[^>]*>(.*?)</span>',
-                    resp.text,
-                    _re.DOTALL,
-                )
-                for m in matches[:max_results * 3]:
-                    clean = _re.sub(r"<[^>]+>", "", m).strip()
-                    if clean and len(clean) > 50 and not clean.startswith("http"):
-                        snippets.append(clean[:300])
-            return snippets[:max_results]
+            
+            # ترکیب لینک‌ها و snippets
+            for url, title in links[:max_results * 2]:
+                if not url.startswith("http"):
+                    continue
+                title_clean = _re.sub(r"<[^>]+>", "", title).strip()
+                if not title_clean or len(title_clean) < 5:
+                    continue
+                
+                # پیدا کردن snippet مرتبط
+                snippet = ""
+                for pattern in snippet_patterns:
+                    match = _re.search(pattern, html)
+                    if match:
+                        snippet = _re.sub(r"<[^>]+>", "", match.group(1)).strip()
+                        if snippet and len(snippet) > 20:
+                            break
+                
+                if title_clean:
+                    results.append({
+                        "title": title_clean[:100],
+                        "url": url[:200],
+                        "snippet": snippet[:300] if snippet else ""
+                    })
+                    if len(results) >= max_results:
+                        break
+            
+            logger.info(f"Google: {len(results)} results with URLs")
     except Exception as e:
         logger.warning(f"Google search failed: {e}")
-        return []
+    return results
 
 
 # ─── Bing Search (وقتی DDG و Google فیلترن) ──────────────────────────────────
 
-async def _bing_search(query: str, max_results: int = 3) -> list[str]:
-    """استخراج snippet از Bing Search"""
+async def _bing_search(query: str, max_results: int = 5) -> list[dict]:
+    """استخراج snippet + URL از Bing Search"""
     import httpx
     import re as _re
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
+    results = []
     try:
         async with httpx.AsyncClient(timeout=15, headers=headers, follow_redirects=True) as client:
             resp = await client.get(
@@ -1105,57 +1144,69 @@ async def _bing_search(query: str, max_results: int = 3) -> list[str]:
             logger.info(f"Bing search: HTTP {resp.status_code}")
             if resp.status_code != 200:
                 return []
-            snippets = []
-            matches = _re.findall(
-                r'<p[^>]*>(.*?)</p>',
-                resp.text,
-                _re.DOTALL,
-            )
-            for m in matches[:max_results * 2]:
-                clean = _re.sub(r"<[^>]+>", "", m).strip()
-                if clean and len(clean) > 50 and not clean.startswith("http"):
-                    snippets.append(clean[:300])
-            if not snippets:
-                matches = _re.findall(
-                    r'<div[^>]*class="[^"]*b_caption[^"]*"[^>]*>(.*?)</div>',
-                    resp.text,
-                    _re.DOTALL,
-                )
-                for m in matches[:max_results]:
-                    clean = _re.sub(r"<[^>]+>", "", m).strip()
-                    if clean and len(clean) > 30:
-                        snippets.append(clean[:300])
-            return snippets[:max_results]
+            
+            html = resp.text
+            
+            # استخراج لینک‌ها و snippets
+            # Bing: <li class="b_algo"> <h2><a href="URL">TITLE</a></h2> <p>SNIPPET</p>
+            pattern = r'<li class="b_algo">\s*<h2><a href="([^"]+)"[^>]*>(.*?)</a></h2>\s*(?:<p>(.*?)</p>)?'
+            matches = _re.findall(pattern, html, re.DOTALL)
+            
+            for url, title, snippet in matches[:max_results]:
+                title_clean = _re.sub(r"<[^>]+>", "", title).strip()
+                snippet_clean = _re.sub(r"<[^>]+>", "", snippet).strip() if snippet else ""
+                if title_clean:
+                    results.append({
+                        "title": title_clean[:100],
+                        "url": url[:200],
+                        "snippet": snippet_clean[:300]
+                    })
+            
+            logger.info(f"Bing: {len(results)} results with URLs")
     except Exception as e:
         logger.warning(f"Bing search failed: {e}")
-        return []
+    return results
 
 
-async def _ddg_html_search(query: str, max_results: int = 3) -> list[str]:
-    """استخراج snippet از صفحه HTML DuckDuckGo"""
+async def _ddg_html_search(query: str, max_results: int = 5) -> list[dict]:
+    """استخراج snippet + URL از DuckDuckGo HTML"""
     import httpx
     import re as _re
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
     }
+    results = []
     async with httpx.AsyncClient(timeout=15, headers=headers) as client:
         resp = await client.get(
             "https://html.duckduckgo.com/html/",
             params={"q": query},
         )
-    # snippet‌ها داخل تگ a class="result__a" و div class="result__snippet"
-    snippets = []
-    matches = _re.findall(
-        r'class="result__snippet"[^>]*>(.*?)</a>',
-        resp.text,
-        _re.DOTALL,
-    )
-    for m in matches[:max_results]:
-        # حذف تگ‌های HTML
-        clean = _re.sub(r"<[^>]+>", "", m).strip()
-        if clean and len(clean) > 20:
-            snippets.append(clean[:300])
-    return snippets
+    
+    html = resp.text
+    
+    # استخراج لینک‌ها و snippets
+    # DDG: <a class="result__a" href="URL">TITLE</a> <a class="result__snippet">SNIPPET</a>
+    link_pattern = r'<a[^>]*class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)</a>'
+    snippet_pattern = r'<a[^>]*class="result__snippet"[^>]*>(.*?)</a>'
+    
+    links = _re.findall(link_pattern, html, re.DOTALL)
+    snippets_raw = _re.findall(snippet_pattern, html, re.DOTALL)
+    
+    for i, (url, title) in enumerate(links[:max_results]):
+        title_clean = _re.sub(r"<[^>]+>", "", title).strip()
+        snippet_clean = ""
+        if i < len(snippets_raw):
+            snippet_clean = _re.sub(r"<[^>]+>", "", snippets_raw[i]).strip()
+        
+        if title_clean:
+            results.append({
+                "title": title_clean[:100],
+                "url": url[:200],
+                "snippet": snippet_clean[:300]
+            })
+    
+    logger.info(f"DDG HTML: {len(results)} results with URLs")
+    return results
 
 
 async def _wikipedia_search(query: str, max_results: int = 3) -> list[str]:
@@ -1193,33 +1244,53 @@ async def _wikipedia_search(query: str, max_results: int = 3) -> list[str]:
     return snippets
 
 
-async def _summarize_snippets(question: str, snippets: list[str]) -> str | None:
-    """استفاده از AI برای خلاصه‌سازی نتایج وب به جواب واحد"""
-    context = "\n\n".join(f"[{i+1}] {s}" for i, s in enumerate(snippets))
+async def _summarize_snippets(question: str, snippets: list[dict]) -> str | None:
+    """استفاده از AI برای خلاصه‌سازی نتایج وب به جواب واحد با لینک"""
+    # ساخت context با لینک‌ها
+    context_parts = []
+    urls = []
+    for i, s in enumerate(snippets):
+        if isinstance(s, dict):
+            title = s.get("title", "")
+            url = s.get("url", "")
+            snippet = s.get("snippet", "")
+            context_parts.append(f"[{i+1}] {title}\n{snippet}")
+            if url:
+                urls.append(f"🔗 {title}: {url}")
+        else:
+            context_parts.append(f"[{i+1}] {s}")
+    
+    context = "\n\n".join(context_parts)
+    urls_text = "\n".join(urls[:5]) if urls else ""
+    
     prompt = (
         f"بر اساس این نتایج جست‌وجو، به سوال زیر پاسخ بده:\n\n"
         f"سوال: {question}\n\n"
         f"نتایج جست‌وجو:\n{context}\n\n"
         "پاسخ رو به فارسی و بر اساس این اطلاعات بنویس. "
         "اگه اطلاعات کافی نیست، صادقانه بگو. "
-        "منابع رو در انتهای پاسخ ذکر کن."
+        "لینک‌های مرتبط رو در انتهای پاسخ قرار بده."
     )
+    
+    answer = None
     # اول Groq
     if _groq_client:
         try:
             answer = await _generate_groq_general(prompt)
-            if answer:
-                return "🌐 (بر اساس جست‌وجو در وب)\n\n" + answer
         except Exception as e:
             logger.warning(f"Groq summarize failed: {e}")
     # fallback Gemini
-    if _gemini_model:
+    if not answer and _gemini_model:
         try:
             answer = await _generate_gemini_general(prompt)
-            if answer:
-                return "🌐 (بر اساس جست‌وجو در وب)\n\n" + answer
         except Exception as e:
             logger.warning(f"Gemini summarize failed: {e}")
+    
+    if answer:
+        result = "🌐 (بر اساس جست‌وجو در وب)\n\n" + answer
+        if urls_text:
+            result += f"\n\n📌 لینک‌های مرتبط:\n{urls_text}"
+        return result
     return None
 
 
