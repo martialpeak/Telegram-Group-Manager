@@ -713,12 +713,12 @@ async def _currency_api_search(query: str) -> str | None:
                 gbp_to_irr = usd_to_irr / rates.get("GBP", 1)
                 
                 result = (
-                    f"💰 <b>قیمت {target_name} ({target_symbol})</b>\n"
+                    f"💰 قیمت {target_name} ({target_symbol})\n"
                     f"━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-                    f"💵 <b>نرخ رسمی:</b>\n"
+                    f"💵 نرخ رسمی:\n"
                     f"   {target_to_irr:,.0f} ریال\n"
                     f"   ({toman:,.0f} تومان)\n\n"
-                    f"📊 <b>سایر ارزها:</b>\n"
+                    f"📊 سایر ارزها:\n"
                     f"   💵 دلار: {usd_to_irr:,.0f} ریال\n"
                     f"   💶 یورو: {eur_to_irr:,.0f} ریال\n"
                     f"   💷 پوند: {gbp_to_irr:,.0f} ریال\n\n"
