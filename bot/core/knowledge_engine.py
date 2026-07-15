@@ -884,14 +884,10 @@ async def _currency_api_search(query: str) -> str | None:
                     market_toman = market_price / 10
                     logger.info(f"💰 Fallback to API for {target_code}: {market_price} IRR")
                 
-                # قیمت بازار = نرخ آزاد × نرخ ارز
-                free_target_to_irr = free_usd_to_irr / target_to_usd if target_code != "USD" else free_usd_to_irr
-                market_toman = free_target_to_irr / 10
-                
                 # سایر ارزها از کانال
-                eur_price = channel_prices.get("EUR", 0) / 10 if channel_prices and "EUR" in channel_prices else rates.get("EUR", 0)
-                gbp_price = channel_prices.get("GBP", 0) / 10 if channel_prices and "GBP" in channel_prices else rates.get("GBP", 0)
-                try_price = channel_prices.get("TRY", 0) / 10 if channel_prices and "TRY" in channel_prices else rates.get("TRY", 0)
+                eur_price = channel_prices.get("EUR", 0) / 10 if channel_prices and "EUR" in channel_prices else 0
+                gbp_price = channel_prices.get("GBP", 0) / 10 if channel_prices and "GBP" in channel_prices else 0
+                try_price = channel_prices.get("TRY", 0) / 10 if channel_prices and "TRY" in channel_prices else 0
                 usdt_price = channel_prices.get("USDT", 0) / 10 if channel_prices and "USDT" in channel_prices else 0
                 
                 # فرمت قیمت‌ها
@@ -948,7 +944,7 @@ async def _read_channel_currency(channel_username: str = "Price33") -> dict | No
             html = resp.text
             
             # پیدا کردن آخرین پیام
-            messages = re.findall(r'<div class="tgme_widget_message_text[^"]*"[^>]*>(.*?)</div>', html, re.DOTALL)
+            messages = _re.findall(r'<div class="tgme_widget_message_text[^"]*"[^>]*>(.*?)</div>', html, _re.DOTALL)
             if not messages:
                 logger.warning("No messages found in channel")
                 return None
@@ -1150,7 +1146,7 @@ async def _bing_search(query: str, max_results: int = 5) -> list[dict]:
             # استخراج لینک‌ها و snippets
             # Bing: <li class="b_algo"> <h2><a href="URL">TITLE</a></h2> <p>SNIPPET</p>
             pattern = r'<li class="b_algo">\s*<h2><a href="([^"]+)"[^>]*>(.*?)</a></h2>\s*(?:<p>(.*?)</p>)?'
-            matches = _re.findall(pattern, html, re.DOTALL)
+            matches = _re.findall(pattern, html, _re.DOTALL)
             
             for url, title, snippet in matches[:max_results]:
                 title_clean = _re.sub(r"<[^>]+>", "", title).strip()
@@ -1189,8 +1185,8 @@ async def _ddg_html_search(query: str, max_results: int = 5) -> list[dict]:
     link_pattern = r'<a[^>]*class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)</a>'
     snippet_pattern = r'<a[^>]*class="result__snippet"[^>]*>(.*?)</a>'
     
-    links = _re.findall(link_pattern, html, re.DOTALL)
-    snippets_raw = _re.findall(snippet_pattern, html, re.DOTALL)
+    links = _re.findall(link_pattern, html, _re.DOTALL)
+    snippets_raw = _re.findall(snippet_pattern, html, _re.DOTALL)
     
     for i, (url, title) in enumerate(links[:max_results]):
         title_clean = _re.sub(r"<[^>]+>", "", title).strip()
