@@ -1042,37 +1042,6 @@ async def cmd_setpunishment(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             restriction_text = "🔓 دسترسی کامل برگردانده شد"
         elif rank_arg == "warning":
-            # تحت نظر → فقط متن
-            permissions = CP(
-                can_send_messages=True,
-                can_send_audios=False,
-                can_send_documents=False,
-                can_send_photos=False,
-                can_send_videos=False,
-                can_send_video_notes=False,
-                can_send_voice_notes=False,
-                can_send_polls=False,
-                can_send_other_messages=False,
-                can_add_web_page_previews=False,
-            )
-            restriction_text = "⚠️ فقط ارسال متن مجازه"
-        elif rank_arg == "probation":
-            # آزمایشی → فقط متن کوتاه
-            permissions = CP(
-                can_send_messages=True,
-                can_send_audios=False,
-                can_send_documents=False,
-                can_send_photos=False,
-                can_send_videos=False,
-                can_send_video_notes=False,
-                can_send_voice_notes=False,
-                can_send_polls=False,
-                can_send_other_messages=False,
-                can_add_web_page_previews=False,
-            )
-            restriction_text = "🥉 فقط متن مجازه (حداکثر ۳ پیام در روز)"
-        elif rank_arg == "restricted":
-            # محدود → فقط خواندن
             permissions = CP(
                 can_send_messages=False,
                 can_send_audios=False,
@@ -1085,9 +1054,36 @@ async def cmd_setpunishment(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 can_send_other_messages=False,
                 can_add_web_page_previews=False,
             )
-            restriction_text = "🔇 فقط خواندن (ارسال پیام ممنوع)"
+            restriction_text = "🔇 سکوت (ارسال هر نوع پیام ممنوع)"
+        elif rank_arg == "probation":
+            permissions = CP(
+                can_send_messages=False,
+                can_send_audios=False,
+                can_send_documents=False,
+                can_send_photos=False,
+                can_send_videos=False,
+                can_send_video_notes=False,
+                can_send_voice_notes=False,
+                can_send_polls=False,
+                can_send_other_messages=False,
+                can_add_web_page_previews=False,
+            )
+            restriction_text = "🔇 سکوت (حداکثر ۳ پیام در روز از ربات)"
+        elif rank_arg == "restricted":
+            permissions = CP(
+                can_send_messages=False,
+                can_send_audios=False,
+                can_send_documents=False,
+                can_send_photos=False,
+                can_send_videos=False,
+                can_send_video_notes=False,
+                can_send_voice_notes=False,
+                can_send_polls=False,
+                can_send_other_messages=False,
+                can_add_web_page_previews=False,
+            )
+            restriction_text = "🔇 فقط خواندن (کاملاً سکوت)"
         elif rank_arg == "banned":
-            # ممنوع → مسدود کامل
             permissions = CP(
                 can_send_messages=False,
                 can_send_audios=False,
