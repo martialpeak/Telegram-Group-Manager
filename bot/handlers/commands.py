@@ -1102,12 +1102,23 @@ async def cmd_setpunishment(update: Update, context: ContextTypes.DEFAULT_TYPE):
             restriction_text = ""
 
         if permissions is not None:
-            await context.bot.restrict_chat_member(
-                chat_id=chat_id,
-                user_id=target_id,
-                permissions=permissions,
-            )
+            import logging as _log_mod
+            _log2 = _log_mod.getLogger("setpunishment")
+            _log2.info(f"🔒 Restricting user {target_id} in chat {chat_id} with rank={rank_arg}")
+            try:
+                await context.bot.restrict_chat_member(
+                    chat_id=chat_id,
+                    user_id=target_id,
+                    permissions=permissions,
+                )
+                _log2.info(f"✅ restrict_chat_member SUCCESS for {target_id}")
+            except Exception as restrict_err:
+                _log2.error(f"❌ restrict_chat_member FAILED: {restrict_err}")
+                restriction_text = f"⚠️ خطا: {restrict_err}"
     except Exception as e:
+        _log_mod = __import__("logging")
+        _log2 = _log_mod.getLogger("setpunishment")
+        _log2.error(f"❌ Error in restrict block: {e}")
         restriction_text = f"⚠️ خطا در اعمال محدودیت: {e}"
 
     await update.message.reply_text(
