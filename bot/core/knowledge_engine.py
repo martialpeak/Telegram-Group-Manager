@@ -545,15 +545,23 @@ async def search_web_fallback(question: str) -> str | None:
 
     # ۰. اگه سوال مربوط به قیمت ارز هست، اول API مستقیم رو امتحان کن
     currency_keywords = ["دلار", "یورو", "پوند", "لیر", "درهم", "یوان", "ین", "ارز", "نرخ ارز"]
-    if any(kw in question for kw in currency_keywords):
+    is_currency = any(kw in question for kw in currency_keywords)
+    logger.info(f"💰 currency check: question='{question[:30]}', is_currency={is_currency}")
+    if is_currency:
         try:
+            logger.info("💰 calling _currency_api_search...")
             currency_result = await _currency_api_search(question)
+            logger.info(f"💰 currency_result type: {type(currency_result)}, value: {str(currency_result)[:100]}")
             if currency_result:
                 logger.info("✅ Currency API returned result")
                 await _cache_web_answer(question, currency_result)
                 return currency_result
+            else:
+                logger.warning("💰 Currency API returned None")
         except Exception as e:
             logger.warning(f"currency API search failed: {e}")
+            import traceback
+            logger.warning(f"currency API traceback: {traceback.format_exc()}")
 
     # ۱. DuckDuckGo Instant Answer API
     try:
