@@ -1017,8 +1017,107 @@ async def cmd_setpunishment(update: Update, context: ContextTypes.DEFAULT_TYPE):
     rank_info = get_rank_config(rank_arg)
     limit = "نامحدود" if rank_info.daily_limit == -1 else str(rank_info.daily_limit)
 
+    # ─── اعمال محدودیت واقعی تلگرام ─────────────────────────────
+    from telegram.constants import ChatPermissions
+    from telegram import ChatPermissions as CP
+
+    try:
+        if rank_arg == "clean":
+            # پاک کردن → دسترسی کامل
+            permissions = CP(
+                can_send_messages=True,
+                can_send_audios=True,
+                can_send_documents=True,
+                can_send_photos=True,
+                can_send_videos=True,
+                can_send_video_notes=True,
+                can_send_voice_notes=True,
+                can_send_polls=True,
+                can_send_other_messages=True,
+                can_add_web_page_previews=True,
+                can_change_info=True,
+                can_invite_users=True,
+                can_pin_messages=True,
+                can_manage_topics=True,
+            )
+            restriction_text = "🔓 دسترسی کامل برگردانده شد"
+        elif rank_arg == "warning":
+            # تحت نظر → فقط متن
+            permissions = CP(
+                can_send_messages=True,
+                can_send_audios=False,
+                can_send_documents=False,
+                can_send_photos=False,
+                can_send_videos=False,
+                can_send_video_notes=False,
+                can_send_voice_notes=False,
+                can_send_polls=False,
+                can_send_other_messages=False,
+                can_add_web_page_previews=False,
+            )
+            restriction_text = "⚠️ فقط ارسال متن مجازه"
+        elif rank_arg == "probation":
+            # آزمایشی → فقط متن کوتاه
+            permissions = CP(
+                can_send_messages=True,
+                can_send_audios=False,
+                can_send_documents=False,
+                can_send_photos=False,
+                can_send_videos=False,
+                can_send_video_notes=False,
+                can_send_voice_notes=False,
+                can_send_polls=False,
+                can_send_other_messages=False,
+                can_add_web_page_previews=False,
+            )
+            restriction_text = "🥉 فقط متن مجازه (حداکثر ۳ پیام در روز)"
+        elif rank_arg == "restricted":
+            # محدود → فقط خواندن
+            permissions = CP(
+                can_send_messages=False,
+                can_send_audios=False,
+                can_send_documents=False,
+                can_send_photos=False,
+                can_send_videos=False,
+                can_send_video_notes=False,
+                can_send_voice_notes=False,
+                can_send_polls=False,
+                can_send_other_messages=False,
+                can_add_web_page_previews=False,
+            )
+            restriction_text = "🔇 فقط خواندن (ارسال پیام ممنوع)"
+        elif rank_arg == "banned":
+            # ممنوع → مسدود کامل
+            permissions = CP(
+                can_send_messages=False,
+                can_send_audios=False,
+                can_send_documents=False,
+                can_send_photos=False,
+                can_send_videos=False,
+                can_send_video_notes=False,
+                can_send_voice_notes=False,
+                can_send_polls=False,
+                can_send_other_messages=False,
+                can_add_web_page_previews=False,
+            )
+            restriction_text = "🚫 مسدود کامل"
+        else:
+            permissions = None
+            restriction_text = ""
+
+        if permissions is not None:
+            await context.bot.restrict_chat_member(
+                chat_id=chat_id,
+                user_id=target_id,
+                permissions=permissions,
+            )
+    except Exception as e:
+        restriction_text = f"⚠️ خطا در اعمال محدودیت: {e}"
+
     await update.message.reply_text(
-        f"✅ رنک جریمه {target_mention} به {get_rank_name(rank_arg)} تغییر کرد.\n\n"
+        f"✅ رنک جریمه {target_mention} به <b>{get_rank_name(rank_arg)}</b> تغییر کرد.\n\n"
+        f"{restriction_text}\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━\n"
         f"📊 محدودیت روزانه: {limit}\n"
         f"💬 سوال از ربات: {'✅' if rank_info.can_ask_bot else '❌'}\n"
         f"🔗 ارسال لینک: {'✅' if rank_info.can_send_link else '❌'}\n"
