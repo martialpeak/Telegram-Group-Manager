@@ -705,7 +705,8 @@ async def _currency_api_search(query: str) -> str | None:
                 else:
                     toman_str = f"{toman:.0f} تومان"
                 
-                date = data.get("time_last_update_utc", "نامشخص")[:10]
+                raw_date = data.get("time_last_update_utc", "نامشخص")
+                date = raw_date[:16] if len(raw_date) > 16 else raw_date
                 
                 # نرخ سایر ارزها
                 eur_to_irr = usd_to_irr / rates.get("EUR", 1)

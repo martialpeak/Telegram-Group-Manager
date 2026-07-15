@@ -476,11 +476,13 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     await message.reply_text(
                         f"{source_label} {answer_text}",
                         reply_markup=keyboard,
+                        parse_mode="HTML",
                     )
                 else:
                     await loading.edit_text(
                         f"{source_label} {answer_text}",
                         reply_markup=keyboard,
+                        parse_mode="HTML",
                     )
             except Exception as e:
                 logger.warning(f"loading edit failed: {e}")
@@ -492,6 +494,7 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await message.reply_text(
                     f"{source_label} {answer_text}",
                     reply_markup=keyboard,
+                    parse_mode="HTML",
                 )
 
         await db.log_message(
