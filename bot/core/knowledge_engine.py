@@ -686,14 +686,89 @@ async def _weather_search(question: str) -> str | None:
 
     # استخراج نام شهر
     city_map = {
-        "تهران": "Tehran", "مشهد": "Mashhad", "اصفهان": "Isfahan",
-        "شیراز": "Shiraz", "تبریز": "Tabriz", "اهواز": "Ahvaz",
-        "کرمان": "Kerman", "قم": "Qom", "کرج": "Karaj",
-        "زنجان": "Zanjan", "اردبیل": "Ardabil", "یزد": "Yazd",
-        "بوشهر": "Bushehr", "چابهار": "Chabahar", "بندرعباس": "Bandar-Abbas",
-        "سنندج": "Sanandaj", "همدان": "Hamadan", "اراک": "Arak",
-        "بیرجند": "Birjnd", "بجنورد": "Bojnurd", "گرگان": "Gorgan",
-        "رشت": "Rasht", "نیشابور": "Nishapur", "birjnd": "Birjnd",
+        # استان تهران
+        "تهران": "Tehran", "کرج": "Karaj", "ری": "Rey",
+        # استان خراسان
+        "مشهد": "Mashhad", "نیشابور": "Nishapur", "بیرجند": "Birjand",
+        "بجنورد": "Bojnurd", "درگز": "Dargaz", "قاین": "Qaen",
+        "تربت حیدریه": "Torbat-e Heydarieh", "سبزوار": "Sabzevar",
+        "فریمان": "Fariman", "خلیل‌آباد": "Khalilabad",
+        # استان اصفهان
+        "اصفهان": "Isfahan", "کاشان": "Kashan", "نائین": "Nain",
+        "خمینی‌شهر": "Khomeini-Shahr", "نجف‌آباد": "Najafabad",
+        "فولادشهر": "Fooladshahr", "ورزنه": "Varzaneh",
+        # استان فارس
+        "شیراز": "Shiraz", "جهرم": "Jahrom", "فسا": "Fasa",
+        "مرودشت": "Marvdasht", "لار": "Lar", "کازرون": "Kazerun",
+        "نی‌ریز": "Neyriz", "استهبان": "Esbieh", "ممسنی": "Mamasani",
+        # استان آذربایجان شرقی
+        "تبریز": "Tabriz", "مراغه": "Maragheh", "میانه": "Mianeh",
+        "اهر": "Ahar", "شبستر": "Shabestar", "بستان‌آباد": "Bostanabad",
+        "اهر": "Ahar", "هشترود": "Hashtrud",
+        # استان آذربایجان غربی
+        "ارومیه": "Urmia", "خوی": "Khoy", "میاندوآب": "Miandoab",
+        "بوکان": "Bukan", "سلماس": "Salmas", "پیرانشهر": "Piranshahr",
+        "نقده": "Naqadeh", "ماکو": "Maku", "تکاب": "Takab",
+        # استان خوزستان
+        "اهواز": "Ahvaz", "آبادان": "Abadan", "خرمشهر": "Khorramshahr",
+        "دزفول": "Dezful", "سوسنگرد": "Susangerd", "ماهشهر": "Mahshahr",
+        "بندرامام خمینی": "Bandar Imam Khomeini", "بهبهان": "Behbahan",
+        "ایذه": "Izeh", "رامهرمز": "Ramhormoz",
+        # استان کرمان
+        "کرمان": "Kerman", "رفسنجان": "Rafsanjan", " بم": "Bam",
+        "جیرفت": "Jiroft", "سیرجان": "Sirjan", "بافت": "Bafq",
+        "زرند": "Zarand", "کهنوج": "Kahnuj",
+        # استان مازندران
+        "ساری": "Sari", "بابل": "Babol", "آمل": "Amol",
+        "قائم‌شهر": "Qaemshahr", "نور": "Nur", "چالوس": "Chalus",
+        "رامسر": "Ramsar", "تنکابن": "Tonekabon", "نکا": "Neka",
+        "بهشهر": "Behshahr", "سوادکوه": "Savadkuh",
+        # استان گیلان
+        "رشت": "Rasht", "لاهیجان": "Lahijan", "انزلی": "Anzali",
+        "تالش": "Talesh", "آستارا": "Astara", "رودبار": "Rudbar",
+        "صومعه‌سرا": "Someh-Sara", "فومن": "Fuman", "ماسال": "Masal",
+        # استان کردستان
+        "سنندج": "Sanandaj", "مهاباد": "Mahabad", "بانه": "Baneh",
+        "سقندیس": "Saqqez", "مریوان": "Marivan", "قروه": "Qorveh",
+        "دیواندره": "Divandarreh", "بیجار": "Bijar",
+        # استان همدان
+        "همدان": "Hamadan", "ملایر": "Malayer", "نهاوند": "Nahavand",
+        "تویسرکان": "Toysarkan", "اسدآباد": "Asadabad",
+        # استان مرکزی
+        "اراک": "Arak", "ساوه": "Saveh", "خمین": "Khomeyn",
+        "دلیجان": "Delijan", "تفرش": "Tafresh", "آشتیان": "Ashtian",
+        # استان قم
+        "قم": "Qom",
+        # استان قزوین
+        "قزوین": "Qazvin", "البرز": "Alborz", "تاکستان": "Takestan",
+        # استان گلستان
+        "گرگان": "Gorgan", "گنبد کاووس": "Gonbad-Kavus", "آزادشهر": "Azadshahr",
+        "کلاله": "Kalaleh", "مینودشت": "Minoodasht",
+        # استان لرستان
+        "خرم‌آباد": "Khorramabad", "بروجرد": "Borujerd", "دورود": "Dorud",
+        "الیگودرز": "Aligudarz", "کوهدشت": "Kuhdasht",
+        # استان هرمزگان
+        "بندرعباس": "Bandar-Abbas", "میناب": "Minab", "رودان": "Rudan",
+        "جاسک": "Jask", "حاجی‌آباد": "Hajiabad",
+        # استان سیستان و بلوچستان
+        "زاهدان": "Zahedan", "چابهار": "Chabahar", "زابل": "Zabol",
+        "ایرانشهر": "IranShahr", "خاش": "Khash",
+        # استان کرمانشاه
+        "کرمانشاه": "Kermanshah", "اسلام‌آباد غرب": "Islamabad Gharb",
+        "سنقر": "Sanghor", "هرسین": "Harsin", "پاوه": "Paveh",
+        "جوانرود": "Javanrud", "قصر شیرین": "Qasr-e Shirin",
+        # استان اردبیل
+        "اردبیل": "Ardabil", "پارس‌آباد": "Parsabad", "خلخال": "Khalkhal",
+        "گرمی": "Germi",
+        # استان بوشهر
+        "بوشهر": "Bushehr", "برازجان": "Borazjan", "گناوه": "Ganaveh",
+        "دیر": "Dayer",
+        # استان یزد
+        "یزد": "Yazd", "اردکان": "Ardakan", "میبد": "Meybod",
+        "تفت": "Taft", "بافق": "Bafq", "ابرکوه": "Abarkuh",
+        # استان ایلام
+        "ایلام": "Ilam", "دهلران": "Dehloran", "آبدانان": "Abdanan",
+        "مهران": "Mehran",
     }
 
     city_en = None
