@@ -1320,19 +1320,24 @@ async def _brave_search(query: str, max_results: int = 5) -> list[dict]:
             
             html = resp.text
             
-            # Brave: <div class="snippet"> <a class="result-header" href="URL">TITLE</a> <p class="snippet-description">SNIPPET</p>
-            pattern = r'<div[^>]*class="[^"]*snippet[^"]*"[^>]*>.*?<a[^>]*href="([^"]+)"[^>]*class="[^"]*result-header[^"]*"[^>]*>(.*?)</a>.*?<p[^>]*class="[^"]*snippet-description[^"]*"[^>]*>(.*?)</p>'
-            matches = _re.findall(pattern, html, _re.DOTALL)
+            # Brave: استخراج همه لینک‌های خارجی
+            a_tags = _re.findall(r'<a[^>]*href="([^"]*)"[^>]*>(.*?)</a>', html, _re.DOTALL)
             
-            for url, title, snippet in matches[:max_results]:
-                title_clean = _re.sub(r"<[^>]+>", "", title).strip()
-                snippet_clean = _re.sub(r"<[^>]+>", "", snippet).strip()
-                if title_clean:
+            for href, text in a_tags:
+                text_clean = _re.sub(r"<[^>]+>", "", text).strip()
+                if (text_clean and len(text_clean) > 15 
+                    and href.startswith("http") 
+                    and "brave.com" not in href
+                    and "youtube.com" not in href
+                    and "facebook.com" not in href
+                    and "twitter.com" not in href):
                     results.append({
-                        "title": title_clean[:100],
-                        "url": url[:200],
-                        "snippet": snippet_clean[:300]
+                        "title": text_clean[:100],
+                        "url": href[:200],
+                        "snippet": ""
                     })
+                    if len(results) >= max_results:
+                        break
             
             logger.info(f"Brave: {len(results)} results")
     except Exception as e:
@@ -1357,23 +1362,33 @@ async def _startpage_search(query: str, max_results: int = 5) -> list[dict]:
                 params={"query": query, "cat": "web"},
             )
             logger.info(f"Startpage search: HTTP {resp.status_code}")
+            
+            # اگه CAPTCHA اومد، رد شو
+            if "captcha" in resp.text.lower() or resp.status_code == 303:
+                logger.info("Startpage: CAPTCHA detected, skipping")
+                return []
+            
             if resp.status_code != 200:
                 return []
             
             html = resp.text
             
-            # Startpage: <a class="w-gl__result-url" href="URL">TITLE</a>
-            pattern = r'<a[^>]*class="[^"]*w-gl__result-url[^"]*"[^>]*href="([^"]+)"[^>]*>(.*?)</a>'
-            matches = _re.findall(pattern, html, _re.DOTALL)
+            # استخراج همه لینک‌های خارجی
+            a_tags = _re.findall(r'<a[^>]*href="([^"]*)"[^>]*>(.*?)</a>', html, _re.DOTALL)
             
-            for url, title in matches[:max_results]:
-                title_clean = _re.sub(r"<[^>]+>", "", title).strip()
-                if title_clean and url.startswith("http"):
+            for href, text in a_tags:
+                text_clean = _re.sub(r"<[^>]+>", "", text).strip()
+                if (text_clean and len(text_clean) > 15 
+                    and href.startswith("http") 
+                    and "startpage.com" not in href
+                    and "google.com" not in href):
                     results.append({
-                        "title": title_clean[:100],
-                        "url": url[:200],
+                        "title": text_clean[:100],
+                        "url": href[:200],
                         "snippet": ""
                     })
+                    if len(results) >= max_results:
+                        break
             
             logger.info(f"Startpage: {len(results)} results")
     except Exception as e:
