@@ -41,41 +41,23 @@ if GEMINI_API_KEY:
 
 # ── System prompt برای پاسخ‌دهی (تخصصی VPN/شبکه) ─────────────────────────────
 ANSWER_SYSTEM_PROMPT = (
-    "تو یک متخصص ارشد فنی در حوزه VPN، شبکه، کانفیگ‌های v2ray/xray/sing-box، "
-    "پروتکل‌های پروکسی (vless, vmess, trojan, shadowsocks, hysteria2, tuic, wireguard, reality) "
-    "و مسائل اینترنت آزاد هستی که در یک گروه تلگرامی فارسی‌زبان به کاربران کمک می‌کنی.\n\n"
-    "## روش پاسخ‌گویی (تحلیل دقیق):\n"
-    "۱) قدم اول: دقیق بفهم کاربر چی می‌خواد. یکی از این‌هاست؟\n"
-    "   - آموزش/راهنما (چطور یک چیزی رو انجام بده)\n"
-    "   - troubleshooting (یه مشکل داره)\n"
-    "   - درخواست کانفیگ/سرور\n"
-    "   - سوال عمومی/توضیحی\n"
-    "   - گفتگو/بحث\n"
-    "۲) اگه حافظه مکالمه دادی، سوال فعلی رو به اون ربط بده. مثلاً اگه کاربر می‌گه "
-    "\"اون رو چطور نصب کنم؟\" و قبلاً درباره v2ray صحبت می‌کرد، منظور v2ray است.\n"
-    "۳) اگه سوال مبهمه یا اطلاعات ناقصه، اول ابهام‌زدایی کن: یا دو حالت رو پوشش بده "
-    "یا یه سوال شفاف‌سازی بپرس.\n"
-    "۴) پاسخ رو با دقت، جزئیات و ساختار مناسب بده.\n\n"
-    "## قواعد مهم:\n"
-    "- همیشه به فارسی روان، دقیق و کاربردی پاسخ بده.\n"
-    "- برای سوالات فنی: مراحل واضح و ترتیب‌دار. کانفیگ/دستور/کد رو داخل بلوک کد.\n"
-    "- پروتکل‌ها و پورت‌ها و تنظیمات رو با مثال‌های واقعی و قابل کپی توضیح بده.\n"
-    "- اگه چند روش وجود داره، روش بهینه/امن‌تر رو اول پیشنهاد بده و دلیل بگو.\n"
-    "- هرگز اطلاعات invented/ساختی نده. اگه مطمئن نیستی بگو «مطمئن نیستم».\n"
-    "- پاسخ رو ساختارمند بنویس: بخش‌بندی، شماره‌گذاری، بلوک کد.\n"
-    "- لحن دوستانه اما حرفه‌ای و محترمانه.\n"
-    "- برای سوالات امنیتی، روش‌های امن و ضد‌شناسایی رو پیشنهاد بده.\n"
-    "- هرگز وعده‌های غیرواقعی نده (مثل \"۱۰۰٪ کار می‌کنه\" یا \"هیچ‌وقت مسدود نمی‌شه\").\n"
-    "- اگه سوال خارج از حوزه‌ی تخصصیه، صادقانه بگو و راهنمایی کن کجا بپرسه.\n"
-    "- اگه چند بخش داری، از header‌ (مانند **۱.** یا ▶) استفاده کن.\n"
-    "- مهم: روی کیفیت، دقت و صحت تمرکز کن، نه سرعت یا طول پاسخ.\n"
+    "تو یک دستیار هوشمند فارسی‌زبان هستی که در یک گروه تلگرامی به کاربران کمک می‌کنی.\n"
+    "تخصص اصلی: VPN، شبکه، کانفیگ‌های v2ray/xray/sing-box، پروتکل‌های پروکسی.\n"
+    "ولی به همه سوالات عمومی هم پاسخ میدی (قیمت ارز، هواشناسی، اخبار، ورزش، و...).\n\n"
+    "## قواعد پاسخ‌گویی:\n"
+    "۱) اول نیت کاربر رو دقیق بفهم.\n"
+    "۲) پاسخ رو کوتاه، دقیق و کاربردی بده (کمتر از ۱۰ خط مگه لازم باشه).\n"
+    "۳) همیشه به فارسی روان و طبیعی پاسخ بده.\n"
+    "۴) اگه اطلاعات لحظه‌ای می‌خواد (قیمت، هوا، اخبار) بگو از منابع آنلاین چک کنه.\n"
+    "۵) اگه مطمئن نیستی، صادقانه بگو.\n"
+    "۶) لحن دوستانه اما حرفه‌ای.\n"
+    "۷) هرگز اطلاعات ساختگی نده.\n"
 )
 
 PROMPT_TEMPLATE = (
     "{context}"
     "سوال کاربر: {question}\n\n"
-    "به این سوال به‌طور کامل، دقیق و تخصصی پاسخ بده. "
-    "اول نیت کاربر رو تحلیل کن، بعد پاسخ بده:"
+    "به این سوال کوتاه و دقیق پاسخ بده:"
 )
 
 
@@ -378,8 +360,8 @@ async def answer_question(
         except Exception as e:
             logger.warning(f"web search fallback failed: {e}")
 
-    # ۵. ذخیره در cache با سوال normalize شده برای match بهتر
-    if answer:
+    # ۵. ذخیره در cache (فقط برای پاسخ‌های AI، نه وب سرچ)
+    if answer and source not in ("web_search",):
         normalized = _normalize_question(question)
         store_q = normalized if len(normalized) >= 3 else question
         await db.save_knowledge(
@@ -390,6 +372,8 @@ async def answer_question(
             score=0.80,
         )
         logger.info(f"Answer via {source}, cached: '{store_q[:50]}'")
+    elif answer:
+        logger.info(f"Answer via {source} (not cached - web search)")
 
     # ۶. ثبت در حافظه مکالمه
     if user_id and answer:
@@ -483,8 +467,8 @@ async def sync_training_channels(limit_per_channel: int = 100) -> int:
 # (AI نمی‌تونه جواب بده، حتماً باید سرچ بشه)
 _REALTIME_PATTERNS = [
     # آب‌وهوا
-    "هواشناسی", "آب و هوا", "آب‌وهوا", "دمای هوا", "طقس", "باران", "برف",
-    "weather",
+    "هواشناسی", "آب و هوا", "آب‌وهوا", "هوای", "دمای هوا", "طقس", "باران", "برف",
+    "weather", "دما", "آفتابی", "ابری", "مه", "طوفان", "رگبار",
     # قیمت‌ها
     "قیمت دلار", "دلار", "یورو", "قیمت طلا", "طلا", "نرخ ارز", "بورس",
     "شاخص بورس", "قیمت سکه", "دلار آزاد", "قیمت بنزین",
@@ -545,7 +529,7 @@ async def search_web_fallback(question: str) -> str | None:
     logger.info(f"🔍 starting web search for: '{question[:50]}'")
 
     # ۰. اگه سوال مربوط به هواشناسی هست، اول Weather API رو امتحان کن
-    weather_keywords = ["هواشناسی", "آب و هوا", "دما", "باران", "برف", "آفتابی", "ابری", "دمای", "天气"]
+    weather_keywords = ["هواشناسی", "آب و هوا", "هوای", "آب‌وهوا", "دما", "باران", "برف", "آفتابی", "ابری", "دمای", "天气", "weather", "هوا"]
     if any(kw in question for kw in weather_keywords):
         try:
             weather_result = await _weather_search(question)
@@ -666,6 +650,9 @@ async def _weather_search(question: str) -> str | None:
         "کرمان": "Kerman", "قم": "Qom", "کرج": "Karaj",
         "زنجان": "Zanjan", "اردبیل": "Ardabil", "یزد": "Yazd",
         "بوشهر": "Bushehr", "چابهار": "Chabahar", "بندرعباس": "Bandar-Abbas",
+        "سنندج": "Sanandaj", "همدان": "Hamadan", "اراک": "Arak",
+        "بیرجند": "Birjnd", "بجنورد": "Bojnurd", "گرگان": "Gorgan",
+        "رشت": "Rasht", "نیشابور": "Nishapur", "birjnd": "Birjnd",
     }
 
     city_en = None
@@ -855,27 +842,48 @@ async def _currency_api_search(query: str) -> str | None:
                 )
                 return result
             else:
-                # ارز رسمی
+                # ارز رسمی - قیمت بازار
                 target_to_usd = rates.get(target_code, 1)
-                target_to_irr = usd_to_irr / target_to_usd if target_code != "USD" else usd_to_irr
+                target_to_irr_official = usd_to_irr / target_to_usd if target_code != "USD" else usd_to_irr
                 
-                toman = target_to_irr / 10
-                eur_to_irr = usd_to_irr / rates.get("EUR", 1)
-                gbp_to_irr = usd_to_irr / rates.get("GBP", 1)
+                # گرفتن نرخ آزاد برای قیمت بازار
+                try:
+                    fm_resp = await client.get(
+                        "https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json",
+                    )
+                    if fm_resp.status_code == 200:
+                        fm_data = fm_resp.json()
+                        free_usd_to_irr = fm_data.get("usd", {}).get("irr", usd_to_irr)
+                    else:
+                        free_usd_to_irr = usd_to_irr
+                except Exception:
+                    free_usd_to_irr = usd_to_irr
+                
+                # قیمت بازار = نرخ آزاد × نرخ ارز
+                free_target_to_irr = free_usd_to_irr / target_to_usd if target_code != "USD" else free_usd_to_irr
+                market_toman = free_target_to_irr / 10
+                
+                # سایر ارزها با نرخ بازار
+                free_eur_to_irr = free_usd_to_irr / rates.get("EUR", 1)
+                free_gbp_to_irr = free_usd_to_irr / rates.get("GBP", 1)
+                free_try_to_irr = free_usd_to_irr / rates.get("TRY", 1)
                 
                 result = (
                     f"💰 قیمت {target_name} ({target_symbol})\n"
                     f"━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-                    f"💵 نرخ رسمی:\n"
-                    f"   {target_to_irr:,.0f} ریال\n"
-                    f"   ({toman:,.0f} تومان)\n\n"
-                    f"📊 سایر ارزها:\n"
-                    f"   💵 دلار: {usd_to_irr:,.0f} ریال\n"
-                    f"   💶 یورو: {eur_to_irr:,.0f} ریال\n"
-                    f"   💷 پوند: {gbp_to_irr:,.0f} ریال\n\n"
+                    f"📊 نرخ بازار (آزاد):\n"
+                    f"   {free_target_to_irr:,.0f} ریال\n"
+                    f"   ({market_toman:,.0f} تومان)\n\n"
+                    f"🏦 نرخ رسمی (بانک مرکزی):\n"
+                    f"   {target_to_irr_official:,.0f} ریال ({target_to_irr_official/10:,.0f} تومان)\n\n"
+                    f"📊 سایر ارزها (بازار):\n"
+                    f"   💵 دلار: {free_usd_to_irr:,.0f} ریال\n"
+                    f"   💶 یورو: {free_eur_to_irr:,.0f} ریال\n"
+                    f"   💷 پوند: {free_gbp_to_irr:,.0f} ریال\n"
+                    f"   💴 لیر: {free_try_to_irr:,.0f} ریال\n\n"
                     f"📅 تاریخ: {date}\n"
                     f"📊 منبع: Exchange Rate API\n\n"
-                    f"💡 نرخ بازار آزاد ممکنه متفاوت باشه."
+                    f"⚠️ قیمت تقریبی است. برای قیمت دقیق، صرافی‌ها رو چک کنید."
                 )
                 return result
     except Exception as e:
