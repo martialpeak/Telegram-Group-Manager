@@ -944,7 +944,7 @@ async def _read_channel_currency(channel_username: str = "Price33") -> dict | No
             html = resp.text
             
             # پیدا کردن آخرین پیام
-            messages = _re.findall(r'<div class="tgme_widget_message_text[^"]*"[^>]*>(.*?)</div>', html, _re.DOTALL)
+            messages = re.findall(r'<div class="tgme_widget_message_text[^"]*"[^>]*>(.*?)</div>', html, re.DOTALL)
             if not messages:
                 logger.warning("No messages found in channel")
                 return None
