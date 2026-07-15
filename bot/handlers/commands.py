@@ -1018,7 +1018,6 @@ async def cmd_setpunishment(update: Update, context: ContextTypes.DEFAULT_TYPE):
     limit = "نامحدود" if rank_info.daily_limit == -1 else str(rank_info.daily_limit)
 
     # ─── اعمال محدودیت واقعی تلگرام ─────────────────────────────
-    from telegram.constants import ChatPermissions
     from telegram import ChatPermissions as CP
 
     try:
