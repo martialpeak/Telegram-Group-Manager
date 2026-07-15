@@ -188,6 +188,15 @@ async def cmd_myrank(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         points_line = f"\n⭐ امتیاز: {points}"
 
+    # رنک جریمه
+    from bot.core.punishment_ranks import get_rank_name, get_rank_config
+    punishment_rank = await db.get_punishment_rank(user.id, chat.id)
+    if punishment_rank and punishment_rank != "clean":
+        rank_info = get_rank_config(punishment_rank)
+        punishment_line = f"\n🔒 رنک جریمه: {get_rank_name(punishment_rank)}"
+    else:
+        punishment_line = ""
+
     tag = mention(user)
     await update.message.reply_text(
         f"👤 {tag}\n\n"
@@ -199,7 +208,8 @@ async def cmd_myrank(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"💬 کل پیام‌ها: {total_m}\n"
         f"⚠️ اخطار: {warns}/3"
         f"{points_line}"
-        f"{upgrade_line}",
+        f"{upgrade_line}"
+        f"{punishment_line}",
         parse_mode="HTML",
     )
 
