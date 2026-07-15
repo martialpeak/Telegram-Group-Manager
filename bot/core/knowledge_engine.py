@@ -755,8 +755,6 @@ async def _currency_api_search(query: str) -> str | None:
     # تشخیص نوع ارز
     currency_map = {
         "دلار": ("USD", "دلار آمریکا", "$"),
-        "تتر": ("USD", "تتر (USDT)", "₮"),
-        "usdt": ("USD", "تتر (USDT)", "₮"),
         "یورو": ("EUR", "یورو", "€"),
         "پوند": ("GBP", "پوند انگلیس", "£"),
         "لیر": ("TRY", "لیر ترکیه", "₺"),
@@ -766,6 +764,9 @@ async def _currency_api_search(query: str) -> str | None:
         "کرون": ("SEK", "کرون سوئد", "kr"),
         "وون": ("KRW", "وون کره", "₩"),
     }
+    
+    # کریپتو: تتر/USDT
+    is_crypto = "تتر" in q or "usdt" in q
     
     target_code = None
     target_name = None
@@ -777,50 +778,72 @@ async def _currency_api_search(query: str) -> str | None:
             target_symbol = symbol
             break
     
-    if not target_code:
+    if is_crypto:
+        target_name = "تتر (USDT)"
+        target_symbol = "₮"
+    
+    if not target_code and not is_crypto:
         target_code = "USD"
         target_name = "دلار آمریکا"
         target_symbol = "$"
     
     try:
         async with httpx.AsyncClient(timeout=10, follow_redirects=True) as client:
-            # open.er-api.com (رایگان، بدون نیاز به کلید، IRR داره)
+            # گرفتن نرخ USD به IRR
             resp = await client.get("https://open.er-api.com/v6/latest/USD")
             logger.info(f"Currency API: HTTP {resp.status_code}")
-            if resp.status_code == 200:
-                data = resp.json()
-                rates = data.get("rates", {})
-                usd_to_irr = rates.get("IRR")
+            if resp.status_code != 200:
+                return None
+            data = resp.json()
+            rates = data.get("rates", {})
+            usd_to_irr = rates.get("IRR")
+            
+            if not usd_to_irr:
+                logger.warning("IRR not found in API response")
+                return None
+            
+            raw_date = data.get("time_last_update_utc", "نامشخص")
+            date = raw_date[:16] if len(raw_date) > 16 else raw_date
+            
+            if is_crypto:
+                # گرفتن قیمت USDT از CoinGecko (دلاری)
+                try:
+                    cg_resp = await client.get(
+                        "https://api.coingecko.com/api/v3/simple/price",
+                        params={"ids": "tether", "vs_currencies": "usd"},
+                    )
+                    if cg_resp.status_code == 200:
+                        cg_data = cg_resp.json()
+                        usdt_usd = cg_data.get("tether", {}).get("usd", 1.0)
+                    else:
+                        usdt_usd = 1.0
+                except Exception:
+                    usdt_usd = 1.0
                 
-                if not usd_to_irr:
-                    logger.warning("IRR not found in API response")
-                    return None
+                # قیمت USDT به ریال (نرخ بازار)
+                # USDT معمولاً ~$1 هست ولی در ایران نرخ بازار فرق داره
+                usdt_to_irr = usd_to_irr * usdt_usd
                 
-                # تبدیل نرخ ارز مورد نظر به IRR
+                result = (
+                    f"💰 قیمت {target_name} ({target_symbol})\n"
+                    f"━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                    f"💵 قیمت جهانی:\n"
+                    f"   1 USDT = {usdt_usd:.4f} USD\n\n"
+                    f"📊 نرخ رسمی دلار (بانک مرکزی):\n"
+                    f"   {usd_to_irr:,.0f} ریال ({usd_to_irr/10:,.0f} تومان)\n\n"
+                    f"⚠️ توجه:\n"
+                    f"   قیمت بازار تتر در ایران با نرخ رسمی فرق داره.\n"
+                    f"   برای قیمت لحظه‌ای بازار، از صرافی‌های آنلاین استفاده کنید.\n\n"
+                    f"📅 تاریخ: {date}\n"
+                    f"📊 منبع: Exchange Rate API + CoinGecko"
+                )
+                return result
+            else:
+                # ارز رسمی
                 target_to_usd = rates.get(target_code, 1)
-                if target_code == "USD":
-                    target_to_irr = usd_to_irr
-                else:
-                    target_to_irr = usd_to_irr / target_to_usd
-                
-                # فرمت خوانا
-                if target_to_irr > 1000000:
-                    irr_str = f"{target_to_irr/1000000:.2f} میلیون ریال"
-                elif target_to_irr > 1000:
-                    irr_str = f"{target_to_irr/1000:.0f} هزار ریال"
-                else:
-                    irr_str = f"{target_to_irr:.0f} ریال"
+                target_to_irr = usd_to_irr / target_to_usd if target_code != "USD" else usd_to_irr
                 
                 toman = target_to_irr / 10
-                if toman > 100000:
-                    toman_str = f"{toman/10000:.0f} هزار تومان"
-                else:
-                    toman_str = f"{toman:.0f} تومان"
-                
-                raw_date = data.get("time_last_update_utc", "نامشخص")
-                date = raw_date[:16] if len(raw_date) > 16 else raw_date
-                
-                # نرخ سایر ارزها
                 eur_to_irr = usd_to_irr / rates.get("EUR", 1)
                 gbp_to_irr = usd_to_irr / rates.get("GBP", 1)
                 
