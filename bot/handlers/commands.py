@@ -1018,107 +1018,44 @@ async def cmd_setpunishment(update: Update, context: ContextTypes.DEFAULT_TYPE):
     limit = "نامحدود" if rank_info.daily_limit == -1 else str(rank_info.daily_limit)
 
     # ─── اعمال محدودیت واقعی تلگرام ─────────────────────────────
-    from telegram import ChatPermissions as CP
+    import logging as _log_mod
+    _log2 = _log_mod.getLogger("setpunishment")
 
+    # تنظیم مجوزها بر اساس رنک
+    if rank_arg == "clean":
+        perm_kwargs = dict(can_send_messages=True, can_send_audios=True, can_send_documents=True,
+            can_send_photos=True, can_send_videos=True, can_send_video_notes=True,
+            can_send_voice_notes=True, can_send_polls=True, can_send_other_messages=True,
+            can_add_web_page_previews=True, can_change_info=True, can_invite_users=True,
+            can_pin_messages=True, can_manage_topics=True)
+        restriction_text = "🔓 دسترسی کامل برگردانده شد"
+    else:
+        # همه رنک‌های جریمه → سکوت کامل
+        perm_kwargs = dict(can_send_messages=False, can_send_audios=False, can_send_documents=False,
+            can_send_photos=False, can_send_videos=False, can_send_video_notes=False,
+            can_send_voice_notes=False, can_send_polls=False, can_send_other_messages=False,
+            can_add_web_page_previews=False, can_change_info=False, can_invite_users=False,
+            can_pin_messages=False, can_manage_topics=False)
+        labels = {"warning": "🔇 سکوت", "probation": "🔇 سکوت", "restricted": "🔇 سکوت", "banned": "🚫 مسدود"}
+        restriction_text = labels.get(rank_arg, "🔇 سکوت")
+
+    # اعمال محدودیت
+    _log2.info(f"🔒 Restricting user {target_id} in chat {chat_id} rank={rank_arg}")
     try:
-        if rank_arg == "clean":
-            # پاک کردن → دسترسی کامل
-            permissions = CP(
-                can_send_messages=True,
-                can_send_audios=True,
-                can_send_documents=True,
-                can_send_photos=True,
-                can_send_videos=True,
-                can_send_video_notes=True,
-                can_send_voice_notes=True,
-                can_send_polls=True,
-                can_send_other_messages=True,
-                can_add_web_page_previews=True,
-                can_change_info=True,
-                can_invite_users=True,
-                can_pin_messages=True,
-                can_manage_topics=True,
-            )
-            restriction_text = "🔓 دسترسی کامل برگردانده شد"
-        elif rank_arg == "warning":
-            permissions = CP(
-                can_send_messages=False,
-                can_send_audios=False,
-                can_send_documents=False,
-                can_send_photos=False,
-                can_send_videos=False,
-                can_send_video_notes=False,
-                can_send_voice_notes=False,
-                can_send_polls=False,
-                can_send_other_messages=False,
-                can_add_web_page_previews=False,
-            )
-            restriction_text = "🔇 سکوت (ارسال هر نوع پیام ممنوع)"
-        elif rank_arg == "probation":
-            permissions = CP(
-                can_send_messages=False,
-                can_send_audios=False,
-                can_send_documents=False,
-                can_send_photos=False,
-                can_send_videos=False,
-                can_send_video_notes=False,
-                can_send_voice_notes=False,
-                can_send_polls=False,
-                can_send_other_messages=False,
-                can_add_web_page_previews=False,
-            )
-            restriction_text = "🔇 سکوت (حداکثر ۳ پیام در روز از ربات)"
-        elif rank_arg == "restricted":
-            permissions = CP(
-                can_send_messages=False,
-                can_send_audios=False,
-                can_send_documents=False,
-                can_send_photos=False,
-                can_send_videos=False,
-                can_send_video_notes=False,
-                can_send_voice_notes=False,
-                can_send_polls=False,
-                can_send_other_messages=False,
-                can_add_web_page_previews=False,
-            )
-            restriction_text = "🔇 فقط خواندن (کاملاً سکوت)"
-        elif rank_arg == "banned":
-            permissions = CP(
-                can_send_messages=False,
-                can_send_audios=False,
-                can_send_documents=False,
-                can_send_photos=False,
-                can_send_videos=False,
-                can_send_video_notes=False,
-                can_send_voice_notes=False,
-                can_send_polls=False,
-                can_send_other_messages=False,
-                can_add_web_page_previews=False,
-            )
-            restriction_text = "🚫 مسدود کامل"
-        else:
-            permissions = None
-            restriction_text = ""
-
-        if permissions is not None:
-            import logging as _log_mod
-            _log2 = _log_mod.getLogger("setpunishment")
-            _log2.info(f"🔒 Restricting user {target_id} in chat {chat_id} with rank={rank_arg}")
-            try:
-                await context.bot.restrict_chat_member(
-                    chat_id=chat_id,
-                    user_id=target_id,
-                    permissions=permissions,
-                )
-                _log2.info(f"✅ restrict_chat_member SUCCESS for {target_id}")
-            except Exception as restrict_err:
-                _log2.error(f"❌ restrict_chat_member FAILED: {restrict_err}")
-                restriction_text = f"⚠️ خطا: {restrict_err}"
-    except Exception as e:
-        _log_mod = __import__("logging")
-        _log2 = _log_mod.getLogger("setpunishment")
-        _log2.error(f"❌ Error in restrict block: {e}")
-        restriction_text = f"⚠️ خطا در اعمال محدودیت: {e}"
+        from telegram import ChatPermissions
+        perms = ChatPermissions(**perm_kwargs)
+        _log2.info(f"🔒 ChatPermissions created, calling restrict_chat_member...")
+        result = await context.bot.restrict_chat_member(
+            chat_id=chat_id,
+            user_id=target_id,
+            permissions=perms,
+        )
+        _log2.info(f"✅ restrict_chat_member SUCCESS for {target_id}, result={result}")
+    except Exception as restrict_err:
+        import traceback
+        _log2.error(f"❌ restrict_chat_member FAILED: {restrict_err}")
+        _log2.error(f"❌ Traceback: {traceback.format_exc()}")
+        restriction_text = f"⚠️ خطا: {restrict_err}"
 
     await update.message.reply_text(
         f"✅ رنک جریمه {target_mention} به <b>{get_rank_name(rank_arg)}</b> تغییر کرد.\n\n"
