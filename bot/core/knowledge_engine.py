@@ -646,67 +646,90 @@ async def _currency_api_search(query: str) -> str | None:
     
     # تشخیص نوع ارز
     currency_map = {
-        "دلار": ("USD", "دلار آمریکا"),
-        "یورو": ("EUR", "یورو"),
-        "پوند": ("GBP", "پوند انگلیس"),
-        "لیر": ("TRY", "لیر ترکیه"),
-        "درهم": ("AED", "درهم امارات"),
-        "یوان": ("CNY", "یوان چین"),
-        "ین": ("JPY", "ین ژاپن"),
+        "دلار": ("USD", "دلار آمریکا", "$"),
+        "یورو": ("EUR", "یورو", "€"),
+        "پوند": ("GBP", "پوند انگلیس", "£"),
+        "لیر": ("TRY", "لیر ترکیه", "₺"),
+        "درهم": ("AED", "درهم امارات", "د.إ"),
+        "یوان": ("CNY", "یوان چین", "¥"),
+        "ین": ("JPY", "ین ژاپن", "¥"),
     }
     
     target_code = None
     target_name = None
-    for keyword, (code, name) in currency_map.items():
+    target_symbol = ""
+    for keyword, (code, name, symbol) in currency_map.items():
         if keyword in q:
             target_code = code
             target_name = name
+            target_symbol = symbol
             break
     
     if not target_code:
-        # default to USD
         target_code = "USD"
         target_name = "دلار آمریکا"
+        target_symbol = "$"
     
     try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            # Frankfurter API (رایگان، بدون نیاز به کلید)
-            resp = await client.get(
-                f"https://api.frankfurter.app/latest?from={target_code}&to=IRR",
-            )
+        async with httpx.AsyncClient(timeout=10, follow_redirects=True) as client:
+            # open.er-api.com (رایگان، بدون نیاز به کلید، IRR داره)
+            resp = await client.get("https://open.er-api.com/v6/latest/USD")
+            logger.info(f"Currency API: HTTP {resp.status_code}")
             if resp.status_code == 200:
                 data = resp.json()
-                rate = data.get("rates", {}).get("IRR")
-                if rate:
-                    # تبدیل به فرمت خوانا
-                    if rate > 1000000:
-                        rate_str = f"{rate/1000000:.2f} میلیون ریال"
-                    elif rate > 1000:
-                        rate_str = f"{rate/1000:.0f} هزار ریال"
-                    else:
-                        rate_str = f"{rate:.0f} ریال"
-                    
-                    # تومان = ریال / 10
-                    toman = rate / 10
-                    if toman > 100000:
-                        toman_str = f"{toman/10000:.0f} هزار تومان"
-                    else:
-                        toman_str = f"{toman:.0f} تومان"
-                    
-                    date = data.get("date", "نامشخص")
-                    result = (
-                        f"💰 <b>قیمت {target_name}</b>\n"
-                        f"━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-                        f"💵 نرخ رسمی (بانک مرکزی):\n"
-                        f"   {rate_str}\n"
-                        f"   ({toman_str})\n\n"
-                        f"📅 تاریخ: {date}\n"
-                        f"📊 نرخ از: Frankfurter API\n\n"
-                        f"💡 نرخ بازار آزاد ممکنه متفاوت باشه."
-                    )
-                    return result
+                rates = data.get("rates", {})
+                usd_to_irr = rates.get("IRR")
+                
+                if not usd_to_irr:
+                    logger.warning("IRR not found in API response")
+                    return None
+                
+                # تبدیل نرخ ارز مورد نظر به IRR
+                target_to_usd = rates.get(target_code, 1)
+                if target_code == "USD":
+                    target_to_irr = usd_to_irr
+                else:
+                    target_to_irr = usd_to_irr / target_to_usd
+                
+                # فرمت خوانا
+                if target_to_irr > 1000000:
+                    irr_str = f"{target_to_irr/1000000:.2f} میلیون ریال"
+                elif target_to_irr > 1000:
+                    irr_str = f"{target_to_irr/1000:.0f} هزار ریال"
+                else:
+                    irr_str = f"{target_to_irr:.0f} ریال"
+                
+                toman = target_to_irr / 10
+                if toman > 100000:
+                    toman_str = f"{toman/10000:.0f} هزار تومان"
+                else:
+                    toman_str = f"{toman:.0f} تومان"
+                
+                date = data.get("time_last_update_utc", "نامشخص")[:10]
+                
+                # نرخ سایر ارزها
+                eur_to_irr = usd_to_irr / rates.get("EUR", 1)
+                gbp_to_irr = usd_to_irr / rates.get("GBP", 1)
+                
+                result = (
+                    f"💰 <b>قیمت {target_name} ({target_symbol})</b>\\n"
+                    f"━━━━━━━━━━━━━━━━━━━━━━━━\\n\\n"
+                    f"💵 <b>نرخ رسمی:</b>\\n"
+                    f"   {target_to_irr:,.0f} ریال\\n"
+                    f"   ({toman:,.0f} تومان)\\n\\n"
+                    f"📊 <b>سایر ارزها:</b>\\n"
+                    f"   💵 دلار: {usd_to_irr:,.0f} ریال\\n"
+                    f"   💶 یورو: {eur_to_irr:,.0f} ریال\\n"
+                    f"   💷 پوند: {gbp_to_irr:,.0f} ریال\\n\\n"
+                    f"📅 تاریخ: {date}\\n"
+                    f"📊 منبع: Exchange Rate API\\n\\n"
+                    f"💡 نرخ بازار آزاد ممکنه متفاوت باشه."
+                )
+                return result
     except Exception as e:
         logger.warning(f"currency API failed: {e}")
+        import traceback
+        logger.warning(f"traceback: {traceback.format_exc()}")
     
     return None
 
