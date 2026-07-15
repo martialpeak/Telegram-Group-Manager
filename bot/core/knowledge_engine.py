@@ -543,6 +543,18 @@ async def search_web_fallback(question: str) -> str | None:
     snippets = []
     logger.info(f"🔍 starting web search for: '{question[:50]}'")
 
+    # ۰. اگه سوال مربوط به قیمت ارز هست، اول API مستقیم رو امتحان کن
+    currency_keywords = ["دلار", "یورو", "پوند", "لیر", "درهم", "یوان", "ین", "ارز", "نرخ ارز"]
+    if any(kw in question for kw in currency_keywords):
+        try:
+            currency_result = await _currency_api_search(question)
+            if currency_result:
+                logger.info("✅ Currency API returned result")
+                await _cache_web_answer(question, currency_result)
+                return currency_result
+        except Exception as e:
+            logger.warning(f"currency API search failed: {e}")
+
     # ۱. DuckDuckGo Instant Answer API
     try:
         async with httpx.AsyncClient(timeout=15) as client:
@@ -615,6 +627,80 @@ async def search_web_fallback(question: str) -> str | None:
     text = "🔍 یافته‌های مرتبط از وب:\n\n" + "\n\n".join(snippets)
     await _cache_web_answer(question, text)
     return text
+
+
+# ─── Currency API (قیمت لحظه‌ای ارز) ─────────────────────────────────────────
+
+async def _currency_api_search(query: str) -> str | None:
+    """دریافت قیمت ارز از API مستقیم"""
+    import httpx
+    q = query.lower()
+    
+    # تشخیص نوع ارز
+    currency_map = {
+        "دلار": ("USD", "دلار آمریکا"),
+        "یورو": ("EUR", "یورو"),
+        "پوند": ("GBP", "پوند انگلیس"),
+        "لیر": ("TRY", "لیر ترکیه"),
+        "درهم": ("AED", "درهم امارات"),
+        "یوان": ("CNY", "یوان چین"),
+        "ین": ("JPY", "ین ژاپن"),
+    }
+    
+    target_code = None
+    target_name = None
+    for keyword, (code, name) in currency_map.items():
+        if keyword in q:
+            target_code = code
+            target_name = name
+            break
+    
+    if not target_code:
+        # default to USD
+        target_code = "USD"
+        target_name = "دلار آمریکا"
+    
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            # Frankfurter API (رایگان، بدون نیاز به کلید)
+            resp = await client.get(
+                f"https://api.frankfurter.app/latest?from={target_code}&to=IRR",
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                rate = data.get("rates", {}).get("IRR")
+                if rate:
+                    # تبدیل به فرمت خوانا
+                    if rate > 1000000:
+                        rate_str = f"{rate/1000000:.2f} میلیون ریال"
+                    elif rate > 1000:
+                        rate_str = f"{rate/1000:.0f} هزار ریال"
+                    else:
+                        rate_str = f"{rate:.0f} ریال"
+                    
+                    # تومان = ریال / 10
+                    toman = rate / 10
+                    if toman > 100000:
+                        toman_str = f"{toman/10000:.0f} هزار تومان"
+                    else:
+                        toman_str = f"{toman:.0f} تومان"
+                    
+                    date = data.get("date", "نامشخص")
+                    result = (
+                        f"💰 <b>قیمت {target_name}</b>\n"
+                        f"━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                        f"💵 نرخ رسمی (بانک مرکزی):\n"
+                        f"   {rate_str}\n"
+                        f"   ({toman_str})\n\n"
+                        f"📅 تاریخ: {date}\n"
+                        f"📊 نرخ از: Frankfurter API\n\n"
+                        f"💡 نرخ بازار آزاد ممکنه متفاوت باشه."
+                    )
+                    return result
+    except Exception as e:
+        logger.warning(f"currency API failed: {e}")
+    
+    return None
 
 
 # ─── Yandex Search (در ایران کار می‌کنه) ─────────────────────────────────────
