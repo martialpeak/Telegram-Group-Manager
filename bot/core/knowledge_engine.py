@@ -488,6 +488,7 @@ _REALTIME_PATTERNS = [
     # قیمت‌ها
     "قیمت دلار", "دلار", "یورو", "قیمت طلا", "طلا", "نرخ ارز", "بورس",
     "شاخص بورس", "قیمت سکه", "دلار آزاد", "قیمت بنزین",
+    "تتر", "usdt", "قیمت تتر", "قیمت ارز", "نرخ دلار",
     # زمان/تاریخ
     "ساعت چند", "امروز چندمه", "تاریخ امروز", "چه روزیه",
     "چند روز تا", "چند روز مانده",
@@ -543,8 +544,20 @@ async def search_web_fallback(question: str) -> str | None:
     snippets = []
     logger.info(f"🔍 starting web search for: '{question[:50]}'")
 
-    # ۰. اگه سوال مربوط به قیمت ارز هست، اول API مستقیم رو امتحان کن
-    currency_keywords = ["دلار", "یورو", "پوند", "لیر", "درهم", "یوان", "ین", "ارز", "نرخ ارز"]
+    # ۰. اگه سوال مربوط به هواشناسی هست، اول Weather API رو امتحان کن
+    weather_keywords = ["هواشناسی", "آب و هوا", "دما", "باران", "برف", "آفتابی", "ابری", "دمای", "天气"]
+    if any(kw in question for kw in weather_keywords):
+        try:
+            weather_result = await _weather_search(question)
+            if weather_result:
+                logger.info("✅ Weather API returned result")
+                await _cache_web_answer(question, weather_result)
+                return weather_result
+        except Exception as e:
+            logger.warning(f"weather API search failed: {e}")
+
+    # ۰.۵. اگه سوال مربوط به قیمت ارز هست، اول API مستقیم رو امتحان کن
+    currency_keywords = ["دلار", "تتر", "usdt", "یورو", "پوند", "لیر", "درهم", "یوان", "ین", "ارز", "نرخ ارز", "قیمت"]
     is_currency = any(kw in question for kw in currency_keywords)
     logger.info(f"💰 currency check: question='{question[:30]}', is_currency={is_currency}")
     if is_currency:
@@ -639,6 +652,101 @@ async def search_web_fallback(question: str) -> str | None:
 
 # ─── Currency API (قیمت لحظه‌ای ارز) ─────────────────────────────────────────
 
+# ─── Weather API ────────────────────────────────────────────────────────────
+
+async def _weather_search(question: str) -> str | None:
+    """دریافت اطلاعات هواشناسی از wttr.in"""
+    import httpx
+    import re as _re_w
+
+    # استخراج نام شهر
+    city_map = {
+        "تهران": "Tehran", "مشهد": "Mashhad", "اصفهان": "Isfahan",
+        "شیراز": "Shiraz", "تبریز": "Tabriz", "اهواز": "Ahvaz",
+        "کرمان": "Kerman", "قم": "Qom", "کرج": "Karaj",
+        "زنجان": "Zanjan", "اردبیل": "Ardabil", "یزد": "Yazd",
+        "بوشهر": "Bushehr", "چابهار": "Chabahar", "بندرعباس": "Bandar-Abbas",
+    }
+
+    city_en = None
+    for fa, en in city_map.items():
+        if fa in question:
+            city_en = en
+            break
+
+    # اگه شهر فارسی پیدا نشد، انگلیسی رو چک کن
+    if not city_en:
+        words = question.split()
+        for word in words:
+            if word.isascii() and len(word) > 3:
+                city_en = word
+                break
+
+    if not city_en:
+        city_en = "Tehran"  # default
+
+    # Persian city mapping
+    city_fa = {v: k for k, v in city_map.items()}.get(city_en, city_en)
+
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(
+                f"https://wttr.in/{city_en}?format=j1",
+                headers={"User-Agent": "TelegramBot/1.0"},
+            )
+            logger.info(f"Weather API: HTTP {resp.status_code} for {city_en}")
+            if resp.status_code == 200:
+                data = resp.json()
+                current = data.get("current_condition", [{}])[0]
+                weather_desc = current.get("lang_fa", [{}])
+                if isinstance(weather_desc, list) and weather_desc:
+                    desc = weather_desc[0].get("value", "")
+                else:
+                    desc = current.get("weatherDesc", [{}])[0].get("value", "")
+
+                temp_c = current.get("temp_C", "?")
+                feels_like = current.get("FeelsLikeC", "?")
+                humidity = current.get("humidity", "?")
+                wind_speed = current.get("windspeedKmph", "?")
+                wind_dir = current.get("winddir16Point", "")
+                visibility = current.get("visibility", "?")
+                uv = current.get("uvIndex", "?")
+
+                # پیش‌بینی ۳ روز
+                forecast_lines = []
+                for day in data.get("weather", [])[:3]:
+                    date = day.get("date", "")
+                    max_temp = day.get("maxtempC", "?")
+                    min_temp = day.get("mintempC", "?")
+                    avg = day.get("hourly", [{}])
+                    if avg:
+                        chance_rain = avg[len(avg)//2].get("chanceofrain", "0")
+                    else:
+                        chance_rain = "0"
+                    forecast_lines.append(f"   📅 {date}: {min_temp}° تا {max_temp}° (بارندگی {chance_rain}%)")
+
+                forecast_text = "\n".join(forecast_lines) if forecast_lines else ""
+
+                result = (
+                    f"🌤 هواشناسی {city_fa}\n"
+                    f"━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                    f"🌡 دما: {temp_c}°C (احساس: {feels_like}°C)\n"
+                    f"☁ وضعیت: {desc}\n"
+                    f"💧 رطوبت: {humidity}%\n"
+                    f"💨 باد: {wind_speed} km/h {wind_dir}\n"
+                    f"👁 دید: {visibility} km\n"
+                    f"☀ UV Index: {uv}\n\n"
+                    f"📊 پیش‌بینی:\n{forecast_text}"
+                )
+                return result
+    except Exception as e:
+        logger.warning(f"weather API failed: {e}")
+
+    return None
+
+
+# ─── Currency API ───────────────────────────────────────────────────────────
+
 async def _currency_api_search(query: str) -> str | None:
     """دریافت قیمت ارز از API مستقیم"""
     import httpx
@@ -647,12 +755,16 @@ async def _currency_api_search(query: str) -> str | None:
     # تشخیص نوع ارز
     currency_map = {
         "دلار": ("USD", "دلار آمریکا", "$"),
+        "تتر": ("USD", "تتر (USDT)", "₮"),
+        "usdt": ("USD", "تتر (USDT)", "₮"),
         "یورو": ("EUR", "یورو", "€"),
         "پوند": ("GBP", "پوند انگلیس", "£"),
         "لیر": ("TRY", "لیر ترکیه", "₺"),
         "درهم": ("AED", "درهم امارات", "د.إ"),
         "یوان": ("CNY", "یوان چین", "¥"),
         "ین": ("JPY", "ین ژاپن", "¥"),
+        "کرون": ("SEK", "کرون سوئد", "kr"),
+        "وون": ("KRW", "وون کره", "₩"),
     }
     
     target_code = None
