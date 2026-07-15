@@ -1027,45 +1027,27 @@ async def cmd_setpunishment(update: Update, context: ContextTypes.DEFAULT_TYPE):
     rank_info = get_rank_config(rank_arg)
     limit = "نامحدود" if rank_info.daily_limit == -1 else str(rank_info.daily_limit)
 
-    # ─── اعمال محدودیت واقعی تلگرام ─────────────────────────────
+    # ─── فقط برای clean → باز کردن سکوت فوری ─────────────────────────────
     import logging as _log_mod
     _log2 = _log_mod.getLogger("setpunishment")
 
-    # تنظیم مجوزها بر اساس رنک
     if rank_arg == "clean":
-        perm_kwargs = dict(can_send_messages=True, can_send_audios=True, can_send_documents=True,
-            can_send_photos=True, can_send_videos=True, can_send_video_notes=True,
-            can_send_voice_notes=True, can_send_polls=True, can_send_other_messages=True,
-            can_add_web_page_previews=True, can_change_info=True, can_invite_users=True,
-            can_pin_messages=True, can_manage_topics=True)
-        restriction_text = "🔓 دسترسی کامل برگردانده شد"
+        try:
+            from telegram import ChatPermissions
+            perms = ChatPermissions(
+                can_send_messages=True, can_send_audios=True, can_send_documents=True,
+                can_send_photos=True, can_send_videos=True, can_send_video_notes=True,
+                can_send_voice_notes=True, can_send_polls=True, can_send_other_messages=True,
+                can_add_web_page_previews=True, can_change_info=True, can_invite_users=True,
+                can_pin_messages=True, can_manage_topics=True)
+            await context.bot.restrict_chat_member(chat_id=chat_id, user_id=target_id, permissions=perms)
+            restriction_text = "🔓 دسترسی کامل برگردانده شد"
+        except Exception as e:
+            restriction_text = f"⚠️ خطا: {e}"
     else:
-        # همه رنک‌های جریمه → سکوت کامل
-        perm_kwargs = dict(can_send_messages=False, can_send_audios=False, can_send_documents=False,
-            can_send_photos=False, can_send_videos=False, can_send_video_notes=False,
-            can_send_voice_notes=False, can_send_polls=False, can_send_other_messages=False,
-            can_add_web_page_previews=False, can_change_info=False, can_invite_users=False,
-            can_pin_messages=False, can_manage_topics=False)
-        labels = {"warning": "🔇 سکوت", "probation": "🔇 سکوت", "restricted": "🔇 سکوت", "banned": "🚫 مسدود"}
-        restriction_text = labels.get(rank_arg, "🔇 سکوت")
-
-    # اعمال محدودیت
-    _log2.info(f"🔒 Restricting user {target_id} in chat {chat_id} rank={rank_arg} chat_type={getattr(update.message.chat, 'type', 'unknown')}")
-    try:
-        from telegram import ChatPermissions
-        perms = ChatPermissions(**perm_kwargs)
-        _log2.info(f"🔒 ChatPermissions created, calling restrict_chat_member...")
-        result = await context.bot.restrict_chat_member(
-            chat_id=chat_id,
-            user_id=target_id,
-            permissions=perms,
-        )
-        _log2.info(f"✅ restrict_chat_member SUCCESS for {target_id}, result={result}")
-    except Exception as restrict_err:
-        import traceback
-        _log2.error(f"❌ restrict_chat_member FAILED: {restrict_err}")
-        _log2.error(f"❌ Traceback: {traceback.format_exc()}")
-        restriction_text = f"⚠️ خطا: {restrict_err}"
+        rank_info_new = get_rank_config(rank_arg)
+        limit_new = "نامحدود" if rank_info_new.daily_limit == -1 else f"{rank_info_new.daily_limit} پیام در روز"
+        restriction_text = f"📋 محدودیت روزانه: {limit_new}\n💬 پیام‌های اضافی حذف میشن"
 
     await update.message.reply_text(
         f"✅ رنک جریمه {target_mention} به <b>{get_rank_name(rank_arg)}</b> تغییر کرد.\n\n"
