@@ -541,7 +541,7 @@ async def search_web_fallback(question: str) -> str | None:
             logger.warning(f"weather API search failed: {e}")
 
     # ۰.۵. اگه سوال مربوط به قیمت ارز هست، اول API مستقیم رو امتحان کن
-    currency_keywords = ["دلار", "تتر", "usdt", "یورو", "پوند", "لیر", "درهم", "یوان", "ین", "ارز", "نرخ ارز", "قیمت"]
+    currency_keywords = ["دلار", "تتر", "usdt", "یورو", "پوند", "لیر", "درهم", "یوان", "ین ژاپن", "ارز", "نرخ ارز", "قیمت دلار", "قیمت یورو", "قیمت پوند", "قیمت لیر", "قیمت تتر", "نرخ دلار", "نرخ یورو"]
     is_currency = any(kw in question for kw in currency_keywords)
     logger.info(f"💰 currency check: question='{question[:30]}', is_currency={is_currency}")
     if is_currency:
@@ -846,18 +846,28 @@ async def _currency_api_search(query: str) -> str | None:
                 target_to_usd = rates.get(target_code, 1)
                 target_to_irr_official = usd_to_irr / target_to_usd if target_code != "USD" else usd_to_irr
                 
-                # گرفتن نرخ آزاد برای قیمت بازار
-                try:
-                    fm_resp = await client.get(
-                        "https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json",
-                    )
-                    if fm_resp.status_code == 200:
-                        fm_data = fm_resp.json()
-                        free_usd_to_irr = fm_data.get("usd", {}).get("irr", usd_to_irr)
-                    else:
+                # اول از کانال تلگرام قیمت بگیر
+                from config import CURRENCY_CHANNEL_USERNAME
+                channel_prices = await _read_channel_currency(CURRENCY_CHANNEL_USERNAME) if CURRENCY_CHANNEL_USERNAME else None
+                
+                if channel_prices and target_code in channel_prices:
+                    free_target_to_irr = channel_prices[target_code]
+                    free_usd_to_irr = channel_prices.get("USD", usd_to_irr)
+                    logger.info(f"💰 Using Telegram channel price for {target_code}")
+                else:
+                    # گرفتن نرخ آزاد برای قیمت بازار
+                    try:
+                        fm_resp = await client.get(
+                            "https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json",
+                        )
+                        if fm_resp.status_code == 200:
+                            fm_data = fm_resp.json()
+                            free_usd_to_irr = fm_data.get("usd", {}).get("irr", usd_to_irr)
+                        else:
+                            free_usd_to_irr = usd_to_irr
+                    except Exception:
                         free_usd_to_irr = usd_to_irr
-                except Exception:
-                    free_usd_to_irr = usd_to_irr
+                    free_target_to_irr = free_usd_to_irr / target_to_usd if target_code != "USD" else free_usd_to_irr
                 
                 # قیمت بازار = نرخ آزاد × نرخ ارز
                 free_target_to_irr = free_usd_to_irr / target_to_usd if target_code != "USD" else free_usd_to_irr
@@ -891,6 +901,65 @@ async def _currency_api_search(query: str) -> str | None:
         import traceback
         logger.warning(f"traceback: {traceback.format_exc()}")
     
+    return None
+
+
+# ─── خواندن قیمت ارز از کانال تلگرام ──────────────────────────────────────
+
+async def _read_channel_currency(channel_username: str) -> dict | None:
+    """خواندن آخرین قیمت ارز از کانال تلگرام"""
+    import httpx
+    import re
+    
+    try:
+        from config import TELEGRAM_BOT_TOKEN
+        async with httpx.AsyncClient(timeout=15) as client:
+            # دریافت آخرین پیام‌های کانال
+            resp = await client.get(
+                f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getUpdates",
+                params={"limit": 10, "allowed_updates": '["channel_post"]'},
+            )
+            if resp.status_code != 200:
+                return None
+            
+            data = resp.json()
+            if not data.get("ok"):
+                return None
+            
+            # جستجو در پیام‌ها برای قیمت ارز
+            prices = {}
+            for update in data.get("result", []):
+                post = update.get("channel_post", {})
+                text = post.get("text", "")
+                chat = post.get("chat", {})
+                username = chat.get("username", "")
+                
+                # فقط کانال‌های مرتبط با قیمت ارز
+                if username not in channel_username:
+                    continue
+                
+                # استخراج قیمت‌ها با regex
+                # الگو: دلار: ۱۲۳,۴۵۶ یا $123,456 یا 123456 تومان
+                patterns = [
+                    (r"دلار[:\s]*(\d[\d,]+)", "USD"),
+                    (r"یورو[:\s]*(\d[\d,]+)", "EUR"),
+                    (r"پوند[:\s]*(\d[\d,]+)", "GBP"),
+                    (r"لیر[:\s]*(\d[\d,]+)", "TRY"),
+                    (r"تتر[:\s]*(\d[\d,]+)", "USDT"),
+                ]
+                
+                for pattern, code in patterns:
+                    match = re.search(pattern, text)
+                    if match:
+                        price_str = match.group(1).replace(",", "")
+                        try:
+                            prices[code] = int(price_str)
+                        except ValueError:
+                            pass
+            
+            return prices if prices else None
+    except Exception as e:
+        logger.warning(f"channel currency read failed: {e}")
     return None
 
 

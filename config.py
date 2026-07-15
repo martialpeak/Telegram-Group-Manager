@@ -5,6 +5,7 @@ load_dotenv()
 
 # ── تلگرام ───────────────────────────────────────────
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+CURRENCY_CHANNEL_USERNAME = os.getenv("CURRENCY_CHANNEL_USERNAME", "")  # مثلاً: @irr_price_bot
 
 # ── زبان ربات ─────────────────────────────────────────
 BOT_LANG = os.getenv("BOT_LANG", "fa")
