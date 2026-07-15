@@ -600,7 +600,25 @@ async def search_web_fallback(question: str) -> str | None:
         except Exception as e:
             logger.warning(f"ddg html search failed: {e}")
 
-    # ۲-ب. اگه DDG کار نکرد (احتمالاً فیلتر)، Google search رو امتحان کن
+    # ۲-ب. Brave Search (کار می‌کنه از المان)
+    if not snippets:
+        try:
+            brave_results = await _brave_search(question, WEB_SEARCH_MAX_RESULTS)
+            snippets.extend(brave_results)
+            logger.info(f"Brave: {len(brave_results)} results")
+        except Exception as e:
+            logger.warning(f"brave search failed: {e}")
+
+    # ۲-ج. Startpage (کار می‌کنه از المان)
+    if not snippets:
+        try:
+            startpage_results = await _startpage_search(question, WEB_SEARCH_MAX_RESULTS)
+            snippets.extend(startpage_results)
+            logger.info(f"Startpage: {len(startpage_results)} results")
+        except Exception as e:
+            logger.warning(f"startpage search failed: {e}")
+
+    # ۲-د. Google (ممکنه فیلتر باشه)
     if not snippets:
         try:
             google_results = await _google_search(question, WEB_SEARCH_MAX_RESULTS)
@@ -609,7 +627,7 @@ async def search_web_fallback(question: str) -> str | None:
         except Exception as e:
             logger.warning(f"google search failed: {e}")
 
-    # ۲-ج. اگه Google هم کار نکرد، Bing search رو امتحان کن
+    # ۲-ه. Bing (ممکنه فیلتر باشه)
     if not snippets:
         try:
             bing_results = await _bing_search(question, WEB_SEARCH_MAX_RESULTS)
@@ -618,7 +636,7 @@ async def search_web_fallback(question: str) -> str | None:
         except Exception as e:
             logger.warning(f"bing search failed: {e}")
 
-    # ۲-د. اگه Bing هم کار نکرد، Wikipedia API رو امتحان کن
+    # ۲-و. Wikipedia API
     if not snippets:
         try:
             wiki_snippets = await _wikipedia_search(question, WEB_SEARCH_MAX_RESULTS)
@@ -1202,6 +1220,89 @@ async def _ddg_html_search(query: str, max_results: int = 5) -> list[dict]:
             })
     
     logger.info(f"DDG HTML: {len(results)} results with URLs")
+    return results
+
+
+# ─── Brave Search ─────────────────────────────────────────────────────────────
+
+async def _brave_search(query: str, max_results: int = 5) -> list[dict]:
+    """استخراج نتایج از Brave Search"""
+    import httpx
+    import re as _re
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
+    results = []
+    try:
+        async with httpx.AsyncClient(timeout=15, headers=headers, follow_redirects=True) as client:
+            resp = await client.get(
+                "https://search.brave.com/search",
+                params={"q": query},
+            )
+            logger.info(f"Brave search: HTTP {resp.status_code}")
+            if resp.status_code != 200:
+                return []
+            
+            html = resp.text
+            
+            # Brave: <div class="snippet"> <a class="result-header" href="URL">TITLE</a> <p class="snippet-description">SNIPPET</p>
+            pattern = r'<div[^>]*class="[^"]*snippet[^"]*"[^>]*>.*?<a[^>]*href="([^"]+)"[^>]*class="[^"]*result-header[^"]*"[^>]*>(.*?)</a>.*?<p[^>]*class="[^"]*snippet-description[^"]*"[^>]*>(.*?)</p>'
+            matches = _re.findall(pattern, html, _re.DOTALL)
+            
+            for url, title, snippet in matches[:max_results]:
+                title_clean = _re.sub(r"<[^>]+>", "", title).strip()
+                snippet_clean = _re.sub(r"<[^>]+>", "", snippet).strip()
+                if title_clean:
+                    results.append({
+                        "title": title_clean[:100],
+                        "url": url[:200],
+                        "snippet": snippet_clean[:300]
+                    })
+            
+            logger.info(f"Brave: {len(results)} results")
+    except Exception as e:
+        logger.warning(f"Brave search failed: {e}")
+    return results
+
+
+# ─── Startpage Search ─────────────────────────────────────────────────────────
+
+async def _startpage_search(query: str, max_results: int = 5) -> list[dict]:
+    """استخراج نتایج از Startpage"""
+    import httpx
+    import re as _re
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
+    results = []
+    try:
+        async with httpx.AsyncClient(timeout=15, headers=headers, follow_redirects=True) as client:
+            resp = await client.get(
+                "https://www.startpage.com/do/dsearch",
+                params={"query": query, "cat": "web"},
+            )
+            logger.info(f"Startpage search: HTTP {resp.status_code}")
+            if resp.status_code != 200:
+                return []
+            
+            html = resp.text
+            
+            # Startpage: <a class="w-gl__result-url" href="URL">TITLE</a>
+            pattern = r'<a[^>]*class="[^"]*w-gl__result-url[^"]*"[^>]*href="([^"]+)"[^>]*>(.*?)</a>'
+            matches = _re.findall(pattern, html, _re.DOTALL)
+            
+            for url, title in matches[:max_results]:
+                title_clean = _re.sub(r"<[^>]+>", "", title).strip()
+                if title_clean and url.startswith("http"):
+                    results.append({
+                        "title": title_clean[:100],
+                        "url": url[:200],
+                        "snippet": ""
+                    })
+            
+            logger.info(f"Startpage: {len(results)} results")
+    except Exception as e:
+        logger.warning(f"Startpage search failed: {e}")
     return results
 
 
