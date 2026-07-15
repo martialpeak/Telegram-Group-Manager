@@ -820,22 +820,35 @@ async def _currency_api_search(query: str) -> str | None:
                 except Exception:
                     usdt_usd = 1.0
                 
-                # قیمت USDT به ریال (نرخ بازار)
-                # USDT معمولاً ~$1 هست ولی در ایران نرخ بازار فرق داره
-                usdt_to_irr = usd_to_irr * usdt_usd
+                # گرفتن نرخ آزاد دلار (بازار)
+                try:
+                    fm_resp = await client.get(
+                        "https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json",
+                    )
+                    if fm_resp.status_code == 200:
+                        fm_data = fm_resp.json()
+                        free_market_irr = fm_data.get("usd", {}).get("irr", usd_to_irr)
+                    else:
+                        free_market_irr = usd_to_irr
+                except Exception:
+                    free_market_irr = usd_to_irr
+                
+                # قیمت USDT به ریال (نرخ بازار آزاد)
+                usdt_to_irr = free_market_irr * usdt_usd
+                usdt_toman = usdt_to_irr / 10
                 
                 result = (
                     f"💰 قیمت {target_name} ({target_symbol})\n"
                     f"━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
                     f"💵 قیمت جهانی:\n"
                     f"   1 USDT = {usdt_usd:.4f} USD\n\n"
-                    f"📊 نرخ رسمی دلار (بانک مرکزی):\n"
+                    f"📊 نرخ بازار (آزاد):\n"
+                    f"   {usdt_to_irr:,.0f} ریال\n"
+                    f"   ({usdt_toman:,.0f} تومان)\n\n"
+                    f"🏦 نرخ رسمی (بانک مرکزی):\n"
                     f"   {usd_to_irr:,.0f} ریال ({usd_to_irr/10:,.0f} تومان)\n\n"
-                    f"⚠️ توجه:\n"
-                    f"   قیمت بازار تتر در ایران با نرخ رسمی فرق داره.\n"
-                    f"   برای قیمت لحظه‌ای بازار، از صرافی‌های آنلاین استفاده کنید.\n\n"
                     f"📅 تاریخ: {date}\n"
-                    f"📊 منبع: Exchange Rate API + CoinGecko"
+                    f"📊 منبع: CoinGecko + Currency API"
                 )
                 return result
             else:
