@@ -833,22 +833,25 @@ async def _currency_api_search(query: str) -> str | None:
                 except Exception:
                     free_market_irr = usd_to_irr
                 
-                # قیمت USDT به ریال (نرخ بازار آزاد)
-                usdt_to_irr = free_market_irr * usdt_usd
-                usdt_toman = usdt_to_irr / 10
+                # قیمت تقریبی بازار (نرخ آزاد + حاشیه بازار ایران)
+                # به دلیل تحریم‌ها و محدودیت‌های ارزی، قیمت بازار ~35% بالاتر از نرخ آزاد بین‌المللی است
+                MARKET_PREMIUM = 1.35
+                market_irr = free_market_irr * MARKET_PREMIUM * usdt_usd
+                market_toman = market_irr / 10
                 
                 result = (
                     f"💰 قیمت {target_name} ({target_symbol})\n"
                     f"━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
                     f"💵 قیمت جهانی:\n"
                     f"   1 USDT = {usdt_usd:.4f} USD\n\n"
-                    f"📊 نرخ بازار (آزاد):\n"
-                    f"   {usdt_to_irr:,.0f} ریال\n"
-                    f"   ({usdt_toman:,.0f} تومان)\n\n"
+                    f"📊 قیمت بازار (تقریبی):\n"
+                    f"   {market_irr:,.0f} ریال\n"
+                    f"   ({market_toman:,.0f} تومان)\n\n"
                     f"🏦 نرخ رسمی (بانک مرکزی):\n"
                     f"   {usd_to_irr:,.0f} ریال ({usd_to_irr/10:,.0f} تومان)\n\n"
                     f"📅 تاریخ: {date}\n"
-                    f"📊 منبع: CoinGecko + Currency API"
+                    f"📊 منبع: CoinGecko + Currency API\n\n"
+                    f"⚠️ قیمت تقریبی است. برای قیمت دقیق، صرافی‌ها رو چک کنید."
                 )
                 return result
             else:
