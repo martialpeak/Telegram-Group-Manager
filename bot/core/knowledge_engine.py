@@ -704,7 +704,7 @@ async def _weather_search(question: str) -> str | None:
         # استان آذربایجان شرقی
         "تبریز": "Tabriz", "مراغه": "Maragheh", "میانه": "Mianeh",
         "اهر": "Ahar", "شبستر": "Shabestar", "بستان‌آباد": "Bostanabad",
-        "اهر": "Ahar", "هشترود": "Hashtrud",
+        "هشترود": "Hashtrud",
         # استان آذربایجان غربی
         "ارومیه": "Urmia", "خوی": "Khoy", "میاندوآب": "Miandoab",
         "بوکان": "Bukan", "سلماس": "Salmas", "پیرانشهر": "Piranshahr",
@@ -715,7 +715,7 @@ async def _weather_search(question: str) -> str | None:
         "بندرامام خمینی": "Bandar Imam Khomeini", "بهبهان": "Behbahan",
         "ایذه": "Izeh", "رامهرمز": "Ramhormoz",
         # استان کرمان
-        "کرمان": "Kerman", "رفسنجان": "Rafsanjan", " بم": "Bam",
+        "کرمان": "Kerman", "رفسنجان": "Rafsanjan", "بم": "Bam",
         "جیرفت": "Jiroft", "سیرجان": "Sirjan", "بافت": "Bafq",
         "زرند": "Zarand", "کهنوج": "Kahnuj",
         # استان مازندران

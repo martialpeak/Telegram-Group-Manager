@@ -17,7 +17,7 @@ from bot.core.user_levels import (
     get_config, is_valid_level, level_label, level_summary, LEVEL_ORDER,
     next_auto_level,
 )
-from bot.utils.helpers import mention, send_and_delete, parse_duration, format_duration
+from bot.utils.helpers import mention, send_and_delete, esc, parse_duration, format_duration
 from i18n import t
 
 logger = logging.getLogger(__name__)
