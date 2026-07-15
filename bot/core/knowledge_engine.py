@@ -617,6 +617,63 @@ async def search_web_fallback(question: str) -> str | None:
     return text
 
 
+# ─── Yandex Search (در ایران کار می‌کنه) ─────────────────────────────────────
+
+async def _yandex_search(query: str, max_results: int = 3) -> list[str]:
+    """استخراج snippet از Yandex Search"""
+    import httpx
+    import re as _re
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
+    try:
+        async with httpx.AsyncClient(timeout=15, headers=headers, follow_redirects=True) as client:
+            resp = await client.get(
+                "https://yandex.com/search/",
+                params={"text": query, "lr": "10393"},
+            )
+            logger.info(f"Yandex search: HTTP {resp.status_code}")
+            if resp.status_code != 200:
+                return []
+            snippets = []
+            # Yandex organic results
+            matches = _re.findall(
+                r'<div[^>]*class="[^"]*organic[^"]*"[^>]*>(.*?)</div>',
+                resp.text,
+                _re.DOTALL,
+            )
+            for m in matches[:max_results * 2]:
+                clean = _re.sub(r"<[^>]+>", "", m).strip()
+                if clean and len(clean) > 40:
+                    snippets.append(clean[:300])
+            # fallback: h3 titles
+            if not snippets:
+                matches = _re.findall(
+                    r'<h3[^>]*>(.*?)</h3>',
+                    resp.text,
+                    _re.DOTALL,
+                )
+                for m in matches[:max_results]:
+                    clean = _re.sub(r"<[^>]+>", "", m).strip()
+                    if clean and len(clean) > 10:
+                        snippets.append(clean[:300])
+            # fallback: snippet divs
+            if not snippets:
+                matches = _re.findall(
+                    r'<div[^>]*class="[^"]*TextContainer[^"]*"[^>]*>(.*?)</div>',
+                    resp.text,
+                    _re.DOTALL,
+                )
+                for m in matches[:max_results]:
+                    clean = _re.sub(r"<[^>]+>", "", m).strip()
+                    if clean and len(clean) > 30:
+                        snippets.append(clean[:300])
+            return snippets[:max_results]
+    except Exception as e:
+        logger.warning(f"Yandex search failed: {e}")
+        return []
+
+
 # ─── Google Search (وقتی DDG فیلتره) ──────────────────────────────────────────
 
 async def _google_search(query: str, max_results: int = 3) -> list[str]:
@@ -636,22 +693,29 @@ async def _google_search(query: str, max_results: int = 3) -> list[str]:
             if resp.status_code != 200:
                 return []
             snippets = []
-            matches = _re.findall(
+            # Multiple regex patterns for different Google layouts
+            patterns = [
                 r'<div[^>]*class="BNeawe[^"]*"[^>]*>(.*?)</div>',
-                resp.text,
-                _re.DOTALL,
-            )
-            for m in matches[:max_results]:
-                clean = _re.sub(r"<[^>]+>", "", m).strip()
-                if clean and len(clean) > 30 and not clean.startswith("http"):
-                    snippets.append(clean[:300])
+                r'<div[^>]*class="[^"]*VwiC3b[^"]*"[^>]*>(.*?)</div>',
+                r'<span[^>]*class="[^"]*aCOpRe[^"]*"[^>]*>(.*?)</span>',
+                r'<div[^>]*data-sncf="[^"]*"[^>]*>(.*?)</div>',
+            ]
+            for pattern in patterns:
+                if snippets:
+                    break
+                matches = _re.findall(pattern, resp.text, _re.DOTALL)
+                for m in matches[:max_results]:
+                    clean = _re.sub(r"<[^>]+>", "", m).strip()
+                    if clean and len(clean) > 30 and not clean.startswith("http"):
+                        snippets.append(clean[:300])
+            # final fallback
             if not snippets:
                 matches = _re.findall(
                     r'<span[^>]*>(.*?)</span>',
                     resp.text,
                     _re.DOTALL,
                 )
-                for m in matches[:max_results * 2]:
+                for m in matches[:max_results * 3]:
                     clean = _re.sub(r"<[^>]+>", "", m).strip()
                     if clean and len(clean) > 50 and not clean.startswith("http"):
                         snippets.append(clean[:300])
