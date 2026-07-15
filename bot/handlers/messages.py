@@ -471,22 +471,27 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ]])
             try:
                 # اگه جواب خیلی طولانیه، لودینگ رو پاک کن و پیام جدید بفرست
+                # تبدیل ** به <b> برای بولد
+                import re as _re_html
+                formatted_answer = _re_html.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', answer_text)
+                full_text = f"{source_label} {formatted_answer}"
+                
                 if len(answer_text) > 3500:
                     await loading.delete()
                     await message.reply_text(
-                        f"{source_label} {answer_text}",
+                        full_text,
                         reply_markup=keyboard,
                         parse_mode="HTML",
                     )
                 else:
                     await loading.edit_text(
-                        f"{source_label} {answer_text}",
+                        full_text,
                         reply_markup=keyboard,
                         parse_mode="HTML",
                     )
             except Exception as e:
                 logger.warning(f"loading edit failed: {e}")
-                # fallback: پیام جدید
+                # fallback: بدون parse_mode
                 try:
                     await loading.delete()
                 except Exception:
@@ -494,7 +499,6 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await message.reply_text(
                     f"{source_label} {answer_text}",
                     reply_markup=keyboard,
-                    parse_mode="HTML",
                 )
 
         await db.log_message(
