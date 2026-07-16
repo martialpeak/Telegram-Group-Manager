@@ -341,6 +341,8 @@ async def cmd_setlevel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.message.chat_id
     cfg     = get_config(level_arg)
     await db.set_user_level(target_id, chat_id, level_arg, update.message.from_user.id)
+    # ریست شمارش پیام جلوگیری از ارتقاء خودکار
+    await db.reset_message_count(target_id, chat_id)
 
     tag_text = cfg.tag if level_arg != "simple" else "ساده"
     from bot.core.moderation import _set_status_tag
