@@ -199,7 +199,7 @@ async def on_feedback_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     # ── اشتباهه ──────────────────────────────────────────────────────────────
     elif data.startswith("fb_no_"):
         key  = data[6:]
-        info = pending.get(key)
+        info = pending.pop(key, None)
         if not info:
             await query.answer("این فیدبک دیگه فعال نیست.", show_alert=True)
             return
@@ -207,19 +207,12 @@ async def on_feedback_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         if not allowed:
             await query.answer("⏳ خیلی زیاد فیدبک دادی! کمی صبر کن.", show_alert=True)
             return
-        prev = await db.count_user_corrections(voter.id, info["chat_id"], info["question"])
-        if prev >= 2:
-            await query.answer("⚠️ قبلاً این سوال رو تصحیح کردی!", show_alert=True)
-            return
-        context.user_data["awaiting_correction"] = key
-        await query.edit_message_reply_markup(reply_markup=None)
-        await query.message.reply_text(
-            f"✏️ جواب درست رو بنویس تا یاد بگیرم 👇\n"
-            f"_(حداقل {_MIN_CORRECTION_LEN} کاراکتر)_",
-            parse_mode="HTML",
+        await db.save_feedback(
+            info["user_id"], info["chat_id"],
+            info["question"], info["answer"], correct=False,
         )
-        # امتیاز به کاربر برای تصحیح
-        await db.add_points(voter.id, info["chat_id"], 5)
+        await query.edit_message_reply_markup(reply_markup=None)
+        await query.message.reply_text("📝 فیدبکت ثبت شد. ممنون!")
 
     # ── رای روی تصحیح ────────────────────────────────────────────────────────
     elif data.startswith("vote_up_") or data.startswith("vote_dn_"):
