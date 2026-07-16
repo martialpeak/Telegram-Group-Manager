@@ -693,6 +693,16 @@ async def get_message_count(user_id: int, chat_id: int) -> int:
         return row[0] if row else 0
 
 
+async def reset_message_count(user_id: int, chat_id: int):
+    """ریست کردن شمارش پیام"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "DELETE FROM user_message_count WHERE user_id=? AND chat_id=?",
+            (user_id, chat_id),
+        )
+        await db.commit()
+
+
 # ─── شمارش سوال روزانه ────────────────────────────────────────────────────────
 
 async def increment_query_count(user_id: int, chat_id: int) -> int:
