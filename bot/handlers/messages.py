@@ -298,23 +298,26 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if punishment_rank and punishment_rank != "clean":
         from bot.core.punishment_ranks import get_rank_config
         rank_cfg = get_rank_config(punishment_rank)
-        if rank_cfg.daily_limit != -1 and rank_cfg.daily_limit > 0:
+        if rank_cfg.daily_limit == 0:
+            # banned → حذف پیام (بدون میوت تلگرام - فقط حذف)
+            try:
+                await message.delete()
+            except Exception:
+                pass
+            return
+        elif rank_cfg.daily_limit > 0:
             # شمارش پیام‌های امروز
             today_count = await db.get_daily_action(user.id, chat.id, "punishment_msg")
             if today_count >= rank_cfg.daily_limit:
-                # حد رسیده → سکوت فوری
+                # حد رسیده → حذف پیام + اخطار (میوت نمیکنیم - فردا دوباره میتونه پیام بده)
                 try:
-                    from telegram import ChatPermissions
-                    perms = ChatPermissions(
-                        can_send_messages=False, can_send_audios=False, can_send_documents=False,
-                        can_send_photos=False, can_send_videos=False, can_send_video_notes=False,
-                        can_send_voice_notes=False, can_send_polls=False, can_send_other_messages=False,
-                        can_add_web_page_previews=False, can_change_info=False, can_invite_users=False,
-                        can_pin_messages=False, can_manage_topics=False)
-                    await context.bot.restrict_chat_member(chat_id=chat.id, user_id=user.id, permissions=perms)
                     await message.delete()
+                except Exception:
+                    pass
+                try:
                     await chat.send_message(
-                        f"🔇 {mention(user)} به حد روزانه رسید ({rank_cfg.daily_limit} پیام) → سکوت",
+                        f"🔇 {mention(user)} به حد روزانه رسید ({rank_cfg.daily_limit} پیام)\n"
+                        f"💬 فردا دوباره میتونی پیام بدی",
                     )
                 except Exception:
                     pass
@@ -322,21 +325,6 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else:
                 # شمارش پیام
                 await db.increment_daily_action(user.id, chat.id, "punishment_msg")
-        elif rank_cfg.daily_limit == 0:
-            # banned → سکوت کامل
-            try:
-                from telegram import ChatPermissions
-                perms = ChatPermissions(
-                    can_send_messages=False, can_send_audios=False, can_send_documents=False,
-                    can_send_photos=False, can_send_videos=False, can_send_video_notes=False,
-                    can_send_voice_notes=False, can_send_polls=False, can_send_other_messages=False,
-                    can_add_web_page_previews=False, can_change_info=False, can_invite_users=False,
-                    can_pin_messages=False, can_manage_topics=False)
-                await context.bot.restrict_chat_member(chat_id=chat.id, user_id=user.id, permissions=perms)
-                await message.delete()
-            except Exception:
-                pass
-            return
 
     text = message.text.strip()
     if len(text) < 2:
