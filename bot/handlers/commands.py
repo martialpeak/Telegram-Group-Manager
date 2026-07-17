@@ -1042,9 +1042,12 @@ async def cmd_setpunishment(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 can_send_voice_notes=True, can_send_polls=True, can_send_other_messages=True,
                 can_add_web_page_previews=True, can_change_info=True, can_invite_users=True,
                 can_pin_messages=True, can_manage_topics=True)
-            await context.bot.restrict_chat_member(chat_id=chat_id, user_id=target_id, permissions=perms)
+            _log2.info(f"🔓 CLEAN: unrestricting user {target_id} in chat {chat_id}")
+            result = await context.bot.restrict_chat_member(chat_id=chat_id, user_id=target_id, permissions=perms)
+            _log2.info(f"🔓 CLEAN result: {result}")
             restriction_text = "🔓 دسترسی کامل برگردانده شد"
         except Exception as e:
+            _log2.error(f"❌ CLEAN failed: {e}")
             restriction_text = f"⚠️ خطا: {e}"
     else:
         rank_info_new = get_rank_config(rank_arg)
