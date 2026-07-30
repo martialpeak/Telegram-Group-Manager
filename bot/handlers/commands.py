@@ -620,7 +620,7 @@ async def cmd_ban(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # نمایش لول جریمه
     from bot.core.punishment_levels import get_next_punishment_level, get_level_name
     warnings = await db.get_warnings(target_id, chat_id)
-    level = get_next_punishment_level(len(warnings))
+    level = get_next_punishment_level(warnings if isinstance(warnings, int) else len(warnings))
 
     if until_date:
         await update.message.reply_text(
