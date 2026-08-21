@@ -21,6 +21,93 @@ from i18n import t
 
 logger = logging.getLogger(__name__)
 
+
+# ── چک محدودیت روزانه جریمه (متن + مدیا) ──────────────────────────────────
+async def _check_punishment_limit(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    """
+    برمی‌گردونه True اگه پیام باید مسدود/میوت بشه.
+    وقتی کاربر از حد روزانه رد کرد → واقعاً میوت تلگرامی میشه (تا فردا).
+    """
+    message = update.message
+    if not message or not message.from_user:
+        return False
+    user = message.from_user
+    chat = message.chat
+    if _is_admin(user.id):
+        return False
+
+    punishment_rank = await db.get_punishment_rank(user.id, chat.id)
+    if not punishment_rank or punishment_rank == "clean":
+        return False
+
+    from bot.core.punishment_ranks import get_rank_config
+    rank_cfg = get_rank_config(punishment_rank)
+
+    if rank_cfg.daily_limit == 0:
+        # banned → میوت کامل (تا فردا)
+        try:
+            from telegram import ChatPermissions
+            perms = ChatPermissions(
+                can_send_messages=False, can_send_audios=False, can_send_documents=False,
+                can_send_photos=False, can_send_videos=False, can_send_video_notes=False,
+                can_send_voice_notes=False, can_send_polls=False, can_send_other_messages=False,
+                can_add_web_page_previews=False, can_change_info=False, can_invite_users=False,
+                can_pin_messages=False, can_manage_topics=False)
+            # میوت تا ۲۴ ساعت دیگه — فردا خودکار باز میشه
+            until = int(_time_mod.time()) + 86400
+            await context.bot.restrict_chat_member(
+                chat_id=chat.id, user_id=user.id, permissions=perms, until_date=until)
+            try:
+                await message.delete()
+            except Exception:
+                pass
+            try:
+                await chat.send_message(
+                    f"🔇 {mention(user)} بن شد (جریمه: {punishment_rank}).\\n"
+                    f"💬 فردا دوباره میتونی پیام بدی.",
+                )
+            except Exception:
+                pass
+        except Exception:
+            pass
+        return True
+
+    if rank_cfg.daily_limit > 0:
+        today_count = await db.get_daily_action(user.id, chat.id, "punishment_msg")
+        if today_count >= rank_cfg.daily_limit:
+            # حد رسیده → واقعاً میوت تلگرامی (تا فردا)
+            try:
+                from telegram import ChatPermissions
+                perms = ChatPermissions(
+                    can_send_messages=False, can_send_audios=False, can_send_documents=False,
+                    can_send_photos=False, can_send_videos=False, can_send_video_notes=False,
+                    can_send_voice_notes=False, can_send_polls=False, can_send_other_messages=False,
+                    can_add_web_page_previews=False, can_change_info=False, can_invite_users=False,
+                    can_pin_messages=False, can_manage_topics=False)
+                until = int(_time_mod.time()) + 86400
+                await context.bot.restrict_chat_member(
+                    chat_id=chat.id, user_id=user.id, permissions=perms, until_date=until)
+                try:
+                    await message.delete()
+                except Exception:
+                    pass
+                try:
+                    await chat.send_message(
+                        f"🔇 {mention(user)} به حد روزانه رسید ({rank_cfg.daily_limit} پیام) → میوت شد.\\n"
+                        f"💬 فردا دوباره میتونی پیام بدی.",
+                    )
+                except Exception:
+                    pass
+            except Exception:
+                pass
+            return True
+        else:
+            await db.increment_daily_action(user.id, chat.id, "punishment_msg")
+            return False
+
+    return False
+
+
 # ذخیره موقت آخرین پاسخ‌های ربات برای دریافت فیدبک
 _pending_answers: dict[str, dict] = {}
 
@@ -249,6 +336,10 @@ async def on_media_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         _cfg = _get_cfg(level_for_tag)
         await _set_status_tag(context.bot, message.chat_id, user.id, _cfg.tag)
 
+    # ─── چک محدودیت روزانه جریمه (عکس/مدیا هم میوت میشه) ─────────────
+    if await _check_punishment_limit(update, context):
+        return
+
     await _check_level_restrictions(message, context.bot)
 
     # ── امتیاز مدیا ──────────────────────────────────────────────────────────
@@ -293,38 +384,9 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await message.reply_text(f"🤖 {result['answer']}")
         return
 
-    # ─── چک محدودیت روزانه جریمه ──────────────────────────────────────
-    punishment_rank = await db.get_punishment_rank(user.id, chat.id)
-    if punishment_rank and punishment_rank != "clean":
-        from bot.core.punishment_ranks import get_rank_config
-        rank_cfg = get_rank_config(punishment_rank)
-        if rank_cfg.daily_limit == 0:
-            # banned → حذف پیام (بدون میوت تلگرام - فقط حذف)
-            try:
-                await message.delete()
-            except Exception:
-                pass
-            return
-        elif rank_cfg.daily_limit > 0:
-            # شمارش پیام‌های امروز
-            today_count = await db.get_daily_action(user.id, chat.id, "punishment_msg")
-            if today_count >= rank_cfg.daily_limit:
-                # حد رسیده → حذف پیام + اخطار (میوت نمیکنیم - فردا دوباره میتونه پیام بده)
-                try:
-                    await message.delete()
-                except Exception:
-                    pass
-                try:
-                    await chat.send_message(
-                        f"🔇 {mention(user)} به حد روزانه رسید ({rank_cfg.daily_limit} پیام)\n"
-                        f"💬 فردا دوباره میتونی پیام بدی",
-                    )
-                except Exception:
-                    pass
-                return
-            else:
-                # شمارش پیام
-                await db.increment_daily_action(user.id, chat.id, "punishment_msg")
+    # ─── چک محدودیت روزانه جریمه (واقعاً میوت میشه) ─────────────────
+    if await _check_punishment_limit(update, context):
+        return
 
     text = message.text.strip()
     if len(text) < 2:
