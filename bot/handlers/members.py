@@ -24,10 +24,47 @@ async def on_new_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not message:
         return
     for member in message.new_chat_members:
-        if member.is_bot:
-            continue
-
         chat_id = message.chat_id
+
+        # ── ضد ربات: هر رباتی که غیر از خود ربات وارد بشه → بن فوری ──────
+        if member.is_bot:
+            if member.id == context.bot.id:
+                continue  # ورود خود ربات — کاری نمی‌کنیم
+            adder = message.from_user  # کی اضافه کرده؟
+            if adder and _is_admin(adder.id):
+                # ادمین اضافه کرده — اجازه بده ولی اطلاع بده
+                try:
+                    await send_and_delete(
+                        message,
+                        f"🤖 ربات <b>{escape_html(member.full_name)}</b> توسط ادمین اضافه شد — اجازه داده شد.",
+                        delay=30,
+                    )
+                except Exception:
+                    pass
+                continue
+
+            # بن ربات
+            try:
+                await context.bot.ban_chat_member(chat_id=chat_id, user_id=member.id)
+                try:
+                    await db.log_action(
+                        chat_id=chat_id, action="ban_bot", user_id=member.id,
+                        target_name=member.full_name,
+                        reason=f"ربات غیرمجاز — اضافه شده توسط {adder.full_name if adder else 'نامشخص'}",
+                    )
+                except Exception:
+                    pass
+                try:
+                    await send_and_delete(
+                        message,
+                        f"🚫 ربات <b>{escape_html(member.full_name)}</b> بن شد — اضافه کردن ربات به گروه ممنوعه.",
+                        delay=60,
+                    )
+                except Exception:
+                    pass
+            except Exception as e:
+                logger.warning(f"auto-ban bot failed: {e}")
+            continue
 
         # ── ست کردن تگ سطح فعلی کاربر ──────────────────────────────────────
         try:
