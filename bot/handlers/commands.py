@@ -964,6 +964,132 @@ async def cmd_testbtn(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"❌ خطا در ارسال کلیدها: <code>{e}</code>", parse_mode="HTML")
 
 
+# ─── /top — برترین کاربران گروه ──────────────────────────────────────────────
+
+async def cmd_top(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """جدول امتیازها — ۱۰ کاربر برتر گروه"""
+    chat = update.message.chat
+    if chat.type == ChatType.PRIVATE:
+        await update.message.reply_text(t("group_only"))
+        return
+
+    users = await db.get_top_users(chat.id, 10)
+    if not users:
+        await update.message.reply_text("📊 هنوز امتیازی ثبت نشده!")
+        return
+
+    medals = ["🥇", "🥈", "🥉"]
+    lines = ["🏆 برترین کاربران گروه", "━━━━━━━━━━━━━━━━━━━━━━━━", ""]
+    for i, u in enumerate(users):
+        name = u["full_name"] or f"کاربر {u['user_id']}"
+        # escape HTML و کوتاه کردن اسم طولانی
+        from bot.utils.helpers import escape_html
+        name = escape_html(name)[:25]
+        rank_icon = medals[i] if i < 3 else f"{i+1}."
+        lines.append(f"{rank_icon} <a href=\"tg://user?id={u['user_id']}\">{name}</a> — ⭐ {u['points']:,}")
+
+    lines.append("")
+    lines.append("💡 با فعالیت و کمک به بقیه امتیاز جمع کن!")
+    await update.message.reply_text("\n".join(lines), parse_mode="HTML")
+
+
+# ─── /addfilter /delfilter /filters — فیلتر کلمات ممنوعه ─────────────────────
+
+async def cmd_addfilter(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """اضافه کردن کلمه ممنوعه — فقط ادمین"""
+    if not _is_admin(update.message.from_user.id):
+        return
+    word = " ".join(context.args).strip() if context.args else ""
+    if not word:
+        await update.message.reply_text("استفاده: /addfilter <کلمه>")
+        return
+    added = await db.add_chat_filter(update.message.chat_id, word, update.message.from_user.id)
+    if added:
+        await update.message.reply_text(f"✅ کلمه <code>{esc(word)}</code> فیلتر شد. پیام‌های حاوی اون حذف میشن.", parse_mode="HTML")
+    else:
+        await update.message.reply_text("⚠️ این کلمه قبلاً فیلتر شده.")
+
+
+async def cmd_delfilter(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """حذف کلمه ممنوعه — فقط ادمین"""
+    if not _is_admin(update.message.from_user.id):
+        return
+    word = " ".join(context.args).strip() if context.args else ""
+    if not word:
+        await update.message.reply_text("استفاده: /delfilter <کلمه>")
+        return
+    removed = await db.remove_chat_filter(update.message.chat_id, word)
+    if removed:
+        await update.message.reply_text(f"✅ کلمه <code>{esc(word)}</code> از فیلترها حذف شد.", parse_mode="HTML")
+    else:
+        await update.message.reply_text("❌ این کلمه توی لیست فیلتر نیست.")
+
+
+async def cmd_filters(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """لیست کلمات ممنوعه"""
+    words = await db.get_chat_filters(update.message.chat_id)
+    if not words:
+        await update.message.reply_text("📋 هیچ کلمه‌ای فیلتر نشده. با /addfilter اضافه کن.")
+        return
+    lines = [f"📋 کلمات فیلتر شده ({len(words)}):", ""]
+    lines.extend(f"   • <code>{esc(w)}</code>" for w in words)
+    await update.message.reply_text("\n".join(lines), parse_mode="HTML")
+
+
+# ─── /remind — یادآوری ───────────────────────────────────────────────────────
+
+async def cmd_remind(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """یادآوری با تاخیر: /remind 2h متن پیام"""
+    args = list(context.args) if context.args else []
+    if len(args) < 2:
+        await update.message.reply_text(
+            "استفاده: /remind <زمان> <متن>\n"
+            "مثال: /remind 30m چایی دم کن\n"
+            "واحد: m=دقیقه، h=ساعت، d=روز"
+        )
+        return
+
+    from bot.utils.helpers import parse_duration
+    duration = parse_duration(args[0])
+    if duration <= 0 or duration > 86400 * 7:
+        await update.message.reply_text("❌ زمان نامعتبر. حداکثر ۷ روز. مثال: /remind 2h متن")
+        return
+
+    text = " ".join(args[1:])
+    user = update.message.from_user
+    chat_id = update.message.chat_id
+
+    async def _send_reminder():
+        mention_user = f'<a href="tg://user?id={user.id}">{esc(user.full_name)}</a>'
+        try:
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=f"⏰ یادآوری برای {mention_user}:\n\n💬 {esc(text)}",
+                parse_mode="HTML",
+            )
+        except Exception as e:
+            logger.warning(f"reminder send failed: {e}")
+
+    import asyncio as _asyncio
+    context.application.create_task(_delayed_task(duration, _send_reminder))
+
+    from bot.utils.helpers import format_duration
+    await update.message.reply_text(
+        f"✅ یادآوری ثبت شد ({format_duration(duration)} دیگه):\n💬 {esc(text)}",
+        parse_mode="HTML",
+    )
+
+
+async def _delayed_task(seconds: int, coro_fn):
+    """اجرای یک coroutine بعد از تاخیر مشخص"""
+    import asyncio as _asyncio
+    await _asyncio.sleep(seconds)
+    try:
+        await coro_fn()
+    except Exception as e:
+        logger.warning(f"delayed task failed: {e}")
+
+
 # ─── /punishment — نمایش رنک‌های جریمه ────────────────────────────────────────
 
 async def cmd_punishment(update: Update, context: ContextTypes.DEFAULT_TYPE):

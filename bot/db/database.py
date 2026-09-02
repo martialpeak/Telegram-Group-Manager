@@ -112,6 +112,15 @@ async def init_db():
             PRIMARY KEY (user_id, chat_id)
         );
 
+        CREATE TABLE IF NOT EXISTS chat_filters (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            chat_id    INTEGER NOT NULL,
+            word       TEXT NOT NULL,
+            added_by   INTEGER,
+            created_at TEXT DEFAULT (datetime('now')),
+            UNIQUE(chat_id, word)
+        );
+
         CREATE TABLE IF NOT EXISTS user_levels (
             user_id     INTEGER NOT NULL,
             chat_id     INTEGER NOT NULL,
@@ -1015,6 +1024,26 @@ async def get_points(user_id: int, chat_id: int) -> int:
         return row[0] if row else 0
 
 
+async def get_top_users(chat_id: int, limit: int = 10) -> list[dict]:
+    """برترین کاربران گروه بر اساس امتیاز (فقط امتیاز مثبت)"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute(
+            """SELECT up.user_id, up.points, COALESCE(usr.full_name, '') as full_name
+               FROM user_points up
+               LEFT JOIN user_profile usr
+                 ON usr.user_id = up.user_id AND usr.chat_id = up.chat_id
+               WHERE up.chat_id=? AND up.points > 0
+               ORDER BY up.points DESC
+               LIMIT ?""",
+            (chat_id, limit),
+        )
+        rows = await cur.fetchall()
+        return [
+            {"user_id": r[0], "points": r[1], "full_name": r[2] or ""}
+            for r in rows
+        ]
+
+
 async def save_upgrade_pending(
     user_id: int, chat_id: int, from_level: str, to_level: str, points: int
 ):
@@ -1386,4 +1415,57 @@ async def get_last_ban_reason(user_id: int, chat_id: int) -> dict | None:
         row = await cur.fetchone()
         if row:
             return {"reason": row[0] or "نامشخص", "name": "", "date": row[1], "actor_id": None}
+    return None
+
+
+# ─── فیلتر کلمات ممنوعه ──────────────────────────────────────────────────────
+
+async def add_chat_filter(chat_id: int, word: str, added_by: int) -> bool:
+    """کلمه ممنوعه اضافه کن. False اگه قبلاً بوده."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute(
+            "SELECT 1 FROM chat_filters WHERE chat_id=? AND word=?",
+            (chat_id, word.lower()),
+        )
+        if await cur.fetchone():
+            return False
+        await db.execute(
+            "INSERT INTO chat_filters (chat_id, word, added_by) VALUES (?,?,?)",
+            (chat_id, word.lower(), added_by),
+        )
+        await db.commit()
+        return True
+
+
+async def remove_chat_filter(chat_id: int, word: str) -> bool:
+    """کلمه ممنوعه حذف کن. True اگه حذف شد."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute(
+            "DELETE FROM chat_filters WHERE chat_id=? AND word=?",
+            (chat_id, word.lower()),
+        )
+        await db.commit()
+        return cur.rowcount > 0
+
+
+async def get_chat_filters(chat_id: int) -> list[str]:
+    """لیست کلمات ممنوعه گروه"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute(
+            "SELECT word FROM chat_filters WHERE chat_id=? ORDER BY word",
+            (chat_id,),
+        )
+        rows = await cur.fetchall()
+        return [r[0] for r in rows]
+
+
+async def is_filtered_word(chat_id: int, text: str) -> str | None:
+    """اگه متن شامل کلمه ممنوعه باشه، اون کلمه رو برمی‌گردونه"""
+    words = await get_chat_filters(chat_id)
+    if not words:
+        return None
+    text_lower = text.lower()
+    for w in words:
+        if w in text_lower:
+            return w
     return None

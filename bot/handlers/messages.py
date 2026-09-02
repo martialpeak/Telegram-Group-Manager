@@ -392,6 +392,19 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(text) < 2:
         return
 
+    # ─── چک فیلتر کلمات ممنوعه ────────────────────────────────────────
+    filtered_word = await db.is_filtered_word(chat.id, text)
+    if filtered_word:
+        try:
+            await message.delete()
+            from bot.utils.helpers import escape_html
+            await chat.send_message(
+                f"🚫 {mention(user)} پیامت حذف شد — استفاده از کلمه ممنوعه.",
+            )
+        except Exception:
+            pass
+        return
+
     # ── auto-tag: اولین پیام هر کاربر در این session تگش ست می‌شه ──────────
     _cleanup_tagged()  # پاکسازی entry های منقضی
     tag_key = (user.id, chat.id)

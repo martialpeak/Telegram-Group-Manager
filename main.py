@@ -120,6 +120,11 @@ def main():
     app.add_handler(CommandHandler("addchannel", handlers.cmd_addchannel))
     app.add_handler(CommandHandler("delchannel", handlers.cmd_delchannel))
     app.add_handler(CommandHandler("punishment", handlers.cmd_punishment))
+    app.add_handler(CommandHandler("top", handlers.cmd_top))
+    app.add_handler(CommandHandler("addfilter", handlers.cmd_addfilter))
+    app.add_handler(CommandHandler("delfilter", handlers.cmd_delfilter))
+    app.add_handler(CommandHandler("filters", handlers.cmd_filters))
+    app.add_handler(CommandHandler("remind", handlers.cmd_remind))
     app.add_handler(CommandHandler("setpunishment", handlers.cmd_setpunishment))
 
     # ── Callback ها ───────────────────────────────────────────────────────────
@@ -132,6 +137,7 @@ def main():
     app.add_handler(CallbackQueryHandler(handlers.on_moderation_review_callback, pattern=r"^rev_"))
     # بن سریع از پیام خروج — pattern qban_
     app.add_handler(CallbackQueryHandler(handlers.on_quick_ban_callback, pattern=r"^qban_"))
+    app.add_handler(CallbackQueryHandler(handlers.on_captcha_callback, pattern=r"^captcha_"))
     # پاسخ متنی ادمین به سوال — group=9 قبل از settings (group=10)
     app.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, handlers.on_admin_answer_text),

@@ -540,6 +540,18 @@ async def search_web_fallback(question: str) -> str | None:
         except Exception as e:
             logger.warning(f"weather API search failed: {e}")
 
+    # ۰.۲۵. اگه سوال مربوط به طلا و سکه هست، اول از کانال قیمت بگیر
+    gold_keywords_check = ["طلا", "سکه", "امامی", "بهار آزاد", "گرم طلا", "طلای 18", "طلای ۱۸"]
+    if any(kw in question for kw in gold_keywords_check):
+        try:
+            gold_result = await _gold_api_search(question)
+            if gold_result:
+                logger.info("✅ Gold API returned result")
+                await _cache_web_answer(question, gold_result)
+                return gold_result
+        except Exception as e:
+            logger.warning(f"gold API search failed: {e}")
+
     # ۰.۵. اگه سوال مربوط به قیمت ارز هست، اول API مستقیم رو امتحان کن
     currency_keywords = ["دلار", "تتر", "usdt", "یورو", "پوند", "لیر", "درهم", "یوان", "ین ژاپن", "ارز", "نرخ ارز", "قیمت دلار", "قیمت یورو", "قیمت پوند", "قیمت لیر", "قیمت تتر", "نرخ دلار", "نرخ یورو"]
     is_currency = any(kw in question for kw in currency_keywords)
@@ -850,6 +862,51 @@ async def _weather_search(question: str) -> str | None:
 
 # ─── Currency API ───────────────────────────────────────────────────────────
 
+# کلمات کلیدی طلا و سکه
+_GOLD_KEYWORDS = ("طلا", "طلای 18", "طلای ۱۸", "گرم طلا", "سکه", "سککه", "امامی", "بهار آزادی", "بهار ازادی")
+_COIN_MAP = [
+    ("COIN_EMAMI", "🪙 سکه امامی"),
+    ("COIN_BAHAR", "🪙 سکه بهار آزادی"),
+    ("COIN_HALF", "🪙 نیم سکه"),
+    ("COIN_QUARTER", "🪙 ربع سکه"),
+    ("COIN_GRAMI", "🪙 سکه گرمی"),
+]
+
+async def _gold_api_search(query: str) -> str | None:
+    """قیمت طلا و سکه از کانال @Price33"""
+    import httpx
+    q = query.lower()
+    if not any(k in q for k in _GOLD_KEYWORDS):
+        return None
+
+    channel_prices = await _read_channel_currency()
+    if not channel_prices:
+        return None
+
+    gold18 = channel_prices.get("GOLD18", 0)
+    if gold18 > 0:
+        gold_line = f"   🥇 طلای ۱۸ عیار (هر گرم): {gold18 // 10:,.0f} تومان"
+    else:
+        gold_line = None
+
+    coin_lines = []
+    for code, label in _COIN_MAP:
+        price = channel_prices.get(code, 0)
+        if price > 0:
+            coin_lines.append(f"   {label}: {price // 10:,.0f} تومان")
+
+    if not gold_line and not coin_lines:
+        return None
+
+    lines = ["🏅 قیمت طلا و سکه", "━━━━━━━━━━━━━━━━━━━━━━━━", ""]
+    if gold_line:
+        lines.append(gold_line)
+    if coin_lines:
+        lines.extend(coin_lines)
+    lines.append("")
+    lines.append("📅 قیمت‌های روز بازار")
+    return "\n".join(lines)
+
 async def _currency_api_search(query: str) -> str | None:
     """دریافت قیمت ارز از API مستقیم"""
     import httpx
@@ -1064,6 +1121,16 @@ async def _read_channel_currency(channel_username: str = "Price33") -> dict | No
                 (r"(?:يوآن|یوان|يوآن چين|یوان چین)[:\s]*(\d[\d,]+)", "CNY"),
                 (r"(?:لير|لير ترکيه|لیر ترکیه)[:\s]*(\d[\d,]+)", "TRY"),
                 (r"(?:دینار|دینار کویت)[:\s]*(\d[\d,]+)", "KWD"),
+                # طلا و سکه
+                (r"طلا[يی]\s*۱۸\s*ع[يی]ار\s*هر\s*گرم\s*[:：]?\s*(\d[\d,]+)", "GOLD18"),
+                (r"طلا[يی]\s*18\s*ع[يی]ار\s*هر\s*گرم\s*[:：]?\s*(\d[\d,]+)", "GOLD18"),
+                (r"سکه\s*امام[يی]\s*[:：]?\s*(\d[\d,]+)", "COIN_EMAMI"),
+                (r"سکه\s*امامی\s*[:：]?\s*(\d[\d,]+)", "COIN_EMAMI"),
+                (r"سکه\s*بهار\s*ازاد[يی]\s*[:：]?\s*(\d[\d,]+)", "COIN_BAHAR"),
+                (r"سکه\s*بهار\s*آزاد[يی]\s*[:：]?\s*(\d[\d,]+)", "COIN_BAHAR"),
+                (r"نیم\s*سکه\s*[:：]?\s*(\d[\d,]+)", "COIN_HALF"),
+                (r"ربع\s*سکه\s*[:：]?\s*(\d[\d,]+)", "COIN_QUARTER"),
+                (r"سکه\s*گرم[يی]\s*[:：]?\s*(\d[\d,]+)", "COIN_GRAMI"),
             ]
             
             prices = {}

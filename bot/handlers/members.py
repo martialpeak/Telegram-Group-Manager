@@ -19,6 +19,54 @@ def _is_admin(uid: int) -> bool:
     return uid in ADMIN_IDS
 
 
+async def _captcha_timeout(context, chat_id: int, user_id: int, message_id: int):
+    """پاکسازی پیام کپچا بعد از ۲۴ ساعت (اگه هنوز هست)"""
+    import asyncio as _asyncio
+    await _asyncio.sleep(86400)
+    try:
+        await context.bot.delete_message(chat_id=chat_id, message_id=message_id)
+    except Exception:
+        pass
+
+
+async def on_captcha_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """دکمه تأیید کپچا — فقط خود کاربر می‌تونه بزنه"""
+    query = update.callback_query
+    data = query.data
+    try:
+        target_id = int(data.split("_")[1])
+    except (IndexError, ValueError):
+        await query.answer("داده نامعتبر.", show_alert=True)
+        return
+
+    # فقط خود کاربر (یا ادمین) می‌تونه تأیید کنه
+    if query.from_user.id != target_id and not _is_admin(query.from_user.id):
+        await query.answer("❌ این دکمه فقط برای کاربر جدید هست.", show_alert=True)
+        return
+
+    chat_id = query.message.chat_id
+    try:
+        from telegram import ChatPermissions
+        full_perms = ChatPermissions(
+            can_send_messages=True, can_send_audios=True, can_send_documents=True,
+            can_send_photos=True, can_send_videos=True, can_send_video_notes=True,
+            can_send_voice_notes=True, can_send_polls=True, can_send_other_messages=True,
+            can_add_web_page_previews=True)
+        await context.bot.restrict_chat_member(
+            chat_id=chat_id, user_id=target_id, permissions=full_perms)
+        await query.answer("✅ تأیید شد! خوش اومدی.", show_alert=False)
+        try:
+            await query.edit_message_text(
+                f"✅ <b>{escape_html(query.from_user.full_name if query.from_user.id == target_id else f'کاربر {target_id}')}</b> تأیید شد — خوش اومدی! 🎉",
+                parse_mode="HTML",
+            )
+        except Exception:
+            pass
+    except Exception as e:
+        logger.warning(f"captcha approve failed: {e}")
+        await query.answer("❌ خطا در تأیید. دوباره تلاش کن.", show_alert=True)
+
+
 async def on_new_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message
     if not message:
@@ -64,6 +112,39 @@ async def on_new_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     pass
             except Exception as e:
                 logger.warning(f"auto-ban bot failed: {e}")
+            continue
+
+        # ── کپچا: کاربر انسانی جدید → میوت موقت + دکمه تأیید ─────────────
+        adder = message.from_user
+        if not (adder and _is_admin(adder.id)):
+            try:
+                from telegram import ChatPermissions
+                mute_perms = ChatPermissions(
+                    can_send_messages=False, can_send_audios=False, can_send_documents=False,
+                    can_send_photos=False, can_send_videos=False, can_send_video_notes=False,
+                    can_send_voice_notes=False, can_send_polls=False, can_send_other_messages=False,
+                    can_add_web_page_previews=False)
+                await context.bot.restrict_chat_member(
+                    chat_id=chat_id, user_id=member.id, permissions=mute_perms)
+
+                keyboard = InlineKeyboardMarkup([[
+                    InlineKeyboardButton(
+                        "✅ من آدم هستم",
+                        callback_data=f"captcha_{member.id}",
+                    ),
+                ]])
+                captcha_msg = await message.reply_text(
+                    f"👋 سلام <b>{escape_html(member.full_name)}</b>!\n\n"
+                    f"🔒 برای جلوگیری از ربات اسپمر، لطفاً دکمه زیر رو بزن:\n"
+                    f"⏱ بعد از تأیید می‌تونی پیام بدی.",
+                    parse_mode="HTML",
+                    reply_markup=keyboard,
+                )
+                # ثبت برای پاکسازی خودکار بعد از ۲۴ ساعت
+                context.application.create_task(_captcha_timeout(
+                    context, chat_id, member.id, captcha_msg.message_id))
+            except Exception as e:
+                logger.warning(f"captcha setup failed: {e}")
             continue
 
         # ── ست کردن تگ سطح فعلی کاربر ──────────────────────────────────────
