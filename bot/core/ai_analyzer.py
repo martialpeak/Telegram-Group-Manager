@@ -278,3 +278,51 @@ def _normalize(r: dict) -> dict:
     r.setdefault("request_summary", None)
     r.setdefault("suggested_response", None)
     return r
+
+
+# ─── ترجمه عمومی ─────────────────────────────────────────────────────────────
+
+async def translate_text(text: str, target_lang: str) -> str | None:
+    """ترجمه متن با AI — target_lang مثل 'فارسی' یا 'انگلیسی'"""
+    import asyncio as _asyncio
+    prompt = (
+        f"متن زیر را به {target_lang} ترجمه کن. "
+        "فقط ترجمه را برگردان، هیچ توضیح اضافه نده."
+    )
+    if _groq_client:
+        try:
+            loop = _asyncio.get_running_loop()
+            response = await loop.run_in_executor(
+                None,
+                lambda: _groq_client.chat.completions.create(
+                    model=GROQ_MODEL,
+                    messages=[
+                        {"role": "system", "content": prompt},
+                        {"role": "user", "content": text},
+                    ],
+                    temperature=0.2,
+                    max_tokens=1000,
+                ),
+            )
+            return response.choices[0].message.content.strip()
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"groq translate failed: {e}")
+    if _gemini_model:
+        try:
+            import google.generativeai as genai
+            loop = _asyncio.get_running_loop()
+            response = await loop.run_in_executor(
+                None,
+                lambda: _gemini_model.generate_content(
+                    f"{prompt}\n\n{text}",
+                    generation_config=genai.types.GenerationConfig(
+                        temperature=0.2, max_output_tokens=1000,
+                    ),
+                ),
+            )
+            return response.text.strip()
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"gemini translate failed: {e}")
+    return None

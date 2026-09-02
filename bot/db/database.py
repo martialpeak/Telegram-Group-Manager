@@ -121,6 +121,15 @@ async def init_db():
             UNIQUE(chat_id, word)
         );
 
+        CREATE TABLE IF NOT EXISTS chat_locks (
+            chat_id    INTEGER NOT NULL,
+            lock_type  TEXT NOT NULL,
+            locked     INTEGER NOT NULL DEFAULT 0,
+            set_by     INTEGER,
+            updated_at TEXT DEFAULT (datetime('now')),
+            PRIMARY KEY (chat_id, lock_type)
+        );
+
         CREATE TABLE IF NOT EXISTS user_levels (
             user_id     INTEGER NOT NULL,
             chat_id     INTEGER NOT NULL,
@@ -1469,3 +1478,59 @@ async def is_filtered_word(chat_id: int, text: str) -> str | None:
         if w in text_lower:
             return w
     return None
+
+
+# ─── قفل‌های گروه ─────────────────────────────────────────────────────────────
+
+LOCK_TYPES = ("links", "photos", "videos", "voice", "stickers", "forwards", "all")
+
+async def set_chat_lock(chat_id: int, lock_type: str, locked: bool, set_by: int):
+    """قفل/باز کردن یک نوع پیام"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            """INSERT INTO chat_locks (chat_id, lock_type, locked, set_by, updated_at)
+               VALUES (?,?,?,?,datetime('now'))
+               ON CONFLICT(chat_id, lock_type) DO UPDATE
+               SET locked=excluded.locked, set_by=excluded.set_by,
+                   updated_at=excluded.updated_at""",
+            (chat_id, lock_type, 1 if locked else 0, set_by),
+        )
+        await db.commit()
+
+
+async def is_chat_locked(chat_id: int, lock_type: str) -> bool:
+    """چک کن یک نوع پیام قفل هست یا نه"""
+    if lock_type == "all":
+        async with aiosqlite.connect(DB_PATH) as db:
+            cur = await db.execute(
+                "SELECT locked FROM chat_locks WHERE chat_id=? AND lock_type='all'",
+                (chat_id,),
+            )
+            row = await cur.fetchone()
+            return bool(row and row[0])
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute(
+            "SELECT locked FROM chat_locks WHERE chat_id=? AND lock_type=?",
+            (chat_id, lock_type),
+        )
+        row = await cur.fetchone()
+        if row and row[0]:
+            return True
+        # اگه کل گروه قفل باشه همه چیز قفله
+        cur = await db.execute(
+            "SELECT locked FROM chat_locks WHERE chat_id=? AND lock_type='all'",
+            (chat_id,),
+        )
+        row = await cur.fetchone()
+        return bool(row and row[0])
+
+
+async def get_chat_locks(chat_id: int) -> dict:
+    """همه قفل‌های گروه"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute(
+            "SELECT lock_type, locked FROM chat_locks WHERE chat_id=?",
+            (chat_id,),
+        )
+        rows = await cur.fetchall()
+        return {r[0]: bool(r[1]) for r in rows}

@@ -340,6 +340,37 @@ async def on_media_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if await _check_punishment_limit(update, context):
         return
 
+    # ─── چک قفل‌های مدیا ──────────────────────────────────────────────
+    if not _is_admin(user.id):
+        lock_type = None
+        if message.photo:
+            lock_type = "photos"
+        elif message.video or message.video_note:
+            lock_type = "videos"
+        elif message.voice:
+            lock_type = "voice"
+        elif message.sticker or message.animation:
+            lock_type = "stickers"
+        elif message.forward_origin:
+            lock_type = "forwards"
+
+        if lock_type and await db.is_chat_locked(message.chat_id, lock_type):
+            try:
+                await message.delete()
+                await message.chat.send_message(
+                    f"🔒 {mention(user)} ارسال این نوع پیام فعلاً قفله.",
+                )
+            except Exception:
+                pass
+            return
+
+        if await db.is_chat_locked(message.chat_id, "all"):
+            try:
+                await message.delete()
+            except Exception:
+                pass
+            return
+
     await _check_level_restrictions(message, context.bot)
 
     # ── امتیاز مدیا ──────────────────────────────────────────────────────────
@@ -401,6 +432,14 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await chat.send_message(
                 f"🚫 {mention(user)} پیامت حذف شد — استفاده از کلمه ممنوعه.",
             )
+        except Exception:
+            pass
+        return
+
+    # ─── چک قفل کل گروه ───────────────────────────────────────────────
+    if await db.is_chat_locked(chat.id, "all"):
+        try:
+            await message.delete()
         except Exception:
             pass
         return

@@ -125,6 +125,12 @@ def main():
     app.add_handler(CommandHandler("delfilter", handlers.cmd_delfilter))
     app.add_handler(CommandHandler("filters", handlers.cmd_filters))
     app.add_handler(CommandHandler("remind", handlers.cmd_remind))
+    app.add_handler(CommandHandler("lock", handlers.cmd_lock))
+    app.add_handler(CommandHandler("unlock", handlers.cmd_unlock))
+    app.add_handler(CommandHandler("locks", handlers.cmd_locks))
+    app.add_handler(CommandHandler("lockdown", handlers.cmd_lockdown))
+    app.add_handler(CommandHandler("unlockdown", handlers.cmd_unlockdown))
+    app.add_handler(CommandHandler("tr", handlers.cmd_translate))
     app.add_handler(CommandHandler("setpunishment", handlers.cmd_setpunishment))
 
     # ── Callback ها ───────────────────────────────────────────────────────────

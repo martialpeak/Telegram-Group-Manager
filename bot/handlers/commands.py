@@ -1090,6 +1090,142 @@ async def _delayed_task(seconds: int, coro_fn):
         logger.warning(f"delayed task failed: {e}")
 
 
+# ─── /lock /unlock /locks — قفل انواع پیام ───────────────────────────────────
+
+_LOCK_LABELS = {
+    "links": "🔗 لینک",
+    "photos": "📸 عکس",
+    "videos": "🎬 ویدیو",
+    "voice": "🎙 ویس",
+    "stickers": "🎨 استیکر/گیف",
+    "forwards": "↩️ فوروارد",
+    "all": "🔒 کل گروه",
+}
+
+
+async def cmd_lock(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """قفل کردن نوع پیام — فقط ادمین: /lock links"""
+    if not _is_admin(update.message.from_user.id):
+        return
+    arg = context.args[0].lower() if context.args else ""
+    if arg not in db.LOCK_TYPES:
+        await update.message.reply_text(
+            "استفاده: /lock <نوع>\nانواع: " + " | ".join(db.LOCK_TYPES)
+        )
+        return
+    await db.set_chat_lock(update.message.chat_id, arg, True, update.message.from_user.id)
+    await update.message.reply_text(
+        f"🔒 {_LOCK_LABELS[arg]} قفل شد — اعضای عادی نمی‌تونن بفرستن."
+    )
+
+
+async def cmd_unlock(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """باز کردن نوع پیام — فقط ادمین: /unlock links"""
+    if not _is_admin(update.message.from_user.id):
+        return
+    arg = context.args[0].lower() if context.args else ""
+    if arg not in db.LOCK_TYPES:
+        await update.message.reply_text(
+            "استفاده: /unlock <نوع>\nانواع: " + " | ".join(db.LOCK_TYPES)
+        )
+        return
+    await db.set_chat_lock(update.message.chat_id, arg, False, update.message.from_user.id)
+    await update.message.reply_text(f"🔓 {_LOCK_LABELS[arg]} باز شد.")
+
+
+async def cmd_locks(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """وضعیت قفل‌های گروه"""
+    locks = await db.get_chat_locks(update.message.chat_id)
+    lines = ["🔒 قفل‌های گروه", "━━━━━━━━━━━━━━━━━━━━━━━━", ""]
+    for lt in db.LOCK_TYPES:
+        status = "🔒 قفل" if locks.get(lt) else "🔓 باز"
+        lines.append(f"{_LOCK_LABELS[lt]}: {status}")
+    await update.message.reply_text("\n".join(lines))
+
+
+# ─── /lockdown — قفل کل گروه موقت ────────────────────────────────────────────
+
+async def cmd_lockdown(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """قفل کل گروه برای مدت مشخص — فقط ادمین: /lockdown 10m"""
+    if not _is_admin(update.message.from_user.id):
+        return
+    args = list(context.args) if context.args else []
+    if not args:
+        await update.message.reply_text(
+            "استفاده: /lockdown <زمان>\nمثال: /lockdown 10m (۱۰ دقیقه)\nواحد: m=دقیقه، h=ساعت"
+        )
+        return
+    from bot.utils.helpers import parse_duration, format_duration
+    duration = parse_duration(args[0])
+    if duration <= 0 or duration > 86400:
+        await update.message.reply_text("❌ زمان نامعتبر. حداکثر ۲۴ ساعت. مثال: /lockdown 10m")
+        return
+
+    chat_id = update.message.chat_id
+    await db.set_chat_lock(chat_id, "all", True, update.message.from_user.id)
+    await update.message.reply_text(
+        f"🔒 گروه قفل شد ({format_duration(duration)}) — فقط ادمین‌ها می‌تونن پیام بدن."
+    )
+
+    async def _auto_unlock():
+        import asyncio as _asyncio
+        await _asyncio.sleep(duration)
+        await db.set_chat_lock(chat_id, "all", False, 0)
+        try:
+            await context.bot.send_message(chat_id=chat_id, text="🔓 گروه باز شد!")
+        except Exception:
+            pass
+
+    import asyncio as _asyncio
+    context.application.create_task(_auto_unlock())
+
+
+async def cmd_unlockdown(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """باز کردن فوری گروه — فقط ادمین"""
+    if not _is_admin(update.message.from_user.id):
+        return
+    await db.set_chat_lock(update.message.chat_id, "all", False, update.message.from_user.id)
+    await update.message.reply_text("🔓 گروه باز شد.")
+
+
+# ─── /tr — مترجم ─────────────────────────────────────────────────────────────
+
+async def cmd_translate(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """ترجمه متن: /tr en Hello world یا /tr fa سلام"""
+    args = list(context.args) if context.args else []
+    if len(args) < 2:
+        await update.message.reply_text(
+            "استفاده: /tr <زبان> <متن>\n"
+            "مثال: /tr en سلام دنیا\n"
+            "زبان‌ها: fa (فارسی)، en (انگلیسی)، ar (عربی)، tr (ترکی)"
+        )
+        return
+
+    lang_codes = {
+        "fa": "فارسی", "en": "انگلیسی", "ar": "عربی",
+        "tr": "ترکی استانبولی", "de": "آلمانی", "fr": "فرانسوی",
+        "ru": "روسی", "es": "اسپانیایی", "zh": "چینی",
+    }
+    lang = lang_codes.get(args[0].lower())
+    if not lang:
+        await update.message.reply_text(
+            "❌ زبان نامعتبر. زبان‌ها: " + " | ".join(lang_codes.keys())
+        )
+        return
+
+    text = " ".join(args[1:])
+    from bot.core.ai_analyzer import translate_text
+    result = await translate_text(text, lang)
+    if result:
+        from bot.utils.helpers import escape_html
+        await update.message.reply_text(
+            f"🌐 ترجمه به {lang}:\n\n{escape_html(result)}",
+            parse_mode="HTML",
+        )
+    else:
+        await update.message.reply_text("❌ ترجمه ناموفق بود. بعداً تلاش کن.")
+
+
 # ─── /punishment — نمایش رنک‌های جریمه ────────────────────────────────────────
 
 async def cmd_punishment(update: Update, context: ContextTypes.DEFAULT_TYPE):
