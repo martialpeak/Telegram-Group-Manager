@@ -441,6 +441,55 @@ async def on_media_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await _check_upgrade_threshold(context.bot, user, message.chat_id, pts)
 
 
+# ─── استعلام مستقیم قیمت در پیام‌های متنی گروه ──────────────────────────────
+
+async def _handle_direct_price_query(message, text: str) -> bool:
+    """
+    بررسی اینکه آیا پیام متنی یک استعلام مستقیم قیمت است یا نه
+    مثل: «قیمت جاروبرقی»، «قیمت دلار»، «قیمت طلا»، «قیمت آیفون 15»
+    """
+    clean_text = text.strip()
+    if clean_text.startswith("/") or len(clean_text) < 4:
+        return False
+
+    is_direct_price = (
+        clean_text.startswith(("قیمت ", "نرخ ", "قیمتِ ", "استعلام قیمت "))
+        and len(clean_text.split()) >= 2
+    )
+    if not is_direct_price:
+        return False
+
+    from bot.core.knowledge_engine import search_price_all
+    res = await search_price_all(clean_text)
+    if res.get("type") in ("product", "crypto", "gold", "currency"):
+        kb_rows = []
+        if res.get("type") == "product" and res.get("search_url"):
+            import urllib.parse
+            enc = urllib.parse.quote(res.get("query", clean_text))
+            kb_rows.append([
+                InlineKeyboardButton("🔗 مشاهده همه در ترب", url=res["search_url"]),
+                InlineKeyboardButton("🔄 بروزرسانی", callback_data=f"prc_it_{enc[:30]}"),
+            ])
+        elif res.get("type") == "crypto":
+            kb_rows.append([
+                InlineKeyboardButton("🔄 بروزرسانی رمزارزها", callback_data="prc_crypto"),
+            ])
+        elif res.get("type") in ("gold", "currency"):
+            kb_rows.append([
+                InlineKeyboardButton("🔄 بروزرسانی", callback_data="prc_" + res["type"]),
+            ])
+
+        reply_kb = InlineKeyboardMarkup(kb_rows) if kb_rows else None
+        await message.reply_text(
+            res["text"],
+            parse_mode="HTML",
+            reply_markup=reply_kb,
+            disable_web_page_preview=True
+        )
+        return True
+    return False
+
+
 # ─── هندلر اصلی پیام‌های متنی ────────────────────────────────────────────────
 
 async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -460,6 +509,10 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # اگه این پیام قبلاً به عنوان تصحیح پردازش شده، skip کن
     if context.user_data.pop("_correction_handled", False):
+        return
+
+    # ── استعلام مستقیم قیمت در چت (جاروبرقی، طلا، ارز، کریپتو و...) ─────────
+    if await _handle_direct_price_query(message, message.text):
         return
 
     if _is_admin(user.id):

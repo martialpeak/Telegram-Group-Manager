@@ -142,6 +142,7 @@ def get_help_user_text() -> str:
     return (
         "📖 <b>راهنمای دستورات اعضای گروه:</b>\n\n"
         "<blockquote>"
+        "🔹 <code>/price [نام کالا یا ارز]</code> ▫️ استعلام قیمت روز کالاها (ترب)، طلا، دلار و رمزارزها\n"
         "🔹 <code>/info</code> ▫️ شناسنامه، سطح و آمار کامل شما یا کاربر دیگر\n"
         "🔹 <code>/myrank</code> ▫️ مشاهده پروفایل، رتبه و وضعیت جریمه\n"
         "🔹 <code>/mystats</code> ▫️ آمار پیام‌ها، لینک‌ها و فعالیت روزانه شما\n"
@@ -179,6 +180,7 @@ def get_help_admin_text() -> str:
         "• <code>/locks</code> ▫️ مشاهده وضعیت قفل‌های فعال\n"
         "• <code>/lockdown</code> ▫️ قفل اضطراری کل گروه\n\n"
         "⚙️ <b>سیستم و هوش مصنوعی:</b>\n"
+        "• <code>/price</code> ▫️ استعلام قیمت کالاها (ترب)، دلار، طلا و کریپتو\n"
         "• <code>/summary [تعداد]</code> ▫️ خلاصه گفتگوهای اخیر با AI\n"
         "• <code>/settings</code> ▫️ پنل شیشه‌ای تنظیمات\n"
         "• <code>/update</code> ▫️ آپدیت آنلاین از GitHub"
@@ -190,12 +192,14 @@ def get_help_ai_text() -> str:
     return (
         "🤖 <b>امکانات پیشرفته هوش مصنوعی ربات:</b>\n\n"
         "<blockquote>"
+        "🛍️ <b>استعلام قیمت کالا و مشاوره خرید (/price):</b>\n"
+        "اتصال زنده به ترب برای دریافت قیمت انواع لوازم خانگی (مثل جاروبرقی)، گوشی، لپ‌تاپ و قطعات با لینک خرید. به همراه نرخ لحظه‌ای طلا، سکه، دلار و کریپتو (BTC/TON).\n\n"
         "🎙️ <b>فحاشی‌یاب و اسپم‌یاب صوتی (Groq Whisper):</b>\n"
         "پیام‌های صوتی (ویس) در کمتر از یک ثانیه رونویسی و تحلیل می‌شوند؛ در صورت وجود فحاشی یا تبلیغ صوتی، ویس فوراً حذف و اخطار صادر می‌شود.\n\n"
         "📊 <b>خلاصه‌ساز هوشمند گفت‌وگوها (/summary):</b>\n"
         "با دستور <code>/summary</code> خلاصه‌ای منظم از موضوعات مهم و سوالات مطرح‌شده در پیام‌های اخیر دریافت کنید.\n\n"
-        "💬 <b>پاسخ‌گویی به سوالات کاربران:</b>\n"
-        "پاسخ دقیق به سوالات فنی، شبکه، کانفیگ، قیمت ارز و اطلاعات عمومی با ریپلای یا منشن.\n\n"
+        "💬 <b>پاسخ‌گویی و مشاوره تخصصی:</b>\n"
+        "پاسخ دقیق به سوالات فنی، شبکه، مقایسه خرید محصولات و اطلاعات عمومی با ریپلای یا منشن.\n\n"
         "🧠 <b>پایگاه دانش خودآموز:</b>\n"
         "پاسخ‌های تأییدشده توسط اعضا ذخیره می‌شوند تا به سوالات تکراری بدون معطلی پاسخ داده شود."
         "</blockquote>"
@@ -1932,5 +1936,83 @@ async def cmd_purge(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """نمایش منوی راهنما (معادل /start اما اختصاصی راهنما)"""
     await cmd_start(update, context)
+
+
+# ─── /price — استعلام هوشمند قیمت کالا (ترب)، طلا، ارز و رمزارزها ───────────
+
+async def cmd_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    استعلام هوشمند قیمت کالا (ترب)، طلا، سکه، ارز و رمزارزها (/price یا /gheymat)
+    """
+    message = update.message
+    if not message:
+        return
+
+    query = " ".join(context.args).strip() if context.args else ""
+
+    if not query:
+        # منوی تعاملی و دسته‌بندی‌شده استعلام قیمت
+        from bot.core.knowledge_engine import search_price_all
+        res = await search_price_all("")
+
+        kb = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("💵 نرخ ارز و دلار", callback_data="prc_currency"),
+                InlineKeyboardButton("🪙 طلا و انواع سکه", callback_data="prc_gold"),
+            ],
+            [
+                InlineKeyboardButton("⚡ بازار رمزارزها (BTC/TON)", callback_data="prc_crypto"),
+            ],
+            [
+                InlineKeyboardButton("🧹 قیمت انواع جاروبرقی", callback_data="prc_it_جاروبرقی"),
+                InlineKeyboardButton("📱 قیمت روز موبایل", callback_data="prc_it_گوشی موبایل"),
+            ],
+            [
+                InlineKeyboardButton("💻 قیمت لپ‌تاپ", callback_data="prc_it_لپ تاپ"),
+                InlineKeyboardButton("🎮 قیمت کنسول PS5", callback_data="prc_it_پلی استیشن 5"),
+            ],
+        ])
+        await message.reply_text(res["text"], parse_mode="HTML", reply_markup=kb)
+        return
+
+    status_msg = await message.reply_text("🔍 در حال استعلام قیمت لحظه‌ای...")
+
+    from bot.core.knowledge_engine import search_price_all
+    res = await search_price_all(query)
+
+    # ساخت دکمه‌های متناسب با نوع نتیجه
+    kb_rows = []
+    if res.get("type") == "product" and res.get("search_url"):
+        import urllib.parse
+        enc = urllib.parse.quote(res.get("query", query))
+        kb_rows.append([
+            InlineKeyboardButton("🔗 مشاهده همه فروشگاه‌ها در ترب", url=res["search_url"]),
+        ])
+        kb_rows.append([
+            InlineKeyboardButton("🔄 بروزرسانی قیمت", callback_data=f"prc_it_{enc[:30]}"),
+        ])
+    elif res.get("type") == "crypto":
+        kb_rows.append([
+            InlineKeyboardButton("🔄 بروزرسانی رمزارزها", callback_data="prc_crypto"),
+            InlineKeyboardButton("💵 نرخ ارز و دلار", callback_data="prc_currency"),
+        ])
+    elif res.get("type") == "gold":
+        kb_rows.append([
+            InlineKeyboardButton("🔄 بروزرسانی طلا و سکه", callback_data="prc_gold"),
+            InlineKeyboardButton("💵 نرخ ارز و دلار", callback_data="prc_currency"),
+        ])
+    elif res.get("type") == "currency":
+        kb_rows.append([
+            InlineKeyboardButton("🔄 بروزرسانی نرخ ارز", callback_data="prc_currency"),
+            InlineKeyboardButton("🪙 طلا و انواع سکه", callback_data="prc_gold"),
+        ])
+
+    kb = InlineKeyboardMarkup(kb_rows) if kb_rows else None
+
+    try:
+        await status_msg.edit_text(res["text"], parse_mode="HTML", reply_markup=kb, disable_web_page_preview=True)
+    except Exception:
+        await message.reply_text(res["text"], parse_mode="HTML", reply_markup=kb, disable_web_page_preview=True)
+
 
 

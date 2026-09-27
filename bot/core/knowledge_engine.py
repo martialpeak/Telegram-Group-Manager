@@ -39,19 +39,18 @@ if GEMINI_API_KEY:
     except Exception as e:
         logger.warning(f"Gemini init failed: {e}")
 
-# ── System prompt برای پاسخ‌دهی (تخصصی VPN/شبکه) ─────────────────────────────
+# ── System prompt برای پاسخ‌دهی (تخصصی VPN/شبکه و مشاوره هوشمند) ────────────
 ANSWER_SYSTEM_PROMPT = (
-    "تو یک دستیار هوشمند فارسی‌زبان هستی که در یک گروه تلگرامی به کاربران کمک می‌کنی.\n"
-    "تخصص اصلی: VPN، شبکه، کانفیگ‌های v2ray/xray/sing-box، پروتکل‌های پروکسی.\n"
-    "ولی به همه سوالات عمومی هم پاسخ میدی (قیمت ارز، هواشناسی، اخبار، ورزش، و...).\n\n"
+    "تو یک دستیار هوشمند و مشاور همه‌فن‌حریف فارسی‌زبان در یک گروه تلگرامی هستی.\n"
+    "تخصص‌ها: VPN و شبکه، استعلام و مقایسه قیمت‌ها (کالاهای دیجیتال، لوازم خانگی مثل جاروبرقی و...)، "
+    "قیمت طلا و ارز و کریپتو، و مشاوره خرید تخصصی برای کاربران.\n\n"
     "## قواعد پاسخ‌گویی:\n"
     "۱) اول نیت کاربر رو دقیق بفهم.\n"
-    "۲) پاسخ رو کوتاه، دقیق و کاربردی بده (کمتر از ۱۰ خط مگه لازم باشه).\n"
-    "۳) همیشه به فارسی روان و طبیعی پاسخ بده.\n"
-    "۴) اگه اطلاعات لحظه‌ای می‌خواد (قیمت، هوا، اخبار) بگو از منابع آنلاین چک کنه.\n"
-    "۵) اگه مطمئن نیستی، صادقانه بگو.\n"
-    "۶) لحن دوستانه اما حرفه‌ای.\n"
-    "۷) هرگز اطلاعات ساختگی نده.\n"
+    "۲) پاسخ رو ساختاریافته، جذاب، دقیق و کاربردی بنویس.\n"
+    "۳) همیشه به فارسی روان و طبیعی با لحن دوستانه و حرفه‌ای پاسخ بده.\n"
+    "۴) برای استعلام قیمت یا مشخصات کالاها (جاروبرقی، گوشی، لپ‌تاپ و...) مشخصات فنی و رنج قیمت بازار را شفاف توضیح بده.\n"
+    "۵) در راهنمای خرید یا مقایسه (مثلاً جاروبرقی چی بخرم)، نکات مهم (توان موتور، مکش، فیلتر بهداشتی، کیسه‌ای یا مخزن‌دار بودن) و مدل‌های محبوب بازار ایران را مقایسه کن.\n"
+    "۶) اگه اطلاعات کافی نداری، صادقانه بگو و هرگز اطلاعات ساختگی نده.\n"
 )
 
 PROMPT_TEMPLATE = (
@@ -485,6 +484,14 @@ _REALTIME_PATTERNS = [
     "نتیجه", "بازی", "مسابقه", "نتایج",
     # افراد/سوالات آنلاین
     "چه کسی", "کیست", "بیوگرافی", "ویکی‌پدیا",
+    # استعلام قیمت کالا و محصول
+    "قیمت", "چنده", "نرخ", "چند تومنه", "چندتومنه", "خرید", "ارزون", "گرون", "ترب", "دیجیکالا",
+    "جاروبرقی", "جارو برقی", "گوشی", "موبایل", "آیفون", "سامسونگ", "شیائومی", "لپ‌تاپ", "لپ تاپ",
+    "تلویزیون", "یخچال", "لباسشویی", "ماشین لباسشویی", "پلی استیشن", "ps5", "ps4", "ایکس باکس",
+    "ساعت هوشمند", "هدفون", "ایرپاد", "ماشین", "خودرو", "پراید", "پژو", "دنا", "تارا",
+    # رمزارزها
+    "بیت کوین", "بیتکوین", "btc", "اتریوم", "eth", "سولانا", "sol", "تون کوین", "ton", "دوج کوین",
+    "doge", "ترون", "trx", "ریپل", "xrp", "شیبا", "shib", "کریپتو", "ارز دیجیتال",
     # تبدیل‌ها
     "چقدر است", "چند تومن", "چند ریال",
 ]
@@ -492,7 +499,7 @@ _REALTIME_PATTERNS = [
 
 def needs_web_search(question: str) -> bool:
     """
-    تشخیص می‌ده که آیا این سوال نیاز به سرچ در وب داره یا نه.
+    تشخیص می‌دهد که آیا این سوال نیاز به سرچ در وب دارد یا نه.
     سوالاتی مثل هواشناسی، قیمت، اخبار، اطلاعات لحظه‌ای.
     """
     q = question.lower().strip()
@@ -571,6 +578,37 @@ async def search_web_fallback(question: str) -> str | None:
             logger.warning(f"currency API search failed: {e}")
             import traceback
             logger.warning(f"currency API traceback: {traceback.format_exc()}")
+
+    # ۰.۶. استعلام قیمت رمزارزها (Binance / Crypto)
+    crypto_keywords = [
+        "بیت کوین", "بیتکوین", "btc", "اتریوم", "eth", "سولانا", "sol",
+        "تون", "تون کوین", "ton", "دوج", "دوج کوین", "doge", "ترون", "trx",
+        "ریپل", "xrp", "شیبا", "shib", "کریپتو", "ارز دیجیتال", "ارزدیجیتال", "crypto"
+    ]
+    if any(kw in question.lower() for kw in crypto_keywords):
+        try:
+            crypto_result = await _crypto_api_search(question)
+            if crypto_result:
+                logger.info("✅ Crypto API returned result")
+                await _cache_web_answer(question, crypto_result)
+                return crypto_result
+        except Exception as e:
+            logger.warning(f"crypto API search failed: {e}")
+
+    # ۰.۷. استعلام قیمت کالا و محصولات بازار ایران (Torob API)
+    product_price_triggers = [
+        "قیمت", "چنده", "نرخ", "چند تومنه", "خرید", "ارزون", "گرون", "ترب", "دیجیکالا",
+        "جاروبرقی", "گوشی", "موبایل", "لپ‌تاپ", "لپ تاپ", "تلویزیون", "یخچال", "پلی استیشن"
+    ]
+    if any(trig in question for trig in product_price_triggers):
+        try:
+            prod_result = await _product_price_search(question)
+            if prod_result and prod_result.get("text"):
+                logger.info("✅ Torob Product API returned result")
+                await _cache_web_answer(question, prod_result["text"])
+                return prod_result["text"]
+        except Exception as e:
+            logger.warning(f"product price search failed: {e}")
 
     # ۱. DuckDuckGo Instant Answer API
     try:
@@ -1156,6 +1194,289 @@ async def _read_channel_currency(channel_username: str = "Price33") -> dict | No
         import traceback
         logger.warning(f"traceback: {traceback.format_exc()}")
     return None
+
+
+# ─── استعلام قیمت کالا از ترب (Torob API) ───────────────────────────────────
+
+def _clean_product_query(query: str) -> str:
+    """پاکسازی عبارت جستجوی کالا و حذف کلمات اضافه"""
+    import re
+    q = query.strip()
+    q = re.sub(r"^/(price|gheymat|gheimat|نرخ|قیمت)\s*", "", q, flags=re.IGNORECASE)
+    stopwords = [
+        "قیمت", "چنده", "چند", "نرخ", "چند تومنه", "چندتومنه", "چقدره", "چقدر است",
+        "استعلام", "لطفا", "لطفاً", "میخوام", "می‌خوام", "سایت", "ترب", "دیجیکالا",
+        "دیجی کالا", "امروز", "الان", "بازار", "جدید", "آخرین"
+    ]
+    for _ in range(2):
+        for w in stopwords:
+            q = re.sub(r"(^|\s)" + re.escape(w) + r"(\s|$)", " ", q)
+    q = re.sub(r"\s+", " ", q).strip()
+    return q or query.strip()
+
+
+async def _product_price_search(query: str) -> dict | None:
+    """
+    استعلام هوشمند قیمت کالا (جاروبرقی، موبایل، لپ‌تاپ، لوازم خانگی و...) از ترب
+    """
+    import httpx
+    import urllib.parse
+
+    clean_q = _clean_product_query(query)
+    if len(clean_q) < 2:
+        return None
+
+    enc = urllib.parse.quote(clean_q)
+    url = f"https://api.torob.com/v4/base-product/search/?sort=popularity&page=0&size=4&q={enc}"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=10, headers=headers, follow_redirects=True) as client:
+            resp = await client.get(url)
+            if resp.status_code != 200:
+                logger.warning(f"Torob search failed: HTTP {resp.status_code}")
+                return None
+
+            data = resp.json()
+            results = data.get("results", [])
+            if not results:
+                return None
+
+            lines = [
+                f"🛍️ <b>استعلام قیمت در بازار (ترب): {clean_q}</b>",
+                "━━━━━━━━━━━━━━━━━━━━━━━━",
+                ""
+            ]
+
+            products = []
+            for i, item in enumerate(results[:4], 1):
+                name = item.get("name1") or item.get("name2") or clean_q
+                price_text = item.get("price_text") or (f"{item['price']:,} تومان" if item.get("price") else "نامشخص")
+                shop_text = item.get("shop_text") or "فروشگاه‌های معتبر"
+                item_url = "https://torob.com" + item.get("web_client_absolute_url", "")
+
+                lines.append(f"<b>{i}️⃣ {name}</b>")
+                lines.append(f"💰 قیمت: <b>{price_text}</b>")
+                lines.append(f"🏪 فروشگاه‌ها: <i>{shop_text}</i>")
+                lines.append(f"🔗 <a href=\"{item_url}\">مشاهده و خرید در ترب</a>\n")
+
+                products.append({
+                    "name": name,
+                    "price_text": price_text,
+                    "shop": shop_text,
+                    "url": item_url,
+                })
+
+            lines.append("💡 <i>قیمت‌ها لحظه‌ای و استخراج‌شده از بین معتبرترین فروشگاه‌های آنلاین کشور هستند.</i>")
+            search_web_url = f"https://torob.com/search/?query={enc}"
+
+            return {
+                "text": "\n".join(lines),
+                "products": products,
+                "query": clean_q,
+                "search_url": search_web_url,
+            }
+    except Exception as e:
+        logger.warning(f"Torob product search error: {e}")
+        return None
+
+
+# ─── استعلام قیمت رمزارزها (Binance API) ────────────────────────────────────
+
+_CRYPTO_MAP = {
+    "بیت کوین": "BTC", "بیتکوین": "BTC", "btc": "BTC", "bitcoin": "BTC",
+    "اتریوم": "ETH", "eth": "ETH", "ethereum": "ETH",
+    "سولانا": "SOL", "sol": "SOL", "solana": "SOL",
+    "تون": "TON", "تون کوین": "TON", "ton": "TON", "toncoin": "TON",
+    "دوج": "DOGE", "دوج کوین": "DOGE", "doge": "DOGE", "dogecoin": "DOGE",
+    "ترون": "TRX", "trx": "TRX", "tron": "TRX",
+    "ریپل": "XRP", "xrp": "XRP", "ripple": "XRP",
+    "شیبا": "SHIB", "shib": "SHIB", "shiba": "SHIB",
+    "بایننس کوین": "BNB", "bnb": "BNB",
+    "کاردانو": "ADA", "ada": "ADA", "cardano": "ADA",
+    "نات کوین": "NOT", "not": "NOT",
+    "پپه": "PEPE", "pepe": "PEPE",
+}
+
+_CRYPTO_NAMES = {
+    "BTC": "بیت‌کوین (BTC)",
+    "ETH": "اتریوم (ETH)",
+    "SOL": "سولانا (SOL)",
+    "TON": "تون‌کوین (TON)",
+    "DOGE": "دوج‌کوین (DOGE)",
+    "TRX": "ترون (TRX)",
+    "XRP": "ریپل (XRP)",
+    "SHIB": "شیبا اینو (SHIB)",
+    "BNB": "بایننس کوین (BNB)",
+    "ADA": "کاردانو (ADA)",
+    "NOT": "نات کوین (NOT)",
+    "PEPE": "پپه (PEPE)",
+}
+
+async def _crypto_api_search(query: str) -> str | None:
+    """
+    دریافت قیمت لحظه‌ای رمزارزها از بایننس به دلار و محاسبه معادل تومانی
+    """
+    import httpx
+    import json
+    q = query.lower().strip()
+
+    target_sym = None
+    for kw, sym in _CRYPTO_MAP.items():
+        if kw in q:
+            target_sym = sym
+            break
+
+    if target_sym:
+        symbols = [f"{target_sym}USDT"]
+    else:
+        if not any(w in q for w in ["کریپتو", "ارز دیجیتال", "ارزدیجیتال", "crypto"]):
+            return None
+        symbols = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "TONUSDT", "DOGEUSDT", "TRXUSDT", "XRPUSDT"]
+
+    try:
+        usdt_toman = 0
+        try:
+            channel_prices = await _read_channel_currency()
+            if channel_prices and "USDT" in channel_prices:
+                usdt_toman = channel_prices["USDT"] / 10
+            elif channel_prices and "USD" in channel_prices:
+                usdt_toman = channel_prices["USD"] / 10
+        except Exception:
+            pass
+
+        async with httpx.AsyncClient(timeout=8, headers={"User-Agent": "Mozilla/5.0"}) as client:
+            sym_param = json.dumps(symbols, separators=(',', ':'))
+            resp = await client.get(
+                "https://api.binance.com/api/v3/ticker/24hr",
+                params={"symbols": sym_param},
+            )
+            if resp.status_code != 200:
+                logger.warning(f"Binance API status: {resp.status_code}")
+                return None
+
+            items = resp.json()
+            if not items:
+                return None
+
+            lines = [
+                "🪙 <b>قیمت لحظه‌ای بازار ارزهای دیجیتال (Crypto):</b>",
+                "━━━━━━━━━━━━━━━━━━━━━━━━",
+                ""
+            ]
+
+            for it in items:
+                raw_sym = it.get("symbol", "").replace("USDT", "")
+                name = _CRYPTO_NAMES.get(raw_sym, raw_sym)
+                price = float(it.get("lastPrice", 0))
+                change = float(it.get("priceChangePercent", 0))
+                high = float(it.get("highPrice", 0))
+                low = float(it.get("lowPrice", 0))
+
+                arrow = "🟢" if change >= 0 else "🔴"
+                sign = "+" if change >= 0 else ""
+
+                price_str = f"${price:,.4f}" if price < 1 else f"${price:,.2f}"
+
+                toman_str = ""
+                if usdt_toman > 0:
+                    toman_val = price * usdt_toman
+                    if toman_val >= 1000:
+                        toman_str = f" ┃ 🇮🇷 ~<code>{toman_val:,.0f} تومان</code>"
+                    else:
+                        toman_str = f" ┃ 🇮🇷 ~<code>{toman_val:,.1f} تومان</code>"
+
+                lines.append(f"{arrow} <b>{name}</b>")
+                lines.append(f"   💵 قیمت جهانی: <b>{price_str}</b>{toman_str}")
+                lines.append(f"   📊 تغییر ۲۴ ساعت: <code>{sign}{change:.2f}%</code> (کف: {low:,.2f} | سقف: {high:,.2f})\n")
+
+            if usdt_toman > 0:
+                lines.append(f"💵 <i>نرخ مبنای تتر: {usdt_toman:,.0f} تومان</i>")
+            lines.append("📅 <i>اطلاعات زنده از صرافی بین‌المللی بایننس</i>")
+
+            return "\n".join(lines)
+    except Exception as e:
+        logger.warning(f"Crypto API search failed: {e}")
+        return None
+
+
+# ─── موتور جامع استعلام قیمت (کالا، طلا، ارز، کریپتو) ────────────────────────
+
+async def search_price_all(query: str) -> dict:
+    """
+    موتور جامع استعلام قیمت:
+    تشخیص هوشمند نوع استعلام (کالا/محصول، طلا و سکه، ارز، رمزارز)
+    """
+    raw_q = query.strip()
+    clean_q = _clean_product_query(raw_q)
+    lower_q = raw_q.lower()
+
+    # ۱. اگر خالی باشد -> منوی اصلی
+    if not clean_q or len(clean_q) < 2:
+        return {
+            "type": "empty",
+            "text": (
+                "🏷️ <b>مرکز هوشمند استعلام قیمت و نرخ لحظه‌ای</b>\n\n"
+                "<blockquote>\n"
+                "💡 برای دریافت سریع‌ترین قیمت‌ها، نام محصول، رمزارز یا ارز را بعد از دستور بنویسید:\n\n"
+                "🛍️ <b>کالاها و محصولات (ترب و فروشگاه‌های آنلاین):</b>\n"
+                "• <code>/price جاروبرقی بوش</code>\n"
+                "• <code>/price آیفون 15</code>\n"
+                "• <code>/price پلی استیشن 5</code>\n"
+                "• <code>/price لپ‌تاپ ایسوس</code>\n\n"
+                "🪙 <b>رمزارزها، طلا و ارزها:</b>\n"
+                "• <code>/price دلار</code> یا <code>/price تتر</code>\n"
+                "• <code>/price طلا</code> یا <code>/price سکه</code>\n"
+                "• <code>/price بیت کوین</code> یا <code>/price ton</code>\n"
+                "</blockquote>\n\n"
+                "👇 <i>یا یکی از گزینه‌های آماده زیر را لمس کنید:</i>"
+            ),
+        }
+
+    # ۲. چک رمزارزها
+    is_crypto = any(k in lower_q for k in _CRYPTO_MAP.keys()) or any(w in lower_q for w in ["کریپتو", "ارز دیجیتال", "ارزدیجیتال", "crypto"])
+    if is_crypto:
+        crypto_res = await _crypto_api_search(raw_q)
+        if crypto_res:
+            return {"type": "crypto", "text": crypto_res, "query": raw_q}
+
+    # ۳. چک طلا و سکه
+    is_gold = any(k in raw_q for k in _GOLD_KEYWORDS)
+    if is_gold:
+        gold_res = await _gold_api_search(raw_q)
+        if gold_res:
+            return {"type": "gold", "text": gold_res, "query": raw_q}
+
+    # ۴. چک ارزهای رسمی و آزاد (دلار، یورو، پوند و...)
+    currency_keywords = ["دلار", "تتر", "usdt", "یورو", "پوند", "لیر", "درهم", "یوان", "ین", "ارز", "نرخ ارز"]
+    if any(k in lower_q for k in currency_keywords):
+        curr_res = await _currency_api_search(raw_q)
+        if curr_res:
+            return {"type": "currency", "text": curr_res, "query": raw_q}
+
+    # ۵. استعلام کالا و محصولات بازار از ترب (جاروبرقی، گوشی، لپ‌تاپ و...)
+    prod_res = await _product_price_search(raw_q)
+    if prod_res:
+        return {
+            "type": "product",
+            "text": prod_res["text"],
+            "products": prod_res["products"],
+            "query": prod_res["query"],
+            "search_url": prod_res["search_url"],
+        }
+
+    # ۶. تلاش نهایی با موتور جست‌وجوی وب
+    web_res = await search_web_fallback(f"قیمت {clean_q}")
+    if web_res:
+        return {"type": "web", "text": web_res, "query": raw_q}
+
+    return {
+        "type": "none",
+        "text": f"❌ متأسفانه قیمت یا اطلاعاتی برای «<b>{clean_q}</b>» یافت نشد.\nلطفاً نام دقیق‌تر برند یا مدل کالا را وارد کنید.",
+        "query": raw_q,
+    }
 
 
 # ─── Yandex Search (در ایران کار می‌کنه) ─────────────────────────────────────

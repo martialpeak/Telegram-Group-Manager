@@ -311,6 +311,131 @@ async def on_general_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         except Exception as e:
             await query.answer(f"خطا در آنبن: {e}", show_alert=True)
         return
+
+    elif data.startswith("prc_"):
+        await query.answer()
+        from bot.core.knowledge_engine import (
+            _currency_api_search, _gold_api_search, _crypto_api_search,
+            _product_price_search, search_price_all
+        )
+        import urllib.parse
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+        if data == "prc_currency":
+            curr = await _currency_api_search("دلار")
+            if curr:
+                kb = InlineKeyboardMarkup([
+                    [
+                        InlineKeyboardButton("🔄 بروزرسانی نرخ ارز", callback_data="prc_currency"),
+                        InlineKeyboardButton("🪙 طلا و انواع سکه", callback_data="prc_gold"),
+                    ],
+                    [
+                        InlineKeyboardButton("⚡ رمزارزها (BTC/TON)", callback_data="prc_crypto"),
+                        InlineKeyboardButton("🔙 بازگشت به منو", callback_data="prc_menu"),
+                    ]
+                ])
+                try:
+                    await query.edit_message_text(curr, parse_mode="HTML", reply_markup=kb)
+                except Exception:
+                    pass
+            else:
+                await query.answer("❌ در حال حاضر دریافت نرخ ارز با مشکل مواجه شد.", show_alert=True)
+            return
+
+        elif data == "prc_gold":
+            gold = await _gold_api_search("طلا")
+            if gold:
+                kb = InlineKeyboardMarkup([
+                    [
+                        InlineKeyboardButton("🔄 بروزرسانی طلا و سکه", callback_data="prc_gold"),
+                        InlineKeyboardButton("💵 نرخ ارز و دلار", callback_data="prc_currency"),
+                    ],
+                    [
+                        InlineKeyboardButton("⚡ رمزارزها (BTC/TON)", callback_data="prc_crypto"),
+                        InlineKeyboardButton("🔙 بازگشت به منو", callback_data="prc_menu"),
+                    ]
+                ])
+                try:
+                    await query.edit_message_text(gold, parse_mode="HTML", reply_markup=kb)
+                except Exception:
+                    pass
+            else:
+                await query.answer("❌ اطلاعات طلا و سکه دریافت نشد.", show_alert=True)
+            return
+
+        elif data == "prc_crypto":
+            crypto = await _crypto_api_search("crypto")
+            if crypto:
+                kb = InlineKeyboardMarkup([
+                    [
+                        InlineKeyboardButton("🔄 بروزرسانی رمزارزها", callback_data="prc_crypto"),
+                        InlineKeyboardButton("💵 نرخ ارز و دلار", callback_data="prc_currency"),
+                    ],
+                    [
+                        InlineKeyboardButton("🪙 طلا و انواع سکه", callback_data="prc_gold"),
+                        InlineKeyboardButton("🔙 بازگشت به منو", callback_data="prc_menu"),
+                    ]
+                ])
+                try:
+                    await query.edit_message_text(crypto, parse_mode="HTML", reply_markup=kb)
+                except Exception:
+                    pass
+            else:
+                await query.answer("❌ ارتباط با بازار رمزارز برقرار نشد.", show_alert=True)
+            return
+
+        elif data.startswith("prc_it_"):
+            raw_item = data[7:]
+            try:
+                item_name = urllib.parse.unquote(raw_item)
+            except Exception:
+                item_name = raw_item
+
+            prod = await _product_price_search(item_name)
+            if prod:
+                enc = urllib.parse.quote(item_name)
+                kb = InlineKeyboardMarkup([
+                    [
+                        InlineKeyboardButton("🔗 مشاهده همه فروشگاه‌ها در ترب", url=prod["search_url"]),
+                    ],
+                    [
+                        InlineKeyboardButton("🔄 بروزرسانی قیمت", callback_data=f"prc_it_{enc[:30]}"),
+                        InlineKeyboardButton("🔙 بازگشت به منو", callback_data="prc_menu"),
+                    ]
+                ])
+                try:
+                    await query.edit_message_text(prod["text"], parse_mode="HTML", reply_markup=kb, disable_web_page_preview=True)
+                except Exception:
+                    pass
+            else:
+                await query.answer("❌ کالایی در ترب یافت نشد.", show_alert=True)
+            return
+
+        elif data == "prc_menu":
+            res = await search_price_all("")
+            kb = InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton("💵 نرخ ارز و دلار", callback_data="prc_currency"),
+                    InlineKeyboardButton("🪙 طلا و انواع سکه", callback_data="prc_gold"),
+                ],
+                [
+                    InlineKeyboardButton("⚡ بازار رمزارزها (BTC/TON)", callback_data="prc_crypto"),
+                ],
+                [
+                    InlineKeyboardButton("🧹 قیمت انواع جاروبرقی", callback_data="prc_it_جاروبرقی"),
+                    InlineKeyboardButton("📱 قیمت روز موبایل", callback_data="prc_it_گوشی موبایل"),
+                ],
+                [
+                    InlineKeyboardButton("💻 قیمت لپ‌تاپ", callback_data="prc_it_لپ تاپ"),
+                    InlineKeyboardButton("🎮 قیمت کنسول PS5", callback_data="prc_it_پلی استیشن 5"),
+                ],
+            ])
+            try:
+                await query.edit_message_text(res["text"], parse_mode="HTML", reply_markup=kb)
+            except Exception:
+                pass
+            return
+
     else:
         await query.answer()
 
