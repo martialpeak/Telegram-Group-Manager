@@ -675,11 +675,21 @@ async def cmd_update(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await msg.edit_text("❌ خطا در git fetch. اتصال به GitHub را بررسی کن.")
             return
 
+        # تشخیص شاخه فعلی (main یا master)
+        rc_b, cur_branch = await _run(["git", "rev-parse", "--abbrev-ref", "HEAD"], timeout=10)
+        branch = cur_branch.strip() if rc_b == 0 and cur_branch else "main"
+
         # ۳. مقایسه
-        rc, remote = await _run(["git", "rev-parse", "--short", "origin/main"], timeout=10)
+        rc, remote = await _run(["git", "rev-parse", "--short", f"origin/{branch}"], timeout=10)
         if rc != 0:
-            await msg.edit_text("❌ خطا در مقایسه نسخه‌ها.")
-            return
+            other_b = "master" if branch == "main" else "main"
+            rc_alt, remote_alt = await _run(["git", "rev-parse", "--short", f"origin/{other_b}"], timeout=10)
+            if rc_alt == 0:
+                branch = other_b
+                remote = remote_alt
+            else:
+                await msg.edit_text("❌ خطا در مقایسه نسخه‌ها.")
+                return
 
         if current == remote:
             await msg.edit_text(
@@ -690,7 +700,7 @@ async def cmd_update(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # ۴. pull
         await msg.edit_text("⬇️ دانلود آپدیت...")
-        rc, pull_out = await _run(["git", "pull", "--ff-only", "origin", "main"], timeout=60)
+        rc, pull_out = await _run(["git", "pull", "--ff-only", "origin", branch], timeout=60)
         if rc != 0:
             await msg.edit_text(f"❌ خطا در git pull:\n<code>{pull_out[:300]}</code>", parse_mode="HTML")
             return
