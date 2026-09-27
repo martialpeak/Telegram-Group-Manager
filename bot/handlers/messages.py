@@ -459,7 +459,9 @@ async def _handle_direct_price_query(message, text: str) -> bool:
     if not is_direct_price:
         return False
 
-    from bot.core.knowledge_engine import search_price_all
+    from bot.core.knowledge_engine import is_advice_or_comparison_question, search_price_all
+    if is_advice_or_comparison_question(clean_text):
+        return False
     res = await search_price_all(clean_text)
     if res.get("type") in ("product", "crypto", "gold", "currency"):
         kb_rows = []
@@ -741,13 +743,15 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     )
             except Exception as e:
                 logger.warning(f"loading edit failed: {e}")
-                # fallback: بدون parse_mode
+                # fallback: بدون تگ‌های خام HTML تا کاربر تگ‌های خراب نبیند
                 try:
                     await loading.delete()
                 except Exception:
                     pass
+                import re as _re
+                clean_answer = _re.sub(r"<[^>]+>", "", answer_text)
                 await message.reply_text(
-                    f"{source_label} {answer_text}",
+                    f"{source_label} {clean_answer}",
                     reply_markup=keyboard,
                 )
 
