@@ -1500,3 +1500,59 @@ async def cmd_delchannel(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"📚 کانال‌های فعلی: {', '.join(TRAINING_CHANNELS) or 'هیچ'}",
             parse_mode="HTML",
         )
+
+
+# ─── /summary — خلاصه‌سازی پیام‌های گروه با هوش مصنوعی ───────────────────────
+
+async def cmd_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    خلاصه پیام‌های اخیر گروه با هوش مصنوعی (/summary یا /kholase)
+    """
+    message = update.message
+    if not message:
+        return
+
+    chat = message.chat
+    if chat.type == ChatType.PRIVATE:
+        await message.reply_text(
+            "📌 دستور خلاصه‌ساز مختص گروه‌ها است. آن را داخل گروه اجرا کنید.",
+            parse_mode="HTML",
+        )
+        return
+
+    status_msg = await message.reply_text(
+        "⏳ <b>در حال تحلیل و خلاصه‌سازی گفت‌وگوهای اخیر با هوش مصنوعی...</b>",
+        parse_mode="HTML",
+    )
+
+    try:
+        from bot.core.ai_analyzer import generate_group_summary
+        # تعداد پیام برای خلاصه (پیش‌فرض ۵۰ پیام، یا قابل تنظیم توسط آرگومان)
+        limit = 50
+        if context.args and context.args[0].isdigit():
+            limit = min(int(context.args[0]), 100)
+
+        recent_messages = await db.get_messages_for_summary(chat.id, limit=limit)
+        if not recent_messages or len(recent_messages) < 3:
+            await status_msg.edit_text(
+                "💬 <b>پیام کافی برای خلاصه‌سازی در حافظه ربات یافت نشد.</b>\n"
+                "ربات باید مدتی در گروه پیام‌های ارسالی را ثبت کند.",
+                parse_mode="HTML",
+            )
+            return
+
+        summary_text = await generate_group_summary(recent_messages)
+        await status_msg.edit_text(
+            summary_text,
+            parse_mode="HTML",
+        )
+    except Exception as e:
+        logger.error(f"Error in cmd_summary: {e}")
+        try:
+            await status_msg.edit_text(
+                "❌ متأسفانه در حین تولید خلاصه خطایی رخ داد.",
+                parse_mode="HTML",
+            )
+        except Exception:
+            pass
+

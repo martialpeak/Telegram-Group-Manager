@@ -132,6 +132,8 @@ def main():
     app.add_handler(CommandHandler("unlockdown", handlers.cmd_unlockdown))
     app.add_handler(CommandHandler("tr", handlers.cmd_translate))
     app.add_handler(CommandHandler("setpunishment", handlers.cmd_setpunishment))
+    app.add_handler(CommandHandler("summary", handlers.cmd_summary))
+    app.add_handler(CommandHandler("kholase", handlers.cmd_summary))
 
     # ── Callback ها ───────────────────────────────────────────────────────────
     app.add_handler(CallbackQueryHandler(handlers.on_report_callback,  pattern=r"^rpt_"))

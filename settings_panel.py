@@ -148,7 +148,7 @@ def _current_settings() -> str:
     key_display = f"{key[:8]}..." if len(key) > 8 else ("تنظیم نشده" if not key else key)
     return (
         "⚙️ <b>Current Settings:</b>\n\n"
-        f"🤖 Gemini Model:    <code>{_get('GEMINI_MODEL', 'gemini-2.5-flash')}</code>\n"
+        f"🤖 Gemini Model:    <code>{_get('GEMINI_MODEL', 'gemini-1.5-flash')}</code>\n"
         f"🔑 Gemini API Key:  <code>{key_display}</code>\n"
         f"⚠️ Max Warnings:    <code>{_get('MAX_WARNINGS')}</code>\n"
         f"🕐 Spam Window:     <code>{_get('SPAM_TIME_WINDOW')} sec</code>\n"
@@ -571,7 +571,7 @@ def _validate(key: str, value: str) -> str:
         if len(value) < 10:
             return "API Key معتبر نیست"
     elif key == "GEMINI_MODEL":
-        valid = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-2.5-pro"]
+        valid = ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.5-pro", "gemini-2.5-flash"]
         if value not in valid:
             return f"مدل باید یکی از اینها باشد: {', '.join(valid)}"
     elif key == "BOT_LANG":

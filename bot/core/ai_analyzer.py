@@ -27,7 +27,7 @@ if GEMINI_API_KEY:
     try:
         import google.generativeai as genai
         genai.configure(api_key=GEMINI_API_KEY)
-        _model_name = GEMINI_MODEL if GEMINI_MODEL else "gemini-2.5-flash"
+        _model_name = GEMINI_MODEL if GEMINI_MODEL else "gemini-1.5-flash"
         _gemini_model = genai.GenerativeModel(_model_name)
     except Exception as e:
         logger.warning(f"Gemini init failed: {e}")
@@ -326,3 +326,111 @@ async def translate_text(text: str, target_lang: str) -> str | None:
             import logging
             logging.getLogger(__name__).warning(f"gemini translate failed: {e}")
     return None
+
+
+# ─── رونویسی و تحلیل پیام‌های صوتی (Groq Whisper / Gemini) ───────────────────
+
+async def transcribe_voice(file_bytes: bytes, filename: str = "voice.ogg") -> Optional[str]:
+    """
+    رونویسی ویس / صوت با Groq Whisper (سریع و دقیق برای فارسی)
+    با قابلیت fallback به Gemini چندحالته.
+    """
+    if _groq_client:
+        try:
+            loop = asyncio.get_running_loop()
+            from config import GROQ_WHISPER_MODEL
+            model = GROQ_WHISPER_MODEL if GROQ_WHISPER_MODEL else "whisper-large-v3"
+            response = await loop.run_in_executor(
+                None,
+                lambda: _groq_client.audio.transcriptions.create(
+                    file=(filename, file_bytes),
+                    model=model,
+                    response_format="text",
+                )
+            )
+            if isinstance(response, str):
+                return response.strip()
+            return getattr(response, "text", str(response)).strip()
+        except Exception as e:
+            logger.warning(f"Groq Whisper transcription failed: {e}")
+
+    if _gemini_model:
+        try:
+            loop = asyncio.get_running_loop()
+            response = await loop.run_in_executor(
+                None,
+                lambda: _gemini_model.generate_content([
+                    {"mime_type": "audio/ogg", "data": file_bytes},
+                    "این فایل صوتی را کلمه به کلمه پیاده‌سازی و رونویسی کن. فقط متن گفته‌شده را بنویس بدون هیچ توضیح اضافه."
+                ])
+            )
+            if response and response.text:
+                return response.text.strip()
+        except Exception as e:
+            logger.warning(f"Gemini voice transcription failed: {e}")
+
+    return None
+
+
+# ─── خلاصه‌سازی پیام‌های گروه با هوش مصنوعی (/summary) ───────────────────────
+
+async def generate_group_summary(messages: list[dict]) -> str:
+    """
+    تولید خلاصه ساختاریافته از پیام‌های اخیر گروه با هوش مصنوعی
+    """
+    if not messages:
+        return "❌ پیام کافی در تاریخچه گروه برای خلاصه‌سازی وجود ندارد."
+
+    lines = []
+    for m in messages:
+        sender = (m.get("name") or "کاربر")[:25]
+        txt = (m.get("text") or "").strip()
+        if txt:
+            lines.append(f"{sender}: {txt[:200]}")
+
+    conversation_text = "\n".join(lines)
+    prompt = (
+        "تو یک دستیار هوشمند مدیر گروه تلگرام هستی.\n"
+        "متن پیام‌های اخیر ردوبدل شده در گروه را بخوان و یک خلاصه جامع، خوانا و جذاب به زبان فارسی بنویس.\n\n"
+        "ساختار خروجی دقیقاً به این شکل باشد:\n"
+        "📊 <b>خلاصه گفت‌وگوهای اخیر گروه:</b>\n"
+        "• موضوع ۱...\n"
+        "• موضوع ۲...\n\n"
+        "💡 <b>نکات کلیدی و راهکارهای مطرح‌شده:</b>\n"
+        "• نکته ۱...\n\n"
+        "⚠️ <b>مباحث حل‌نشده یا سوالات بی‌پاسخ (در صورت وجود):</b>\n"
+        "• ...\n\n"
+        "متن خلاصه خودمانی، تمیز و ساختاریافته با تگ‌های HTML باشد.\n\n"
+        f"متن پیام‌ها:\n{conversation_text}"
+    )
+
+    if _groq_client:
+        try:
+            loop = asyncio.get_running_loop()
+            res = await loop.run_in_executor(
+                None,
+                lambda: _groq_client.chat.completions.create(
+                    model=GROQ_MODEL,
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.3,
+                    max_tokens=900,
+                )
+            )
+            return res.choices[0].message.content.strip()
+        except Exception as e:
+            logger.warning(f"Groq summary failed: {e}")
+
+    if _gemini_model:
+        try:
+            loop = asyncio.get_running_loop()
+            res = await loop.run_in_executor(
+                None,
+                lambda: _gemini_model.generate_content(prompt)
+            )
+            if res and res.text:
+                return res.text.strip()
+        except Exception as e:
+            logger.warning(f"Gemini summary failed: {e}")
+
+    return "❌ متأسفانه در حال حاضر هوش مصنوعی برای تولید خلاصه در دسترس نیست."
+

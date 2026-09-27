@@ -20,7 +20,11 @@ GROQ_MODEL     = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
 
 # Gemini (fallback — 1500 req/day free)
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-GEMINI_MODEL   = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+GEMINI_MODEL   = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+
+# ── Voice / Whisper (Groq) ───────────────────────────
+VOICE_MODERATION_ENABLED = os.getenv("VOICE_MODERATION_ENABLED", "true").lower() == "true"
+GROQ_WHISPER_MODEL       = os.getenv("GROQ_WHISPER_MODEL", "whisper-large-v3")
 
 # ── Cache ─────────────────────────────────────────────
 # حداقل شباهت برای استفاده از cache

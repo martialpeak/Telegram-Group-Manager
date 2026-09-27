@@ -391,6 +391,22 @@ async def get_recent_messages(chat_id: int, limit: int = 8) -> list[dict]:
         return [{"name": r[0], "text": r[1], "type": r[2]} for r in reversed(rows)]
 
 
+async def get_messages_for_summary(chat_id: int, limit: int = 60) -> list[dict]:
+    """
+    دریافت پیام‌های اخیر گروه برای خلاصه‌سازی با هوش مصنوعی.
+    """
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute(
+            """SELECT full_name, text, created_at FROM message_log
+               WHERE chat_id=? AND text IS NOT NULL AND text != ''
+               AND message_type != 'spam'
+               ORDER BY created_at DESC LIMIT ?""",
+            (chat_id, limit),
+        )
+        rows = await cur.fetchall()
+        return [{"name": r[0], "text": r[1], "created_at": r[2]} for r in reversed(rows)]
+
+
 # ─── اسپم ────────────────────────────────────────────────────────────────────
 
 async def track_spam(

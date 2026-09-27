@@ -3,6 +3,7 @@
 """
 
 import logging
+import time as _time_mod
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from telegram.constants import ChatType
@@ -63,7 +64,7 @@ async def _check_punishment_limit(update: Update, context: ContextTypes.DEFAULT_
                 pass
             try:
                 await chat.send_message(
-                    f"🔇 {mention(user)} بن شد (جریمه: {punishment_rank}).\\n"
+                    f"🔇 {mention(user)} بن شد (جریمه: {punishment_rank}).\n"
                     f"💬 فردا دوباره میتونی پیام بدی.",
                 )
             except Exception:
@@ -93,7 +94,7 @@ async def _check_punishment_limit(update: Update, context: ContextTypes.DEFAULT_
                     pass
                 try:
                     await chat.send_message(
-                        f"🔇 {mention(user)} به حد روزانه رسید ({rank_cfg.daily_limit} پیام) → میوت شد.\\n"
+                        f"🔇 {mention(user)} به حد روزانه رسید ({rank_cfg.daily_limit} پیام) → میوت شد.\n"
                         f"💬 فردا دوباره میتونی پیام بدی.",
                     )
                 except Exception:
@@ -372,6 +373,65 @@ async def on_media_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
     await _check_level_restrictions(message, context.bot)
+
+    # ─── تحلیل صوتی ویس با Whisper و سیستم نظارت هوشمند ───────────────────────
+    if (message.voice or message.audio) and not _is_admin(user.id):
+        try:
+            import config as _cfg
+            if getattr(_cfg, "VOICE_MODERATION_ENABLED", True):
+                audio_obj = message.voice or message.audio
+                if audio_obj.file_size and audio_obj.file_size <= 20 * 1024 * 1024:
+                    from bot.core.ai_analyzer import transcribe_voice
+                    tg_file = await audio_obj.get_file()
+                    file_bytes = await tg_file.download_as_bytearray()
+
+                    transcribed_text = await transcribe_voice(bytes(file_bytes), filename="voice.ogg")
+                    if transcribed_text:
+                        logger.info(f"🎙️ ویس کاربر {user.id} رونویسی شد: {transcribed_text[:100]}")
+
+                        # ۱. لاگ پیام صوتی با متن رونویسی‌شده
+                        await db.log_message(
+                            user.id, message.chat_id, user.username or "",
+                            user.full_name, f"[🎙️ ویس]: {transcribed_text}", "normal", 1.0
+                        )
+
+                        # ۲. بررسی فیلتر کلمات ممنوعه روی متن ویس
+                        filtered_word = await db.is_filtered_word(message.chat_id, transcribed_text)
+                        if filtered_word:
+                            try:
+                                await message.delete()
+                                await message.chat.send_message(
+                                    f"🚫 {mention(user)} ویس شما حاوی کلمه ممنوعه بود و حذف شد.",
+                                    parse_mode="HTML"
+                                )
+                            except Exception:
+                                pass
+                            return
+
+                        # ۳. تحلیل هوش مصنوعی روی متن ویس (اسپم یا توهین)
+                        analysis = await analyze_message(transcribed_text, chat_id=message.chat_id)
+                        msg_type = analysis.get("type", "normal")
+                        confidence = analysis.get("confidence", 0.0)
+
+                        if msg_type in ("insult", "spam") and confidence >= MIN_CONFIDENCE:
+                            try:
+                                await message.delete()
+                            except Exception:
+                                pass
+
+                            if msg_type == "insult":
+                                await mod.warn_user(
+                                    context.bot, message.chat_id, user,
+                                    f"توهین در پیام صوتی: {transcribed_text[:60]}"
+                                )
+                            elif msg_type == "spam":
+                                await mod.warn_user(
+                                    context.bot, message.chat_id, user,
+                                    f"تبلیغ در پیام صوتی: {transcribed_text[:60]}"
+                                )
+                            return
+        except Exception as e:
+            logger.warning(f"Voice moderation error: {e}")
 
     # ── امتیاز مدیا ──────────────────────────────────────────────────────────
     if not _is_admin(user.id):
