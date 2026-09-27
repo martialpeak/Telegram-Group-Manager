@@ -137,7 +137,7 @@ def main():
 
     # ── Callback ها ───────────────────────────────────────────────────────────
     app.add_handler(CallbackQueryHandler(handlers.on_report_callback,  pattern=r"^rpt_"))
-    app.add_handler(CallbackQueryHandler(handlers.on_general_callback, pattern=r"^(rules|myrank_|tbtn_)"))
+    app.add_handler(CallbackQueryHandler(handlers.on_general_callback, pattern=r"^(rules|myrank_|tbtn_|help_)"))
     app.add_handler(CallbackQueryHandler(handlers.on_feedback_callback, pattern=r"^fb_"))
     app.add_handler(CallbackQueryHandler(handlers.on_feedback_callback, pattern=r"^vote_"))
     app.add_handler(CallbackQueryHandler(handlers.on_admin_answer_callback, pattern=r"^adm_"))

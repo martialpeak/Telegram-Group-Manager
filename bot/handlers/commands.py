@@ -85,69 +85,169 @@ async def _get_target(update, context) -> tuple:
 
 
 
+# ─── طراحی مدرن و شکیل رابط کاربری منوها ─────────────────────────────────────
+
+def get_start_text(bot_username: str, user, chat_type: ChatType, level: str = None, q_limit: str = None, rank_name: str = None) -> str:
+    bot_link = f"@{bot_username}" if bot_username else "ربات"
+    if chat_type == ChatType.PRIVATE:
+        return (
+            "🤖 <b>دستیار و مدیر هوشمند گروه</b>\n\n"
+            "<blockquote>"
+            "مجهز به هوش مصنوعی ترکیبی (Groq + Gemini)، سیستم شنود و نظارت ویس با Whisper، "
+            "خلاصه‌ساز گفت‌وگوها، مدیریت هوشمند تخلفات و پایگاه دانش خودآموز."
+            "</blockquote>\n\n"
+            "💡 <b>نحوه پرسش و پاسخ با هوش مصنوعی:</b>\n"
+            f"در گروه کافیست روی پیام ربات ریپلای بزنید یا بنویسید:\n"
+            f"👉 <code>{bot_link} سوال شما</code>\n\n"
+            "👇 <i>برای مشاهده راهنمای دستورات، بخش مورد نظر را لمس کنید:</i>"
+        )
+    else:
+        rank_display = rank_name if rank_name and rank_name != "clean" else "عادی و پاک"
+        lvl_lbl = level_label(level) if level else "ساده"
+        q_disp = q_limit or "نامحدود"
+        return (
+            "🤖 <b>ربات هوشمند مدیریت گروه</b>\n\n"
+            "<blockquote>"
+            f"👤 کاربر: {mention(user)}\n"
+            f"🏅 سطح کاربری: <b>{lvl_lbl}</b>\n"
+            f"❓ سهمیه سوال امروز: <b>{q_disp}</b>\n"
+            f"🏆 وضعیت انضباطی: <b>{rank_display}</b>"
+            "</blockquote>\n\n"
+            f"💬 <b>پرسش از AI:</b> ریپلای روی پیام ربات یا منشن <code>{bot_link}</code>\n\n"
+            "👇 <i>برای دسترسی سریع به دستورات، دکمه‌های زیر را لمس کنید:</i>"
+        )
+
+
+def get_start_keyboard(bot_username: str, is_admin: bool, is_private: bool, user_id: int) -> InlineKeyboardMarkup:
+    rows = []
+    if is_private and bot_username:
+        rows.append([
+            InlineKeyboardButton("➕ افزودن ربات به گروه", url=f"https://t.me/{bot_username}?startgroup=true")
+        ])
+    rows.append([
+        InlineKeyboardButton("👤 دستورات کاربران", callback_data="help_user"),
+        InlineKeyboardButton("🛡️ دستورات ادمین", callback_data="help_admin"),
+    ])
+    rows.append([
+        InlineKeyboardButton("🤖 امکانات هوش مصنوعی", callback_data="help_ai"),
+    ])
+    if not is_private:
+        rows.append([
+            InlineKeyboardButton("📊 پروفایل و وضعیت من", callback_data=f"myrank_{user_id}")
+        ])
+    return InlineKeyboardMarkup(rows)
+
+
+def get_help_user_text() -> str:
+    return (
+        "📖 <b>راهنمای دستورات اعضای گروه:</b>\n\n"
+        "<blockquote>"
+        "🔹 <code>/myrank</code> ▫️ مشاهده پروفایل، رتبه و سطح کاربری شما\n"
+        "🔹 <code>/mystats</code> ▫️ آمار پیام‌ها، لینک‌ها و فعالیت روزانه شما\n"
+        "🔹 <code>/levels</code> ▫️ راهنمای سطوح کاربری و پیش‌نیازهای ارتقاء\n"
+        "🔹 <code>/summary</code> ▫️ خلاصه‌سازی مباحث اخیر گروه با هوش مصنوعی\n"
+        "🔹 <code>/punishment</code> ▫️ مشاهده سیستم رنک‌های جریمه گروه\n"
+        "🔹 <code>/report</code> ▫️ گزارش پیام متخلف به ادمین‌ها (ریپلای)\n"
+        "🔹 <code>/clear</code> ▫️ پاکسازی حافظه موقت گفتگو با هوش مصنوعی"
+        "</blockquote>\n\n"
+        "💡 <i>روی هر دستور ضربه بزنید تا در متن چت کپی شود.</i>"
+    )
+
+
+def get_help_admin_text() -> str:
+    return (
+        "🛡️ <b>راهنمای دستورات مدیریت و نظارت:</b>\n\n"
+        "<blockquote>"
+        "⚠️ <b>اقدامات نظارتی و انضباطی:</b>\n"
+        "• <code>/warn</code> ▫️ اخطار دستی به کاربر (ریپلای)\n"
+        "• <code>/unwarn</code> ▫️ پاک کردن یک اخطار (ریپلای)\n"
+        "• <code>/mute [دقیقه]</code> ▫️ سکوت موقت کاربر (ریپلای)\n"
+        "• <code>/unmute</code> ▫️ لغو سکوت و آزادسازی (ریپلای)\n"
+        "• <code>/ban [مدت] [دلیل]</code> ▫️ اخراج/مسدودسازی کاربر\n"
+        "• <code>/unban [آیدی/ریپلای]</code> ▫️ لغو مسدودیت کاربر\n\n"
+        "📊 <b>آمار و پایش گروه:</b>\n"
+        "• <code>/stats</code> ▫️ آمار کلی پیام‌ها و اعضا\n"
+        "• <code>/violations</code> ▫️ گزارش آمار تخلفات\n"
+        "• <code>/reports</code> ▫️ بررسی پیام‌های گزارش‌شده\n"
+        "• <code>/warnings</code> ▫️ مشاهده لیست اخطارهای کاربران\n\n"
+        "🔒 <b>امنیت و قفل‌ها:</b>\n"
+        "• <code>/lock</code> | <code>/unlock</code> ▫️ قفل مدیا (عکس، ویدیو، ویس، استیکر)\n"
+        "• <code>/locks</code> ▫️ مشاهده وضعیت قفل‌های فعال\n"
+        "• <code>/lockdown</code> ▫️ قفل اضطراری کل گروه\n\n"
+        "⚙️ <b>سیستم و هوش مصنوعی:</b>\n"
+        "• <code>/summary [تعداد]</code> ▫️ خلاصه گفتگوهای اخیر با AI\n"
+        "• <code>/settings</code> ▫️ پنل شیشه‌ای تنظیمات\n"
+        "• <code>/update</code> ▫️ آپدیت آنلاین از GitHub"
+        "</blockquote>"
+    )
+
+
+def get_help_ai_text() -> str:
+    return (
+        "🤖 <b>امکانات پیشرفته هوش مصنوعی ربات:</b>\n\n"
+        "<blockquote>"
+        "🎙️ <b>فحاشی‌یاب و اسپم‌یاب صوتی (Groq Whisper):</b>\n"
+        "پیام‌های صوتی (ویس) در کمتر از یک ثانیه رونویسی و تحلیل می‌شوند؛ در صورت وجود فحاشی یا تبلیغ صوتی، ویس فوراً حذف و اخطار صادر می‌شود.\n\n"
+        "📊 <b>خلاصه‌ساز هوشمند گفت‌وگوها (/summary):</b>\n"
+        "با دستور <code>/summary</code> خلاصه‌ای منظم از موضوعات مهم و سوالات مطرح‌شده در پیام‌های اخیر دریافت کنید.\n\n"
+        "💬 <b>پاسخ‌گویی به سوالات کاربران:</b>\n"
+        "پاسخ دقیق به سوالات فنی، شبکه، کانفیگ، قیمت ارز و اطلاعات عمومی با ریپلای یا منشن.\n\n"
+        "🧠 <b>پایگاه دانش خودآموز:</b>\n"
+        "پاسخ‌های تأییدشده توسط اعضا ذخیره می‌شوند تا به سوالات تکراری بدون معطلی پاسخ داده شود."
+        "</blockquote>"
+    )
+
+
+def get_help_keyboard(tab: str, is_admin: bool) -> InlineKeyboardMarkup:
+    rows = []
+    btns = []
+    if tab != "user":
+        btns.append(InlineKeyboardButton("👤 دستورات کاربران", callback_data="help_user"))
+    if tab != "admin":
+        btns.append(InlineKeyboardButton("🛡️ دستورات ادمین", callback_data="help_admin"))
+    if tab != "ai":
+        btns.append(InlineKeyboardButton("🤖 امکانات AI", callback_data="help_ai"))
+
+    for i in range(0, len(btns), 2):
+        rows.append(btns[i:i+2])
+
+    rows.append([InlineKeyboardButton("🔙 بازگشت به منوی اصلی", callback_data="help_main")])
+    return InlineKeyboardMarkup(rows)
+
+
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     bot_username = context.bot.username
     user = update.message.from_user
     chat = update.message.chat
 
-    level_info = ""
-    rank_info = ""
-    if chat.type != ChatType.PRIVATE:
-        level = await db.get_user_level(user.id, chat.id)
-        cfg   = get_config(level)
-        q     = "نامحدود" if cfg.daily_queries == -1 else str(cfg.daily_queries)
-        level_info = f"🏅 <b>سطح شما:</b> {level_label(level)} | سوال روزانه: {q}\n"
+    level_val = None
+    q_val = None
+    rank_name = None
 
-        # نمایش رنک جریمه
+    if chat.type != ChatType.PRIVATE:
+        level_val = await db.get_user_level(user.id, chat.id)
+        cfg = get_config(level_val)
+        q_val = "نامحدود" if cfg.daily_queries == -1 else str(cfg.daily_queries)
         from bot.core.punishment_ranks import get_rank_name
         rank = await db.get_punishment_rank(user.id, chat.id)
-        rank_info = f"🏆 <b>رنک جریمه:</b> {get_rank_name(rank)}\n"
+        rank_name = get_rank_name(rank)
+
+    text = get_start_text(
+        bot_username=bot_username,
+        user=user,
+        chat_type=chat.type,
+        level=level_val,
+        q_limit=q_val,
+        rank_name=rank_name,
+    )
+    is_adm = _is_admin(user.id)
+    is_priv = (chat.type == ChatType.PRIVATE)
+    kb = get_start_keyboard(bot_username, is_adm, is_priv, user.id)
 
     await update.message.reply_text(
-        "━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        "   <b>🤖 ربات هوشمند مدیریت گروه</b>\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-
-        f"{level_info}"
-        f"{rank_info}"
-        "\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        "   <b>💬 پرسش و پاسخ</b>\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        f"📌 منشن کن: <code>@{bot_username} سوالت</code>\n"
-        "📌 یا ریپلای روی پیام ربات\n\n"
-
-        "━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        "   <b>👤 دستورات کاربران</b>\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        "🏅 /myrank — پروفایل شما (سطح + جریمه)\n"
-        "📊 /mystats — آمار روزانه شما\n"
-        "📋 /levels — نمایش سطوح کاربری\n"
-        "⚠️ /punishment — نمایش رنک‌های جریمه\n"
-        "🚨 /report — گزارش پیام (ریپلای)\n"
-        "💬 /clear — پاک کردن حافظه گفت‌وگو\n\n"
-
-        "━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        "   <b>🔧 دستورات ادمین</b>\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        "🏅 /setlevel — تغییر سطح کاربر\n"
-        "🏆 /setpunishment — تنظیم رنک جریمه\n"
-        "⚠️ /warn — اخطار دستی (ریپلای)\n"
-        "🧹 /unwarn — پاک کردن اخطار (ریپلای)\n"
-        "🔇 /mute [دقیقه] — میوت (ریپلای)\n"
-        "🔊 /unmute — رفع میوت (ریپلای)\n"
-        "🚫 /ban [مدت] [دلیل] — بن (ریپلای)\n"
-        "✅ /unban — آنبن (ریپلای یا user_id)\n"
-        "📋 /warnings — نمایش اخطارها\n"
-        "📋 /reports — گزارش‌های در انتظر\n"
-        "📊 /stats — آمار گروه\n"
-        "🔍 /violations — آمار تخلفات\n"
-        "🔎 /search [متن] — جستجو در تاریخچه\n"
-        "📚 /learn — یادگیری از فیدبک‌ها\n"
-        "⚙️ /settings — پنل تنظیمات\n"
-        "🔄 /update — آپدیت ربات از GitHub\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━━",
+        text,
         parse_mode="HTML",
+        reply_markup=kb,
     )
 
 
@@ -199,17 +299,19 @@ async def cmd_myrank(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     tag = mention(user)
     await update.message.reply_text(
-        f"👤 {tag}\n\n"
-        f"🏅 سطح: {level_label(level)}\n"
-        f"📸 مدیا: {'✅' if cfg.can_media else '❌'}\n"
-        f"🔗 لینک امروز: {limit_lk}\n"
-        f"↩️ فوروارد امروز: {limit_fw}\n"
-        f"❓ سوال امروز: {limit_q}\n"
-        f"💬 کل پیام‌ها: {total_m}\n"
-        f"⚠️ اخطار: {warns}/3"
+        f"👤 <b>پروفایل کاربری {tag}</b>\n\n"
+        f"<blockquote>"
+        f"🏅 سطح کاربری: <b>{level_label(level)}</b>\n"
+        f"📸 ارسال مدیا: {'مجاز ✅' if cfg.can_media else 'مسدود ❌'}\n"
+        f"🔗 لینک امروز: <code>{limit_lk}</code>\n"
+        f"↩️ فوروارد امروز: <code>{limit_fw}</code>\n"
+        f"❓ سهمیه سوال: <code>{limit_q}</code>\n"
+        f"💬 کل پیام‌ها: <b>{total_m}</b>\n"
+        f"⚠️ اخطارها: <b>{warns}/3</b>"
         f"{points_line}"
         f"{upgrade_line}"
-        f"{punishment_line}",
+        f"{punishment_line}"
+        f"</blockquote>",
         parse_mode="HTML",
     )
 
@@ -256,36 +358,37 @@ async def cmd_mystats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         bar_f = int(pct * 10)
         bar   = "█" * bar_f + "░" * (10 - bar_f)
         upgrade_line = (
-            f"\n📈 *ارتقاء به {level_label(next_lv)}:*\n"
-            f"  [{bar}] {done}/{cfg.auto_upgrade_msgs} پیام"
+            f"\n📈 <b>ارتقاء به {level_label(next_lv)}:</b>\n"
+            f"  <code>[{bar}] {done}/{cfg.auto_upgrade_msgs} پیام</code>"
         )
 
     # آستانه امتیازی
     from bot.handlers.messages import UPGRADE_THRESHOLDS
     if level in UPGRADE_THRESHOLDS:
         threshold, _ = UPGRADE_THRESHOLDS[level]
-        pts_line = f"\n⭐ امتیاز: {points} | آستانه بعدی: {threshold}"
+        pts_line = f"\n⭐ امتیاز: <b>{points}</b> | آستانه بعدی: <b>{threshold}</b>"
     else:
-        pts_line = f"\n⭐ امتیاز: {points}"
+        pts_line = f"\n⭐ امتیاز: <b>{points}</b>"
 
     tag = mention(user)
     await update.message.reply_text(
-        f"📊 *آمار روزانه* — {tag}\n"
-        "━━━━━━━━━━━━━━\n\n"
-        f"🏅 سطح: {level_label(level)}\n"
-        f"💬 پیام امروز: {extra['msgs_today']}\n"
-        f"💬 کل پیام‌ها: {total_m}\n\n"
-        "📌 *مصرف امروز:*\n"
-        f"  🔗 لینک:{lk_bar if lk_bar else ' ' + lk_lim}\n"
-        f"  ↩️ فوروارد:{fw_bar if fw_bar else ' ' + fw_lim}\n"
-        f"  ❓ سوال ربات:{q_bar if q_bar else ' ' + q_lim}\n\n"
-        "⚠️ *وضعیت:*\n"
-        f"  اخطار فعلی: {warns}/{MAX_WARNINGS}\n"
-        f"  تخلف امروز: {extra['violations_today']}\n"
-        f"  میوت این هفته: {extra['mutes_week']}\n"
-        f"  بن کل: {extra['bans_total']}"
+        f"📊 <b>آمار فعالیت روزانه — {tag}</b>\n\n"
+        f"<blockquote>"
+        f"🏅 سطح کاربری: <b>{level_label(level)}</b>\n"
+        f"💬 پیام امروز: <b>{extra['msgs_today']}</b>\n"
+        f"💬 کل پیام‌ها: <b>{total_m}</b>\n\n"
+        f"📌 <b>مصرف روزانه:</b>\n"
+        f"• لینک: <code>{lk_bar if lk_bar else ' ' + lk_lim}</code>\n"
+        f"• فوروارد: <code>{fw_bar if fw_bar else ' ' + fw_lim}</code>\n"
+        f"• سوال ربات: <code>{q_bar if q_bar else ' ' + q_lim}</code>\n\n"
+        f"⚠️ <b>وضعیت انضباطی:</b>\n"
+        f"• اخطار فعلی: <b>{warns}/{MAX_WARNINGS}</b>\n"
+        f"• تخلف امروز: <b>{extra['violations_today']}</b>\n"
+        f"• میوت این هفته: <b>{extra['mutes_week']}</b>\n"
+        f"• بن کل: <b>{extra['bans_total']}</b>"
         f"{pts_line}"
-        f"{upgrade_line}",
+        f"{upgrade_line}"
+        f"</blockquote>",
         parse_mode="HTML",
     )
 

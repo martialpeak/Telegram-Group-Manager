@@ -165,6 +165,59 @@ async def on_general_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
             f"❓ سوال روزانه: {q}",
             show_alert=True,
         )
+
+    elif data == "help_main":
+        await query.answer()
+        bot_username = context.bot.username
+        user = query.from_user
+        chat = query.message.chat
+        from telegram.constants import ChatType
+        is_adm = _is_admin(user.id)
+        is_priv = (chat.type == ChatType.PRIVATE)
+
+        level_val = None
+        q_val = None
+        rank_name = None
+
+        if not is_priv:
+            level_val = await db.get_user_level(user.id, chat.id)
+            cfg = get_config(level_val)
+            q_val = "نامحدود" if cfg.daily_queries == -1 else str(cfg.daily_queries)
+            from bot.core.punishment_ranks import get_rank_name
+            rank = await db.get_punishment_rank(user.id, chat.id)
+            rank_name = get_rank_name(rank)
+
+        from bot.handlers.commands import get_start_text, get_start_keyboard
+        text = get_start_text(bot_username, user, chat.type, level_val, q_val, rank_name)
+        kb = get_start_keyboard(bot_username, is_adm, is_priv, user.id)
+        try:
+            await query.edit_message_text(text, parse_mode="HTML", reply_markup=kb)
+        except Exception:
+            pass
+        return
+
+    elif data in ("help_user", "help_admin", "help_ai"):
+        await query.answer()
+        from bot.handlers.commands import (
+            get_help_user_text, get_help_admin_text, get_help_ai_text, get_help_keyboard
+        )
+        is_adm = _is_admin(query.from_user.id)
+        if data == "help_user":
+            txt = get_help_user_text()
+            tab = "user"
+        elif data == "help_admin":
+            txt = get_help_admin_text()
+            tab = "admin"
+        else:
+            txt = get_help_ai_text()
+            tab = "ai"
+
+        kb = get_help_keyboard(tab, is_adm)
+        try:
+            await query.edit_message_text(txt, parse_mode="HTML", reply_markup=kb)
+        except Exception:
+            pass
+        return
     else:
         await query.answer()
 
