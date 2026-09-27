@@ -22,6 +22,7 @@ from .commands import (
     cmd_addfilter, cmd_delfilter, cmd_filters, cmd_remind,
     cmd_lock, cmd_unlock, cmd_locks, cmd_lockdown, cmd_unlockdown,
     cmd_translate, cmd_summary,
+    cmd_info, cmd_banned, cmd_purge, cmd_help,
 )
 
 __all__ = [
@@ -45,4 +46,5 @@ __all__ = [
     "cmd_addfilter", "cmd_delfilter", "cmd_filters", "cmd_remind",
     "cmd_lock", "cmd_unlock", "cmd_locks", "cmd_lockdown", "cmd_unlockdown",
     "cmd_translate", "cmd_summary",
+    "cmd_info", "cmd_banned", "cmd_purge", "cmd_help",
 ]

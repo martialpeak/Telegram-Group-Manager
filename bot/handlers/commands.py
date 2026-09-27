@@ -142,7 +142,8 @@ def get_help_user_text() -> str:
     return (
         "📖 <b>راهنمای دستورات اعضای گروه:</b>\n\n"
         "<blockquote>"
-        "🔹 <code>/myrank</code> ▫️ مشاهده پروفایل، رتبه و سطح کاربری شما\n"
+        "🔹 <code>/info</code> ▫️ شناسنامه، سطح و آمار کامل شما یا کاربر دیگر\n"
+        "🔹 <code>/myrank</code> ▫️ مشاهده پروفایل، رتبه و وضعیت جریمه\n"
         "🔹 <code>/mystats</code> ▫️ آمار پیام‌ها، لینک‌ها و فعالیت روزانه شما\n"
         "🔹 <code>/levels</code> ▫️ راهنمای سطوح کاربری و پیش‌نیازهای ارتقاء\n"
         "🔹 <code>/summary</code> ▫️ خلاصه‌سازی مباحث اخیر گروه با هوش مصنوعی\n"
@@ -159,6 +160,9 @@ def get_help_admin_text() -> str:
         "🛡️ <b>راهنمای دستورات مدیریت و نظارت:</b>\n\n"
         "<blockquote>"
         "⚠️ <b>اقدامات نظارتی و انضباطی:</b>\n"
+        "• <code>/info</code> ▫️ شناسنامه کاربر + دکمه‌های اخطار، میوت و بن سریع\n"
+        "• <code>/banned</code> ▫️ لیست افراد بن‌شده اخیر + دکمه آنبن فوری\n"
+        "• <code>/purge [تعداد]</code> ▫️ پاکسازی سریع پیام‌ها (ریپلای یا تعداد)\n"
         "• <code>/warn</code> ▫️ اخطار دستی به کاربر (ریپلای)\n"
         "• <code>/unwarn</code> ▫️ پاک کردن یک اخطار (ریپلای)\n"
         "• <code>/mute [دقیقه]</code> ▫️ سکوت موقت کاربر (ریپلای)\n"
@@ -1658,4 +1662,275 @@ async def cmd_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         except Exception:
             pass
+
+
+# ─── /info — شناسنامه و اطلاعات جامع کاربر ───────────────────────────────────
+
+async def build_user_info_card(context, chat, target_user_id: int, target_name: str, target_mention_str: str, viewer_id: int) -> tuple[str, InlineKeyboardMarkup | None]:
+    level = await db.get_user_level(target_user_id, chat.id)
+    points = await db.get_points(target_user_id, chat.id)
+    warns = await db.get_warnings(target_user_id, chat.id)
+    total_m = await db.get_message_count(target_user_id, chat.id)
+
+    from bot.core.punishment_ranks import get_rank_name
+    rank = await db.get_punishment_rank(target_user_id, chat.id)
+    rank_disp = get_rank_name(rank) if rank and rank != "clean" else "عادی و پاک"
+
+    cfg = get_config(level)
+    today_q = await db.get_query_count(target_user_id, chat.id)
+    today_lk = await db.get_daily_action(target_user_id, chat.id, "link")
+    today_fw = await db.get_daily_action(target_user_id, chat.id, "forward")
+    extra = await db.get_user_daily_stats(target_user_id, chat.id)
+
+    total_mutes = await db.get_punishment_count(target_user_id, chat.id, "mute")
+    total_bans = await db.get_punishment_count(target_user_id, chat.id, "ban")
+    first_seen = await db.get_user_first_seen(target_user_id, chat.id)
+    first_seen_str = first_seen[:16] if first_seen else "نامشخص / عضو جدید"
+
+    tg_status = "👤 عضو عادی"
+    try:
+        cm = await context.bot.get_chat_member(chat.id, target_user_id)
+        st = getattr(cm, "status", "")
+        if st in ("creator", "owner"):
+            tg_status = "👑 مالک / سازنده گروه"
+        elif st == "administrator":
+            tg_status = "🛡️ ادمین گروه"
+        elif st == "restricted":
+            tg_status = "🔇 محدود / میوت‌شده"
+        elif st == "kicked":
+            tg_status = "🚫 بن / اخراج‌شده"
+        elif st == "left":
+            tg_status = "🚪 خارج‌شده از گروه"
+    except Exception:
+        pass
+
+    q_lim = "نامحدود" if cfg.daily_queries == -1 else f"{today_q}/{cfg.daily_queries}"
+    lk_lim = "ممنوع" if cfg.daily_links == 0 else ("نامحدود" if cfg.daily_links == -1 else f"{today_lk}/{cfg.daily_links}")
+    fw_lim = "ممنوع" if cfg.daily_forwards == 0 else ("نامحدود" if cfg.daily_forwards == -1 else f"{today_fw}/{cfg.daily_forwards}")
+
+    text = (
+        f"👤 <b>شناسنامه و وضعیت کاربر</b>\n\n"
+        f"<blockquote>"
+        f"🆔 شناسه عددی: <code>{target_user_id}</code>\n"
+        f"👤 کاربر: {target_mention_str}\n"
+        f"🏷️ موقعیت در گروه: <b>{tg_status}</b>\n"
+        f"🏅 سطح کاربری: <b>{level_label(level)}</b>\n"
+        f"⭐ امتیاز فعالیت: <b>{points}</b>\n"
+        f"🏆 رنک جریمه: <b>{rank_disp}</b>"
+        f"</blockquote>\n\n"
+        f"📊 <b>فعالیت در این گروه:</b>\n"
+        f"<blockquote>"
+        f"• کل پیام‌های ارسالی: <b>{total_m}</b>\n"
+        f"• پیام‌های امروز: <b>{extra['msgs_today']}</b>\n"
+        f"• سهمیه سوال هوش مصنوعی: <code>{q_lim}</code>\n"
+        f"• سهمیه ارسال لینک: <code>{lk_lim}</code>\n"
+        f"• سهمیه فوروارد: <code>{fw_lim}</code>\n"
+        f"• اولین مشاهده در ربات: <code>{first_seen_str}</code>"
+        f"</blockquote>\n\n"
+        f"🛡️ <b>سوابق انضباطی:</b>\n"
+        f"<blockquote>"
+        f"• اخطارهای فعال: <b>{warns}/{MAX_WARNINGS}</b>\n"
+        f"• دفعات میوت در تاریخچه: <b>{total_mutes}</b>\n"
+        f"• دفعات بن در تاریخچه: <b>{total_bans}</b>\n"
+        f"• تخلفات امروز: <b>{extra['violations_today']}</b>"
+        f"</blockquote>"
+    )
+
+    kb = None
+    if _is_admin(viewer_id) and target_user_id != viewer_id:
+        rows = [
+            [
+                InlineKeyboardButton("⚠️ اخطار (+۱)", callback_data=f"ainf_warn_{target_user_id}"),
+                InlineKeyboardButton("🔇 میوت (۳۰د)", callback_data=f"ainf_mute_{target_user_id}"),
+                InlineKeyboardButton("🚫 بن", callback_data=f"ainf_ban_{target_user_id}"),
+            ],
+            [
+                InlineKeyboardButton("🔄 به‌روزرسانی اطلاعات", callback_data=f"ainf_ref_{target_user_id}"),
+            ]
+        ]
+        kb = InlineKeyboardMarkup(rows)
+
+    return text, kb
+
+
+async def cmd_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    نمایش شناسنامه و آمار جامع کاربر (/info یا /whois)
+    """
+    message = update.message
+    if not message:
+        return
+
+    chat = message.chat
+    if chat.type == ChatType.PRIVATE:
+        await message.reply_text("📌 دستور اطلاعات کاربر مختص گروه‌ها است.")
+        return
+
+    viewer = message.from_user
+    # اگر ریپلای یا آرگومان نبود، اطلاعات خود ارسال‌کننده نمایش داده شود
+    if not message.reply_to_message and not context.args:
+        target_id = viewer.id
+        target_name = viewer.full_name
+        target_mention = mention(viewer)
+    else:
+        target_id, target_name, target_mention = await _get_target(update, context)
+
+    if not target_id:
+        await message.reply_text(
+            "❓ کاربر مشخص نشد. روی پیام کاربر ریپلای بزنید یا آیدی عددی/نام‌کاربری وارد کنید:\n"
+            "مثال: <code>/info @username</code> یا <code>/info 123456789</code>",
+            parse_mode="HTML",
+        )
+        return
+
+    card_text, kb = await build_user_info_card(
+        context=context,
+        chat=chat,
+        target_user_id=target_id,
+        target_name=target_name,
+        target_mention_str=target_mention,
+        viewer_id=viewer.id,
+    )
+
+    await message.reply_text(
+        card_text,
+        parse_mode="HTML",
+        reply_markup=kb,
+    )
+
+
+# ─── /banned — مشاهده لیست کاربران بن‌شده اخیر ────────────────────────────────
+
+async def cmd_banned(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    نمایش کاربران بن‌شده اخیر با امکان آنبن سریع (/banned یا /bans)
+    """
+    message = update.message
+    if not message:
+        return
+
+    chat = message.chat
+    user = message.from_user
+    if chat.type == ChatType.PRIVATE:
+        await message.reply_text("📌 این دستور مختص گروه‌ها است.")
+        return
+
+    if not _is_admin(user.id):
+        await message.reply_text("❌ فقط ادمین‌ها به لیست افراد مسدودشده دسترسی دارند.")
+        return
+
+    bans = await db.get_recent_banned_users(chat.id, limit=8)
+    if not bans:
+        await message.reply_text(
+            "✅ <b>هیچ کاربری در تاریخچه مسدودیت‌های این گروه ثبت نشده است.</b>",
+            parse_mode="HTML",
+        )
+        return
+
+    lines = []
+    unban_buttons = []
+    for i, b in enumerate(bans, 1):
+        uid = b["user_id"]
+        name = b["name"][:18]
+        date_str = b["created_at"][:16] if b.get("created_at") else ""
+        reason = b.get("reason") or "تخلف"
+        actor = f"توسط ادمین <code>{b['actor_id']}</code>" if b.get("actor_id") else "توسط سیستم/AI"
+
+        lines.append(
+            f"<b>{i}. {name}</b> (<code>{uid}</code>)\n"
+            f"   📅 تاریخ: <code>{date_str}</code> | {actor}\n"
+            f"   📌 علت: <i>{reason}</i>"
+        )
+        unban_buttons.append(
+            InlineKeyboardButton(f"🔓 آنبن: {name[:12]}", callback_data=f"qunb_{uid}")
+        )
+
+    cards = "\n\n".join(lines)
+    text = (
+        f"🚫 <b>لیست کاربران بن‌شده اخیر در گروه:</b>\n\n"
+        f"<blockquote>\n{cards}\n</blockquote>\n\n"
+        f"💡 <i>جهت رفع مسدودیت هر کاربر، دکمه مربوطه را لمس کنید:</i>"
+    )
+
+    rows = [unban_buttons[i:i+2] for i in range(0, len(unban_buttons), 2)]
+    kb = InlineKeyboardMarkup(rows) if rows else None
+
+    await message.reply_text(text, parse_mode="HTML", reply_markup=kb)
+
+
+# ─── /purge — پاکسازی سریع پیام‌ها ──────────────────────────────────────────
+
+async def cmd_purge(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    پاکسازی سریع پیام‌ها (/purge یا /del) — فقط ادمین
+    """
+    message = update.message
+    if not message:
+        return
+
+    chat = message.chat
+    user = message.from_user
+    if chat.type == ChatType.PRIVATE or not _is_admin(user.id):
+        return
+
+    # ۱. حالت ریپلای: پاکسازی از پیام ریپلای‌شده تا این پیام
+    if message.reply_to_message:
+        from_id = message.reply_to_message.message_id
+        to_id = message.message_id
+
+        if to_id - from_id > 100:
+            from_id = to_id - 100
+
+        deleted_count = 0
+        for mid in range(from_id, to_id + 1):
+            try:
+                await context.bot.delete_message(chat.id, mid)
+                deleted_count += 1
+            except Exception:
+                pass
+
+        status = await chat.send_message(
+            f"🧹 <b>{deleted_count} پیام با موفقیت پاکسازی شد.</b>",
+            parse_mode="HTML",
+        )
+        import asyncio
+        await asyncio.sleep(3)
+        try:
+            await status.delete()
+        except Exception:
+            pass
+        return
+
+    # ۲. حالت عددی: /purge 15
+    count = 10
+    if context.args and context.args[0].isdigit():
+        count = min(int(context.args[0]), 100)
+
+    cur_id = message.message_id
+    deleted_count = 0
+    for mid in range(cur_id, cur_id - count - 1, -1):
+        try:
+            await context.bot.delete_message(chat.id, mid)
+            deleted_count += 1
+        except Exception:
+            pass
+
+    status = await chat.send_message(
+        f"🧹 <b>{deleted_count} پیام اخیر با موفقیت پاکسازی شد.</b>",
+        parse_mode="HTML",
+    )
+    import asyncio
+    await asyncio.sleep(3)
+    try:
+        await status.delete()
+    except Exception:
+        pass
+
+
+# ─── /help — راهنمای جامع دستورات ────────────────────────────────────────────
+
+async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """نمایش منوی راهنما (معادل /start اما اختصاصی راهنما)"""
+    await cmd_start(update, context)
+
 

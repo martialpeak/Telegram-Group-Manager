@@ -1356,6 +1356,65 @@ async def get_recent_actions(chat_id: int, limit: int = 20) -> list[dict]:
         ]
 
 
+async def get_recent_banned_users(chat_id: int, limit: int = 10) -> list[dict]:
+    """گرفتن لیست آخرین کاربران بن‌شده در گروه همراه با دلیل و تاریخ"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute(
+            """SELECT user_id, target_name, reason, actor_id, created_at
+               FROM recent_actions
+               WHERE chat_id=? AND action='ban'
+               ORDER BY created_at DESC LIMIT ?""",
+            (chat_id, limit),
+        )
+        rows = await cur.fetchall()
+        if rows:
+            return [
+                {
+                    "user_id": r[0],
+                    "name": r[1] or f"کاربر {r[0]}",
+                    "reason": r[2] or "نامشخص",
+                    "actor_id": r[3],
+                    "created_at": r[4],
+                }
+                for r in rows
+            ]
+
+        # fallback به punishment_history
+        cur = await db.execute(
+            """SELECT p.user_id, p.reason, p.created_at, p.duration,
+                      (SELECT full_name FROM message_log WHERE user_id=p.user_id AND chat_id=p.chat_id ORDER BY created_at DESC LIMIT 1) as name
+               FROM punishment_history p
+               WHERE p.chat_id=? AND p.type='ban'
+               ORDER BY p.created_at DESC LIMIT ?""",
+            (chat_id, limit),
+        )
+        p_rows = await cur.fetchall()
+        return [
+            {
+                "user_id": r[0],
+                "name": r[4] or f"کاربر {r[0]}",
+                "reason": r[1] or "نامشخص",
+                "actor_id": None,
+                "created_at": r[2],
+                "duration": r[3],
+            }
+            for r in p_rows
+        ]
+
+
+async def get_user_first_seen(user_id: int, chat_id: int) -> str | None:
+    """تاریخ اولین مشاهده کاربر در دیتابیس گروه"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute(
+            """SELECT created_at FROM message_log
+               WHERE user_id=? AND chat_id=?
+               ORDER BY created_at ASC LIMIT 1""",
+            (user_id, chat_id),
+        )
+        row = await cur.fetchone()
+        return row[0] if row else None
+
+
 # ─── رنک جریمه ──────────────────────────────────────────────────────────────
 
 async def get_punishment_rank(user_id: int, chat_id: int) -> str:

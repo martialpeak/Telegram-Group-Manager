@@ -218,6 +218,99 @@ async def on_general_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         except Exception:
             pass
         return
+
+    elif data.startswith("ainf_"):
+        if not _is_admin(query.from_user.id):
+            await query.answer("❌ فقط ادمین‌ها اجازه دارند.", show_alert=True)
+            return
+
+        parts = data.split("_")
+        action = parts[1]
+        try:
+            target_uid = int(parts[2])
+        except (IndexError, ValueError):
+            await query.answer("شناسه کاربر نامعتبر است.")
+            return
+
+        chat = query.message.chat
+        chat_id = chat.id
+
+        if action == "warn":
+            from bot.core import moderation as mod
+            warn_count = await db.add_warning(target_uid, chat_id, "اقدام سریع از کارت اطلاعات کاربر")
+            await mod.apply_warn_tag(context.bot, chat_id, target_uid, warn_count)
+            await query.answer(f"⚠️ اخطار #{warn_count} برای کاربر ثبت شد.", show_alert=True)
+
+        elif action == "mute":
+            from bot.core import moderation as mod
+            await mod._mute(context.bot, chat_id, target_uid, minutes=30)
+            await db.add_punishment(target_uid, chat_id, "mute", 1800, "میوت ۳۰ دقیقه‌ای از کارت اینفو")
+            await mod.apply_mute_tag(context.bot, chat_id, target_uid, "۳۰ دقیقه")
+            await query.answer("🔇 کاربر به مدت ۳۰ دقیقه میوت شد.", show_alert=True)
+
+        elif action == "ban":
+            from bot.core import moderation as mod
+            await mod._ban(context.bot, chat_id, target_uid)
+            await db.add_punishment(target_uid, chat_id, "ban", -1, "بن سریع از کارت اینفو")
+            await query.answer("🚫 کاربر از گروه بن شد.", show_alert=True)
+
+        elif action == "ref":
+            await query.answer("🔄 اطلاعات به‌روزرسانی شد.")
+
+        try:
+            from bot.handlers.commands import build_user_info_card
+            cm = await context.bot.get_chat_member(chat_id, target_uid)
+            target_name = getattr(cm.user, "full_name", str(target_uid))
+            target_mention = mention(cm.user)
+            text, kb = await build_user_info_card(
+                context, chat, target_uid, target_name, target_mention, query.from_user.id
+            )
+            await query.edit_message_text(text, parse_mode="HTML", reply_markup=kb)
+        except Exception:
+            pass
+        return
+
+    elif data.startswith("qunb_"):
+        if not _is_admin(query.from_user.id):
+            await query.answer("❌ فقط ادمین‌ها اجازه دارند.", show_alert=True)
+            return
+
+        try:
+            target_uid = int(data[5:])
+        except ValueError:
+            await query.answer("شناسه نامعتبر است.")
+            return
+
+        chat = query.message.chat
+        try:
+            from bot.core import moderation as mod
+            await mod._unban(context.bot, chat.id, target_uid)
+            await db.log_action(chat.id, "unban", target_uid, str(target_uid), "آنبن سریع از لیست بن")
+            await query.answer(f"✅ کاربر {target_uid} با موفقیت آنبن شد!", show_alert=True)
+
+            bans = await db.get_recent_banned_users(chat.id, limit=8)
+            if not bans:
+                await query.edit_message_text("✅ <b>هیچ کاربر بن‌شده‌ای در این گروه وجود ندارد.</b>", parse_mode="HTML")
+            else:
+                lines = []
+                unban_buttons = []
+                from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+                for i, b in enumerate(bans, 1):
+                    uid = b["user_id"]
+                    name = b["name"][:18]
+                    date_str = b["created_at"][:16] if b.get("created_at") else ""
+                    reason = b.get("reason") or "تخلف"
+                    actor = f"توسط ادمین <code>{b['actor_id']}</code>" if b.get("actor_id") else "توسط سیستم/AI"
+                    lines.append(f"<b>{i}. {name}</b> (<code>{uid}</code>)\n   📅 تاریخ: <code>{date_str}</code> | {actor}\n   📌 علت: <i>{reason}</i>")
+                    unban_buttons.append(InlineKeyboardButton(f"🔓 آنبن: {name[:12]}", callback_data=f"qunb_{uid}"))
+
+                cards = "\n\n".join(lines)
+                text = f"🚫 <b>لیست کاربران بن‌شده اخیر در گروه:</b>\n\n<blockquote>\n{cards}\n</blockquote>\n\n💡 <i>جهت رفع مسدودیت هر کاربر، دکمه مربوطه را لمس کنید:</i>"
+                rows = [unban_buttons[i:i+2] for i in range(0, len(unban_buttons), 2)]
+                await query.edit_message_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(rows))
+        except Exception as e:
+            await query.answer(f"خطا در آنبن: {e}", show_alert=True)
+        return
     else:
         await query.answer()
 
