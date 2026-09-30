@@ -98,17 +98,29 @@ async def _announcements_scheduler(application):
             # ۲. بررسی اخبار فناوری و هوش مصنوعی برای گروه‌های عضو
             news_chats = await db.get_subscribed_announcement_chats("news")
             if news_chats:
-                news_items = await get_tech_news(limit=1)
-                if news_items:
-                    n_item = news_items[0]
+                from bot.core.news_deals import has_persian_chars
+                news_items = await get_tech_news(limit=4)
+                # اولویت قطعی با اخباری است که به فارسی ترجمه شده باشند
+                valid_item = None
+                for it in news_items:
+                    if has_persian_chars(it.get("title", "")):
+                        valid_item = it
+                        break
+                if valid_item:
+                    n_item = valid_item
                     n_title = n_item["title"]
+                    source_label = f"🌐 {n_item['source']} (ترجمه هوشمند)" if n_item.get("is_foreign") else f"🇮🇷 {n_item['source']}"
                     n_text = (
                         "📢 <b>فوری / تازه‌ترین خبر فناوری و هوش مصنوعی:</b>\n"
                         "━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
                         f"📌 <b>{n_title}</b>\n"
+                    )
+                    if n_item.get("is_foreign") and n_item.get("orig_title") and n_item["orig_title"] != n_title:
+                        n_text += f"<i>🌐 تیتر اصلی: {n_item['orig_title']}</i>\n"
+                    n_text += (
                         "<blockquote>"
                         f"📝 {n_item['desc']}...\n\n"
-                        f"🏷 <i>دسته‌بندی: {n_item['tag']} | منبع: {n_item['source']}</i>\n"
+                        f"🏷 <i>دسته‌بندی: {n_item['tag']} | منبع: {source_label}</i>\n"
                         f"🔗 <a href=\"{n_item['link']}\">مطالعه کامل خبر</a>"
                         "</blockquote>"
                     )

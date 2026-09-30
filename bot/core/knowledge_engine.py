@@ -656,6 +656,45 @@ async def search_web_fallback(question: str) -> str | None:
         except Exception as e:
             logger.warning(f"product price search failed: {e}")
 
+    # ۰.۸. استعلام اخبار فناوری، هوش مصنوعی، اینترنت/VPN و بازی‌های رایگان
+    q_clean = question.lower()
+    is_ai_news = any(kw in q_clean for kw in [
+        "خبر هوش مصنوعی", "اخبار هوش مصنوعی", "اخبار ai", "خبر ai", "اخبار جدید هوش مصنوعی",
+        "هوش مصنوعی خبر", "تحولات هوش مصنوعی", "خبر هوش", "اخبار openai", "اخبار جمنای", "اخبار gemini"
+    ])
+    is_vpn_news = any(kw in q_clean for kw in [
+        "اخبار vpn", "اخبار فیلترینگ", "اخبار فیلتر", "اخبار اینترنت", "خبر vpn", "وضعیت فیلترینگ", "اخبار پروکسی"
+    ])
+    is_tech_news = any(kw in q_clean for kw in [
+        "اخبار فناوری", "اخبار تکنولوژی", "تازه های فناوری", "خبر فناوری", "تازه های تکنولوژی", "اخبار روز فناوری"
+    ])
+    is_games = any(kw in q_clean for kw in [
+        "بازی رایگان", "بازی های رایگان", "آفر بازی", "افرهای بازی", "گیم رایگان", "free game", "بازی کامپیوتر رایگان"
+    ])
+
+    if is_ai_news or is_vpn_news or is_tech_news:
+        try:
+            from bot.core.news_deals import get_tech_news, format_tech_news_message
+            cat = "ai" if is_ai_news else "vpn" if is_vpn_news else None
+            news_items = await get_tech_news(category=cat, limit=3)
+            if news_items:
+                text, _ = format_tech_news_message(news_items, category=cat)
+                await _cache_web_answer(question, text)
+                return text
+        except Exception as e:
+            logger.warning(f"news search fallback failed: {e}")
+
+    if is_games:
+        try:
+            from bot.core.news_deals import get_free_games, format_free_games_message
+            game_items = await get_free_games(limit=3)
+            if game_items:
+                text, _ = format_free_games_message(game_items)
+                await _cache_web_answer(question, text)
+                return text
+        except Exception as e:
+            logger.warning(f"free games search fallback failed: {e}")
+
     # ۱. DuckDuckGo Instant Answer API
     try:
         async with httpx.AsyncClient(timeout=15) as client:
@@ -752,21 +791,29 @@ async def search_web_fallback(question: str) -> str | None:
         await _cache_web_answer(question, summary)
         return summary
 
-    # ۴. fallback: فقط snippet‌ها و لینک‌ها رو نشون بده
-    text = "🔍 یافته‌های مرتبط از وب:\n\n"
-    for s in snippets[:5]:
+    # ۴. fallback: ترجمه و نمایش snippet‌ها به فارسی (هرگز متن انگلیسی خام ارسال نشود)
+    from bot.core.news_deals import translate_to_persian, has_persian_chars
+    text = "🔍 <b>یافته‌های مرتبط از وب:</b>\n\n"
+    for s in snippets[:3]:
         if isinstance(s, dict):
             title = s.get("title", "")
             url = s.get("url", "")
             snippet = s.get("snippet", "")
+            if title and not has_persian_chars(title):
+                title = await translate_to_persian(title)
+            if snippet and not has_persian_chars(snippet):
+                snippet = await translate_to_persian(snippet)
             if title:
-                text += f"📌 {title}\n"
-            if url:
-                text += f"🔗 {url}\n"
+                text += f"📌 <b>{title}</b>\n"
             if snippet:
-                text += f"{snippet}\n\n"
+                text += f"<blockquote>{snippet}</blockquote>\n"
+            if url:
+                text += f"🔗 <a href=\"{url}\">مشاهده لینک مرجع</a>\n\n"
         else:
-            text += f"{s}\n\n"
+            raw_s = str(s)
+            if not has_persian_chars(raw_s):
+                raw_s = await translate_to_persian(raw_s)
+            text += f"{raw_s}\n\n"
     await _cache_web_answer(question, text)
     return text
 

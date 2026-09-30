@@ -192,25 +192,60 @@ def format_free_games_message(games: list[dict]) -> tuple[str, InlineKeyboardMar
 _translation_cache: dict[str, str] = {}
 
 
+def has_persian_chars(text: str) -> bool:
+    """بررسی وجود حروف الفبای فارسی در متن"""
+    if not text:
+        return False
+    return bool(re.search(r'[\u0600-\u06FF]', text))
+
+
 async def translate_to_persian(text: str) -> str:
-    """ترجمه متن انگلیسی اخبار به فارسی روان (ترکیب هوش مصنوعی و مترجم ابری)"""
+    """ترجمه متن انگلیسی اخبار به فارسی روان (ترکیب هوش مصنوعی و ۳ وب‌سرویس ابری موازی)"""
     if not text or not text.strip():
         return ""
     clean = html.unescape(text.strip())
-    if clean in _translation_cache:
-        return _translation_cache[clean]
+    # اگر متن از قبل فارسی است نیازی به ترجمه نیست
+    if has_persian_chars(clean) and len(re.findall(r'[\u0600-\u06FF]', clean)) > len(re.findall(r'[a-zA-Z]', clean)):
+        return clean
 
-    # ۱. تلاش با ماژول هوش مصنوعی سیستم در صورت فعال بودن
+    if clean in _translation_cache:
+        cached = _translation_cache[clean]
+        if has_persian_chars(cached):
+            return cached
+
+    # ۱. لایه اول: مدل هوش مصنوعی سیستم (Groq / Gemini) با مهلت کافی ۶.۵ ثانیه
     try:
         from bot.core.ai_analyzer import translate_text
-        ai_res = await asyncio.wait_for(translate_text(clean, "فارسی"), timeout=3.0)
-        if ai_res and len(ai_res.strip()) > 3:
-            _translation_cache[clean] = ai_res.strip()
-            return ai_res.strip()
-    except Exception:
-        pass
+        ai_res = await asyncio.wait_for(translate_text(clean, "فارسی"), timeout=6.5)
+        if ai_res and len(ai_res.strip()) > 2 and has_persian_chars(ai_res):
+            res = ai_res.strip()
+            _translation_cache[clean] = res
+            return res
+    except Exception as e:
+        logger.debug(f"AI translation failed/timeout: {e}")
 
-    # ۲. فال‌بک سریع وب‌سرویس گوگل ترنسلیت
+    # ۲. لایه دوم: Google Translate Clients5 (بسیار سریع و بدون بلاک دیتاسنتر)
+    try:
+        url = "https://clients5.google.com/translate_a/t"
+        params = {
+            "client": "dict-chrome-ex",
+            "sl": "en",
+            "tl": "fa",
+            "q": clean,
+        }
+        async with httpx.AsyncClient(timeout=4.0) as client:
+            resp = await client.get(url, params=params)
+            if resp.status_code == 200:
+                data = resp.json()
+                if data and isinstance(data, list) and len(data) > 0:
+                    tr = str(data[0]).strip()
+                    if tr and has_persian_chars(tr):
+                        _translation_cache[clean] = tr
+                        return tr
+    except Exception as e:
+        logger.debug(f"Google clients5 translate error: {e}")
+
+    # ۳. لایه سوم: Google Translate GTX
     try:
         url = "https://translate.googleapis.com/translate_a/single"
         params = {
@@ -226,11 +261,29 @@ async def translate_to_persian(text: str) -> str:
                 data = resp.json()
                 if data and isinstance(data, list) and data[0]:
                     translated = "".join(part[0] for part in data[0] if part and part[0]).strip()
-                    if translated:
+                    if translated and has_persian_chars(translated):
                         _translation_cache[clean] = translated
                         return translated
     except Exception as e:
-        logger.warning(f"Google translate fallback failed: {e}")
+        logger.debug(f"Google GTX translate fallback failed: {e}")
+
+    # ۴. لایه چهارم: سرور ترجمه مستقل MyMemory
+    try:
+        url = "https://api.mymemory.translated.net/get"
+        params = {
+            "q": clean,
+            "langpair": "en|fa",
+        }
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.get(url, params=params)
+            if resp.status_code == 200:
+                data = resp.json()
+                trans_text = data.get("responseData", {}).get("translatedText", "").strip()
+                if trans_text and has_persian_chars(trans_text) and not trans_text.startswith("MYMEMORY WARNING:"):
+                    _translation_cache[clean] = trans_text
+                    return trans_text
+    except Exception as e:
+        logger.debug(f"MyMemory translate error: {e}")
 
     return clean
 
@@ -362,20 +415,16 @@ async def get_tech_news(category: str | None = None, limit: int = 5) -> list[dic
         if len(selected) >= limit:
             break
 
-    # ترجمه هم‌زمان به زبان فارسی برای اخبار خارجی انتخاب‌شده
-    async def _translate_entry(item: dict) -> dict:
-        if item.get("is_foreign"):
-            orig_t = item["title"]
+    # ترجمه مطمئن و پشت سر هم به زبان فارسی برای اخبار خارجی انتخاب‌شده
+    for it in selected:
+        if it.get("is_foreign"):
+            orig_t = it["title"]
             fa_title = await translate_to_persian(orig_t)
-            fa_desc = await translate_to_persian(item["desc"]) if item["desc"] else ""
-            item["orig_title"] = orig_t
-            item["title"] = fa_title
-            item["desc"] = fa_desc
-            item["is_translated"] = True
-        return item
-
-    if selected:
-        selected = list(await asyncio.gather(*[_translate_entry(it) for it in selected]))
+            fa_desc = await translate_to_persian(it["desc"]) if it.get("desc") else ""
+            it["orig_title"] = orig_t
+            it["title"] = fa_title
+            it["desc"] = fa_desc
+            it["is_translated"] = has_persian_chars(fa_title)
 
     return selected
 
@@ -402,12 +451,12 @@ def format_tech_news_message(news: list[dict], category: str | None = None) -> t
 
     for i, n in enumerate(news):
         lines.append(f"📌 <b>{i+1}. {n['title']}</b>")
-        if n.get("is_foreign") and n.get("orig_title"):
+        if n.get("is_foreign") and n.get("orig_title") and n["orig_title"] != n["title"] and has_persian_chars(n["title"]):
             lines.append(f"<i>🌐 تیتر اصلی: {n['orig_title']}</i>")
         lines.append("<blockquote>")
         if n["desc"]:
             lines.append(f"📝 {n['desc']}...")
-        source_badge = f"🌐 {n['source']} (ترجمه هوشمند)" if n.get("is_foreign") else f"🇮🇷 {n['source']}"
+        source_badge = f"🌐 {n['source']} (ترجمه هوشمند)" if (n.get("is_foreign") and has_persian_chars(n["title"])) else f"🌐 {n['source']}" if n.get("is_foreign") else f"🇮🇷 {n['source']}"
         lines.append(f"🏷 <i>دسته‌بندی: {n['tag']} | منبع: {source_badge}</i>\n🔗 <a href=\"{n['link']}\">مطالعه متن کامل خبر</a>")
         lines.append("</blockquote>\n")
 
