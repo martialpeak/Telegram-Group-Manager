@@ -2266,8 +2266,8 @@ async def cmd_free_games(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_tech_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
-    استعلام جدیدترین اخبار هوش مصنوعی، اینترنت و تکنولوژی با لینک منبع
-    دستورات: /technews, /news, /akhbar, /ainews, /vpnnews
+    استعلام جدیدترین اخبار هوش مصنوعی، اینترنت و تکنولوژی با لینک منبع و ترجمه فارسی
+    دستورات: /technews, /news, /akhbar, /ainews, /vpnnews, /kharejinews
     """
     message = update.message
     if not message:
@@ -2283,9 +2283,19 @@ async def cmd_tech_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
         category = "ai"
     elif "vpnnews" in cmd_text or "vpn" in args:
         category = "vpn"
+    elif "khareji" in cmd_text or any(k in args for k in ("foreign", "khareji", "global", "world", "خارجی")):
+        category = "foreign"
+    elif any(k in args for k in ("domestic", "dakheli", "iran", "داخلی", "ایران")):
+        category = "domestic"
 
-    cat_label = "هوش مصنوعی" if category == "ai" else ("اینترنت و VPN" if category == "vpn" else "تکنولوژی")
-    wait_msg = await message.reply_text(f"📰 <i>در حال دریافت جدیدترین اخبار {cat_label}...</i>", parse_mode="HTML")
+    labels = {
+        "ai": "هوش مصنوعی جهان",
+        "vpn": "اینترنت، فیلترینگ و امنیت سایبری",
+        "foreign": "رسانه‌های بین‌المللی و خارجی (The Verge, TechCrunch, HackerNews)",
+        "domestic": "تکنولوژی و وب ایران",
+    }
+    cat_label = labels.get(category, "فناوری و هوش مصنوعی جهان")
+    wait_msg = await message.reply_text(f"📰 <i>در حال دریافت و ترجمه هوشمند اخبار {cat_label}...</i>", parse_mode="HTML")
     try:
         news = await get_tech_news(category=category, limit=5)
         text, kb = format_tech_news_message(news, category=category)

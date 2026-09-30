@@ -263,6 +263,8 @@ def main():
     app.add_handler(CommandHandler("akhbar", handlers.cmd_tech_news))
     app.add_handler(CommandHandler("ainews", handlers.cmd_tech_news))
     app.add_handler(CommandHandler("vpnnews", handlers.cmd_tech_news))
+    app.add_handler(CommandHandler("kharejinews", handlers.cmd_tech_news))
+    app.add_handler(CommandHandler("foreignnews", handlers.cmd_tech_news))
     app.add_handler(CommandHandler("autogames", handlers.cmd_autogames))
     app.add_handler(CommandHandler("autonews", handlers.cmd_autonews))
 
