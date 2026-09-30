@@ -143,6 +143,7 @@ def get_help_user_text() -> str:
         "📖 <b>راهنمای دستورات اعضای گروه:</b>\n\n"
         "<blockquote>"
         "🔹 <code>/price [نام کالا یا ارز]</code> ▫️ استعلام قیمت روز کالاها (ترب)، طلا، دلار و رمزارزها\n"
+        "🔹 <code>/time</code> ▫️ تقویم خورشیدی و میلادی، روز هفته و ساعت رسمی ایران\n"
         "🔹 <code>/info</code> ▫️ شناسنامه، سطح و آمار کامل شما یا کاربر دیگر\n"
         "🔹 <code>/myrank</code> ▫️ مشاهده پروفایل، رتبه و وضعیت جریمه\n"
         "🔹 <code>/mystats</code> ▫️ آمار پیام‌ها، لینک‌ها و فعالیت روزانه شما\n"
@@ -2013,6 +2014,23 @@ async def cmd_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await status_msg.edit_text(res["text"], parse_mode="HTML", reply_markup=kb, disable_web_page_preview=True)
     except Exception:
         await message.reply_text(res["text"], parse_mode="HTML", reply_markup=kb, disable_web_page_preview=True)
+
+
+# ─── /time /date — ساعت رسمی، روز هفته و تقویم خورشیدی و میلادی ──────────────
+
+async def cmd_datetime(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    نمایش ساعت رسمی کشور، روز هفته و تقویم خورشیدی و میلادی (/time, /date, /saat)
+    """
+    message = update.message
+    if not message:
+        return
+    from bot.utils.helpers import get_datetime_response
+    txt = get_datetime_response()
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🔄 بروزرسانی زمان", callback_data="dt_refresh")],
+    ])
+    await message.reply_text(txt, parse_mode="HTML", reply_markup=kb)
 
 
 

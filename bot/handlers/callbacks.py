@@ -145,6 +145,19 @@ async def on_general_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         await query.answer("🔗 دکمه لینک کار کرد!", show_alert=True)
         return
 
+    if data == "dt_refresh":
+        await query.answer("🔄 ساعت و تاریخ بروز شد")
+        from bot.utils.helpers import get_datetime_response
+        txt = get_datetime_response()
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔄 بروزرسانی زمان", callback_data="dt_refresh")],
+        ])
+        try:
+            await query.edit_message_text(txt, parse_mode="HTML", reply_markup=kb)
+        except Exception:
+            pass
+        return
+
     if data == "rules":
         await query.answer(t("rules_text"), show_alert=True)
 

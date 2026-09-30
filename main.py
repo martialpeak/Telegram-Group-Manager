@@ -147,10 +147,15 @@ def main():
     app.add_handler(CommandHandler("gheimat", handlers.cmd_price))
     app.add_handler(CommandHandler("crypto", handlers.cmd_price))
     app.add_handler(CommandHandler("arz", handlers.cmd_price))
+    app.add_handler(CommandHandler("time", handlers.cmd_datetime))
+    app.add_handler(CommandHandler("date", handlers.cmd_datetime))
+    app.add_handler(CommandHandler("saat", handlers.cmd_datetime))
+    app.add_handler(CommandHandler("tarikh", handlers.cmd_datetime))
+    app.add_handler(CommandHandler("calendar", handlers.cmd_datetime))
 
     # ── Callback ها ───────────────────────────────────────────────────────────
     app.add_handler(CallbackQueryHandler(handlers.on_report_callback,  pattern=r"^rpt_"))
-    app.add_handler(CallbackQueryHandler(handlers.on_general_callback, pattern=r"^(rules|myrank_|tbtn_|help_|ainf_|qunb_|prc_)"))
+    app.add_handler(CallbackQueryHandler(handlers.on_general_callback, pattern=r"^(rules|myrank_|tbtn_|help_|ainf_|qunb_|prc_|dt_)"))
     app.add_handler(CallbackQueryHandler(handlers.on_feedback_callback, pattern=r"^fb_"))
     app.add_handler(CallbackQueryHandler(handlers.on_feedback_callback, pattern=r"^vote_"))
     app.add_handler(CallbackQueryHandler(handlers.on_admin_answer_callback, pattern=r"^adm_"))

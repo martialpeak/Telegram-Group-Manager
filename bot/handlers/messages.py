@@ -492,6 +492,39 @@ async def _handle_direct_price_query(message, text: str) -> bool:
     return False
 
 
+async def _handle_direct_datetime_query(message, text: str, bot_username: str = "") -> bool:
+    """
+    بررسی اینکه آیا پیام متنی استعلام روز هفته، تاریخ شمسی/میلادی یا ساعت است یا نه.
+    مثل: «امروز چندم چند شنبه است»، «امروز چندمه»، «امروز چند شنبه است»، «ساعت چنده»
+    """
+    clean_text = text.strip()
+    if clean_text.startswith("/") or len(clean_text) < 3:
+        return False
+
+    if bot_username and f"@{bot_username}" in clean_text:
+        clean_text = clean_text.replace(f"@{bot_username}", "").strip()
+
+    from bot.utils.helpers import is_datetime_query, get_datetime_response
+    if not is_datetime_query(clean_text):
+        return False
+
+    # برای اینکه فقط سوالات کوتاه و مشخص استعلام تاریخ/ساعت را پاسخ دهد
+    if len(clean_text.split()) > 10:
+        return False
+
+    resp = get_datetime_response(clean_text)
+    if resp:
+        try:
+            kb = InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔄 بروزرسانی زمان", callback_data="dt_refresh")],
+            ])
+            await message.reply_text(resp, parse_mode="HTML", reply_markup=kb)
+            return True
+        except Exception as e:
+            logger.warning(f"Failed to reply direct datetime: {e}")
+    return False
+
+
 # ─── هندلر اصلی پیام‌های متنی ────────────────────────────────────────────────
 
 async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -515,6 +548,10 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ── استعلام مستقیم قیمت در چت (جاروبرقی، طلا، ارز، کریپتو و...) ─────────
     if await _handle_direct_price_query(message, message.text):
+        return
+
+    # ── استعلام مستقیم تاریخ و ساعت (امروز چندمه، چند شنبه است و...) ───────
+    if await _handle_direct_datetime_query(message, message.text, context.bot.username):
         return
 
     if _is_admin(user.id):

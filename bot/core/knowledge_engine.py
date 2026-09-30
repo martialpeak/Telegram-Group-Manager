@@ -15,6 +15,11 @@ from config import (
     CACHE_MIN_SCORE, CACHE_TTL_HOURS,
 )
 import bot.db.database as db
+from bot.utils.helpers import (
+    get_persian_date_info,
+    is_datetime_query,
+    get_datetime_response,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +55,7 @@ ANSWER_SYSTEM_PROMPT = (
     "۳) پیشنهاد مدل‌های برتر: محبوب‌ترین برندها و مدل‌های باکیفیت موجود در بازار ایران (مثل بوش، فیلیپس، سامسونگ، پارس خزر) را نام ببر.\n"
     "۴) نگارش روان، فارسی اصیل و بدون اصطلاحات گیج‌کننده با لحنی صمیمی و در عین حال حرفه‌ای.\n"
     "۵) از قالب‌بندی مرتب با تگ‌های مجاز <b> و <i> استفاده کن. تگ‌های تودرتوی ناقص یا کدهای شکسته هرگز ننویس.\n"
+    "۶) به تقویم رسمی ایران، روزهای هفته (شنبه تا جمعه)، تاریخ شمسی و میلادی و زمان کنونی مسلط هستی و به سوالات زمانی با دقت روز جاری پاسخ می‌دهی.\n"
 )
 
 PROMPT_TEMPLATE = (
@@ -251,6 +257,22 @@ async def _generate_gemini(question: str, context: str) -> Optional[str]:
 async def answer_question(
     question: str, chat_id: int, user_id: int = 0
 ) -> dict:
+    # ۰. تقویم، تاریخ و ساعت رسمی کشور (پاسخ آنی، دقیق و بدون تاخیر)
+    if is_datetime_query(question):
+        dt_ans = get_datetime_response(question)
+        if dt_ans:
+            if user_id:
+                try:
+                    await db.add_conversation_message(user_id, chat_id, "user", question)
+                    await db.add_conversation_message(user_id, chat_id, "assistant", dt_ans)
+                except Exception:
+                    pass
+            return {
+                "answer": dt_ans,
+                "source": "calendar_clock",
+                "confidence": 1.0,
+            }
+
     # ۱. Cache — پایگاه دانش (فقط برای سوالات غیرلحظه‌ای)
     is_realtime = needs_web_search(question)
     if not is_realtime:
@@ -268,8 +290,21 @@ async def answer_question(
     else:
         logger.info(f"⏭️ سوال لحظه‌ای تشخیص داده شد → رد شدن از کش: '{question[:50]}'")
 
-    # ۲. ساخت context غنی: تاریخچه گروه + حافظه مکالمه + پروفایل کاربر
+    # ۲. ساخت context غنی: تقویم زنده + تاریخچه گروه + حافظه مکالمه + پروفایل کاربر
     context_parts = []
+
+    # ۲-۰. زمان و تقویم رسمی کنونی کشور (ایران - تهران) برای درک کامل هوش مصنوعی از امروز
+    try:
+        dt_info = get_persian_date_info()
+        context_parts.append(
+            f"📅 زمان و تقویم رسمی لحظه‌ای (ایران - تهران):\n"
+            f"• روز هفته: {dt_info['weekday_name']}\n"
+            f"• تاریخ خورشیدی (شمسی): {dt_info['jd']} {dt_info['month_name']} {dt_info['jy']} ({dt_info['date_fa_num']})\n"
+            f"• تاریخ میلادی: {dt_info['date_g_full']}\n"
+            f"• ساعت رسمی: {dt_info['time_str']}"
+        )
+    except Exception as e:
+        logger.warning(f"Failed to append datetime info to context: {e}")
 
     # ۲-الف. پروفایل کاربر — برای شخصی‌سازی
     if user_id:
@@ -504,6 +539,10 @@ def needs_web_search(question: str) -> bool:
     if len(q) < 3:
         return False
 
+    # ۱.۵. تاریخ، تقویم و ساعت زنده
+    if is_datetime_query(q):
+        return True
+
     # ۲. آیا استعلام صریح قیمت است؟
     if is_explicit_price_query(q):
         return True
@@ -535,10 +574,17 @@ async def search_web_fallback(question: str) -> str | None:
     import re as _re
     from config import WEB_SEARCH_MAX_RESULTS
 
+    # ۰. تقویم، تاریخ و ساعت رسمی کشور (بدون تاخیر و با دقت کامل)
+    if is_datetime_query(question):
+        dt_res = get_datetime_response(question)
+        if dt_res:
+            logger.info("✅ Direct Persian calendar/clock returned result")
+            return dt_res
+
     snippets = []
     logger.info(f"🔍 starting web search for: '{question[:50]}'")
 
-    # ۰. اگه سوال مربوط به هواشناسی هست، اول Weather API رو امتحان کن
+    # ۰.۱. اگه سوال مربوط به هواشناسی هست، اول Weather API رو امتحان کن
     weather_keywords = ["هواشناسی", "آب و هوا", "هوای", "آب‌وهوا", "دما", "باران", "برف", "آفتابی", "ابری", "دمای", "天气", "weather", "هوا"]
     if any(kw in question for kw in weather_keywords):
         try:
