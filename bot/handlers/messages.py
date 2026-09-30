@@ -649,7 +649,14 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if is_addressing_bot(message, bot_username):
             clean_q = message.text.strip().replace(f"@{bot_username}", "").strip()
             result  = await answer_question(clean_q, chat.id, user_id=user.id)
-            await message.reply_text(f"🤖 {result['answer']}")
+            ans = result.get("answer", "")
+            try:
+                await message.reply_text(f"🤖 {ans}", parse_mode="HTML")
+            except Exception as pe:
+                logger.warning(f"Admin reply HTML parse error: {pe}")
+                import re as _re
+                clean_ans = _re.sub(r"<[^>]+>", "", ans)
+                await message.reply_text(f"🤖 {clean_ans}")
         return
 
     # ─── چک محدودیت روزانه جریمه (واقعاً میوت میشه) ─────────────────
@@ -934,7 +941,14 @@ async def _handle_private(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if text.startswith("/"):
         return
     result = await answer_question(text, chat_id=0, user_id=user.id)
-    await message.reply_text(f"🤖 {result['answer']}")
+    ans = result.get("answer", "")
+    try:
+        await message.reply_text(f"🤖 {ans}", parse_mode="HTML")
+    except Exception as pe:
+        logger.warning(f"Private reply HTML parse error: {pe}")
+        import re as _re
+        clean_ans = _re.sub(r"<[^>]+>", "", ans)
+        await message.reply_text(f"🤖 {clean_ans}")
 
 
 # ─── تصحیح ───────────────────────────────────────────────────────────────────

@@ -185,21 +185,55 @@ IRAN_CITIES = {
     "فومن": {"name": "فومن", "province": "گیلان", "lat": 37.2239, "lon": 49.3128},
     "ماسال": {"name": "ماسال", "province": "گیلان", "lat": 37.3631, "lon": 49.1328},
     "رودبار": {"name": "رودبار", "province": "گیلان", "lat": 36.8186, "lon": 49.4264},
+    "خمام": {"name": "خمام", "province": "گیلان", "lat": 37.3905, "lon": 49.6607},
+    "لنگرود": {"name": "لنگرود", "province": "گیلان", "lat": 37.1972, "lon": 50.1536},
+    "بندر انزلی": {"name": "بندر انزلی", "province": "گیلان", "lat": 37.4744, "lon": 49.4628},
+    "انزلی": {"name": "بندر انزلی", "province": "گیلان", "lat": 37.4744, "lon": 49.4628},
+    "سیاهکل": {"name": "سیاهکل", "province": "گیلان", "lat": 37.1539, "lon": 49.8708},
+    "املش": {"name": "املش", "province": "گیلان", "lat": 37.0983, "lon": 50.1867},
+    "رضوانشهر": {"name": "رضوانشهر", "province": "گیلان", "lat": 37.5558, "lon": 49.1389},
+    "رضوان شهر": {"name": "رضوانشهر", "province": "گیلان", "lat": 37.5558, "lon": 49.1389},
+    "شفت": {"name": "شفت", "province": "گیلان", "lat": 37.1683, "lon": 49.4000},
+    "کلاچای": {"name": "کلاچای", "province": "گیلان", "lat": 37.0792, "lon": 50.3953},
+    "چابکسر": {"name": "چابکسر", "province": "گیلان", "lat": 36.9744, "lon": 50.5786},
+    "آستانه اشرفیه": {"name": "آستانه اشرفیه", "province": "گیلان", "lat": 37.2597, "lon": 49.9444},
+    "منجیل": {"name": "منجیل", "province": "گیلان", "lat": 36.7417, "lon": 49.4144},
+    "لوشان": {"name": "لوشان", "province": "گیلان", "lat": 36.6278, "lon": 49.5139},
+    "دیلمان": {"name": "دیلمان", "province": "گیلان", "lat": 36.8889, "lon": 49.9056},
     "ساری": {"name": "ساری", "province": "مازندران", "lat": 36.5659, "lon": 53.0586},
     "بابل": {"name": "بابل", "province": "مازندران", "lat": 36.5517, "lon": 52.6789},
     "آمل": {"name": "آمل", "province": "مازندران", "lat": 36.4678, "lon": 52.3506},
     "قائم شهر": {"name": "قائم‌شهر", "province": "مازندران", "lat": 36.4625, "lon": 52.8597},
     "قائم‌شهر": {"name": "قائم‌شهر", "province": "مازندران", "lat": 36.4625, "lon": 52.8597},
+    "شیرگاه": {"name": "شیرگاه (سوادکوه شمالی)", "province": "مازندران", "lat": 36.2995, "lon": 52.8865},
+    "سوادکوه شمالی": {"name": "شیرگاه (سوادکوه شمالی)", "province": "مازندران", "lat": 36.2995, "lon": 52.8865},
+    "سوادکوه": {"name": "پل سفید (سوادکوه)", "province": "مازندران", "lat": 36.1170, "lon": 53.0575},
+    "پل سفید": {"name": "پل سفید (سوادکوه)", "province": "مازندران", "lat": 36.1170, "lon": 53.0575},
+    "زیرآب": {"name": "زیرآب (سوادکوه)", "province": "مازندران", "lat": 36.1797, "lon": 52.9770},
+    "زیراب": {"name": "زیرآب (سوادکوه)", "province": "مازندران", "lat": 36.1797, "lon": 52.9770},
     "چالوس": {"name": "چالوس", "province": "مازندران", "lat": 36.6550, "lon": 51.4206},
     "تنکابن": {"name": "تنکابن (شهسوار)", "province": "مازندران", "lat": 36.8164, "lon": 50.8739},
     "شهسوار": {"name": "تنکابن (شهسوار)", "province": "مازندران", "lat": 36.8164, "lon": 50.8739},
     "رامسر": {"name": "رامسر", "province": "مازندران", "lat": 36.9172, "lon": 50.6750},
     "نوشهر": {"name": "نوشهر", "province": "مازندران", "lat": 36.6492, "lon": 51.4964},
     "بابلسر": {"name": "بابلسر", "province": "مازندران", "lat": 36.7028, "lon": 52.6583},
+    "فریدونکنار": {"name": "فریدونکنار", "province": "مازندران", "lat": 36.6864, "lon": 52.5122},
+    "فریدون کنار": {"name": "فریدونکنار", "province": "مازندران", "lat": 36.6864, "lon": 52.5122},
+    "سلمان شهر": {"name": "سلمان‌شهر (متل قو)", "province": "مازندران", "lat": 36.7051, "lon": 51.1960},
+    "سلمان‌شهر": {"name": "سلمان‌شهر (متل قو)", "province": "مازندران", "lat": 36.7051, "lon": 51.1960},
+    "متل قو": {"name": "سلمان‌شهر (متل قو)", "province": "مازندران", "lat": 36.7051, "lon": 51.1960},
+    "کلاردشت": {"name": "کلاردشت", "province": "مازندران", "lat": 36.5056, "lon": 51.1588},
+    "عباس آباد": {"name": "عباس‌آباد", "province": "مازندران", "lat": 36.7264, "lon": 51.1064},
+    "عباس‌آباد": {"name": "عباس‌آباد", "province": "مازندران", "lat": 36.7264, "lon": 51.1064},
+    "کلارآباد": {"name": "کلارآباد", "province": "مازندران", "lat": 36.6978, "lon": 51.2589},
+    "چمستان": {"name": "چمستان", "province": "مازندران", "lat": 36.4789, "lon": 52.1247},
+    "سرخرود": {"name": "سرخرود", "province": "مازندران", "lat": 36.6711, "lon": 52.4439},
+    "ایزدشهر": {"name": "ایزدشهر", "province": "مازندران", "lat": 36.6022, "lon": 52.1389},
     "محمودآباد": {"name": "محمودآباد", "province": "مازندران", "lat": 36.6319, "lon": 52.2628},
     "نور": {"name": "نور", "province": "مازندران", "lat": 36.5728, "lon": 52.0150},
     "بهشهر": {"name": "بهشهر", "province": "مازندران", "lat": 36.6928, "lon": 53.5514},
     "نکا": {"name": "نکا", "province": "مازندران", "lat": 36.6508, "lon": 53.2989},
+    "گلوگاه": {"name": "گلوگاه", "province": "مازندران", "lat": 36.7269, "lon": 53.8089},
     "گرگان": {"name": "گرگان", "province": "گلستان", "lat": 36.8386, "lon": 54.4347},
     "گنبد کاووس": {"name": "گنبد کاووس", "province": "گلستان", "lat": 37.2500, "lon": 55.1672},
     "گنبدکاووس": {"name": "گنبد کاووس", "province": "گلستان", "lat": 37.2500, "lon": 55.1672},
@@ -384,10 +418,11 @@ def _format_rain_chance(prob: int) -> str:
 
 
 def extract_city_from_query(query: str) -> str:
-    """استخراج هوشمند نام شهر از متن سوال کاربر"""
-    # ۱. اولویت اول: تطابق با شهرهای شناخته‌شده ایران به ترتیب طول نام
+    """استخراج هوشمند نام شهر از متن سوال کاربر با رعایت مرز واژگان"""
+    # ۱. اولویت اول: تطابق با شهرهای شناخته‌شده ایران به ترتیب طول نام و رعایت مرز واژه
     for k in sorted(IRAN_CITIES.keys(), key=len, reverse=True):
-        if k in query:
+        pattern = r'(?<![^\W_])' + re.escape(k) + r'(?![^\W_])'
+        if re.search(pattern, query):
             return k
 
     # ۲. پاک‌سازی عبارات متداول پیشوندی و پسوندی
@@ -431,10 +466,44 @@ async def resolve_city_coordinates(city_query: str) -> dict | None:
         return IRAN_CITIES[clean_name]
 
     for k, info in IRAN_CITIES.items():
-        if k == clean_name or k in clean_name:
+        pattern = r'(?<![^\W_])' + re.escape(k) + r'(?![^\W_])'
+        if re.search(pattern, clean_name):
             return info
 
-    # ۲. ژئوکدینگ بین‌المللی با Open-Meteo
+    # ۲. ژئوکدینگ نقشه آزاد OpenStreetMap Nominatim (پوشش کامل تمام بخش‌ها، شهرها و دهستان‌های ایران به فارسی)
+    try:
+        nom_url = "https://nominatim.openstreetmap.org/search"
+        params = {
+            "q": clean_name,
+            "format": "json",
+            "countrycodes": "ir",
+            "addressdetails": "1",
+            "limit": "1",
+        }
+        headers = {"User-Agent": "TelegramWeatherBot/2.0 (Iranian Weather System)"}
+        async with httpx.AsyncClient(timeout=4.0) as client:
+            resp = await client.get(nom_url, params=params, headers=headers)
+            if resp.status_code == 200:
+                data = resp.json()
+                if data:
+                    item = data[0]
+                    addr = item.get("address", {})
+                    state = addr.get("state", addr.get("province", "ایران"))
+                    display_name = clean_name
+                    for key in ("city", "town", "village", "municipality", "county"):
+                        if key in addr:
+                            display_name = addr[key]
+                            break
+                    return {
+                        "name": display_name,
+                        "province": state,
+                        "lat": float(item["lat"]),
+                        "lon": float(item["lon"]),
+                    }
+    except Exception as e:
+        logger.debug(f"Nominatim geocoding failed for {clean_name}: {e}")
+
+    # ۳. ژئوکدینگ بین‌المللی با Open-Meteo
     try:
         geo_url = "https://geocoding-api.open-meteo.com/v1/search"
         params = {
@@ -443,7 +512,7 @@ async def resolve_city_coordinates(city_query: str) -> dict | None:
             "language": "fa",
             "format": "json",
         }
-        async with httpx.AsyncClient(timeout=6.0) as client:
+        async with httpx.AsyncClient(timeout=5.0) as client:
             resp = await client.get(geo_url, params=params)
             if resp.status_code == 200:
                 results = resp.json().get("results", [])
@@ -460,7 +529,7 @@ async def resolve_city_coordinates(city_query: str) -> dict | None:
                         "lon": chosen.get("longitude"),
                     }
     except Exception as e:
-        logger.warning(f"Geocoding error for {clean_name}: {e}")
+        logger.warning(f"Open-Meteo geocoding error for {clean_name}: {e}")
 
     return None
 
@@ -478,9 +547,16 @@ async def get_weather_info(city_query: str) -> tuple[str, InlineKeyboardMarkup |
 
     city_data = await resolve_city_coordinates(target)
 
-    # فال‌بک نهایی اگر پیدا نشد به تهران
+    # اگر شهر پیدا نشد، هرگز به اشتباه تهران را نمایش نده
     if not city_data:
-        city_data = IRAN_CITIES["تهران"]
+        err_text = (
+            f"⚠️ <b>موقعیت جغرافیایی «{target}» یافت نشد!</b>\n\n"
+            f"💡 لطفاً نام شهر را دقیق‌تر وارد کنید، مانند:\n"
+            f"▫️ <code>هواشناسی شیرگاه</code>\n"
+            f"▫️ <code>هواشناسی سراوان</code>\n"
+            f"▫️ <code>هواشناسی تبریز</code>"
+        )
+        return err_text, None
 
     city_name = city_data["name"]
     province = city_data.get("province", "")
