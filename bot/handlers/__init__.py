@@ -25,6 +25,7 @@ from .commands import (
     cmd_info, cmd_banned, cmd_purge, cmd_help, cmd_price, cmd_datetime,
     cmd_profile, cmd_topkarma, cmd_menu,
     cmd_free_games, cmd_tech_news, cmd_autogames, cmd_autonews,
+    cmd_weather,
 )
 
 __all__ = [
@@ -51,5 +52,6 @@ __all__ = [
     "cmd_info", "cmd_banned", "cmd_purge", "cmd_help", "cmd_price", "cmd_datetime",
     "cmd_profile", "cmd_topkarma", "cmd_menu",
     "cmd_free_games", "cmd_tech_news", "cmd_autogames", "cmd_autonews",
+    "cmd_weather",
 ]
 

@@ -2208,17 +2208,18 @@ async def cmd_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ],
         [
             InlineKeyboardButton("🪪 شناسنامه و پروفایل من", callback_data="menu_profile"),
-            InlineKeyboardButton("🏆 فعال‌ترین‌های چت", callback_data="menu_top"),
+            InlineKeyboardButton("⭐ محبوب‌ترین‌ها (کارما)", callback_data="menu_topkarma"),
         ],
         [
-            InlineKeyboardButton("⭐ محبوب‌ترین‌ها (کارما)", callback_data="menu_topkarma"),
+            InlineKeyboardButton("🌤 وضعیت آب و هوا", callback_data="menu_weather"),
             InlineKeyboardButton("🗓 تقویم و ساعت رسمی", callback_data="menu_datetime"),
         ],
         [
+            InlineKeyboardButton("🏆 فعال‌ترین‌های چت", callback_data="menu_top"),
             InlineKeyboardButton("📜 قوانین گروه", callback_data="menu_rules"),
-            InlineKeyboardButton("❓ راهنمای دستورات", callback_data="menu_help"),
         ],
         [
+            InlineKeyboardButton("❓ راهنمای دستورات", callback_data="menu_help"),
             InlineKeyboardButton("❌ بستن منو", callback_data="menu_close"),
         ]
     ])
@@ -2388,6 +2389,31 @@ async def cmd_autonews(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await message.reply_text("🔴 <b>اعلان خودکار اخبار فناوری در این گروه غیرفعال شد.</b>", parse_mode="HTML")
     else:
         await message.reply_text("⚠️ لطفاً از <code>/autonews on</code> یا <code>/autonews off</code> استفاده کنید.", parse_mode="HTML")
+
+
+async def cmd_weather(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    استعلام پیشرفته وضعیت آب و هوا و پیش‌بینی بارش برای تمامی شهرهای ایران و جهان
+    دستورات: /weather, /hava, /havashenasi [نام شهر]
+    """
+    message = update.message
+    if not message:
+        return
+
+    from bot.core.weather import get_weather_info
+
+    city_arg = " ".join(context.args).strip() if context.args else ""
+    if not city_arg:
+        city_arg = "تهران"
+
+    wait_msg = await message.reply_text(f"🌤 <i>در حال دریافت اطلاعات دقیق هواشناسی {city_arg}...</i>", parse_mode="HTML")
+    try:
+        text, kb = await get_weather_info(city_arg)
+        await wait_msg.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    except Exception as e:
+        logger.error(f"Error in cmd_weather: {e}")
+        await wait_msg.edit_text("❌ متأسفانه در برقراری ارتباط با ایستگاه هواشناسی خطایی رخ داد. لطفاً لحظاتی دیگر مجدداً تلاش کنید.")
+
 
 
 

@@ -473,17 +473,18 @@ async def on_general_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
                 ],
                 [
                     InlineKeyboardButton("🪪 شناسنامه و پروفایل من", callback_data="menu_profile"),
-                    InlineKeyboardButton("🏆 فعال‌ترین‌های چت", callback_data="menu_top"),
+                    InlineKeyboardButton("⭐ محبوب‌ترین‌ها (کارما)", callback_data="menu_topkarma"),
                 ],
                 [
-                    InlineKeyboardButton("⭐ محبوب‌ترین‌ها (کارما)", callback_data="menu_topkarma"),
+                    InlineKeyboardButton("🌤 وضعیت آب و هوا", callback_data="menu_weather"),
                     InlineKeyboardButton("🗓 تقویم و ساعت رسمی", callback_data="menu_datetime"),
                 ],
                 [
+                    InlineKeyboardButton("🏆 فعال‌ترین‌های چت", callback_data="menu_top"),
                     InlineKeyboardButton("📜 قوانین گروه", callback_data="menu_rules"),
-                    InlineKeyboardButton("❓ راهنمای دستورات", callback_data="menu_help"),
                 ],
                 [
+                    InlineKeyboardButton("❓ راهنمای دستورات", callback_data="menu_help"),
                     InlineKeyboardButton("❌ بستن منو", callback_data="menu_close"),
                 ]
             ])
@@ -658,12 +659,69 @@ async def on_general_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
                 pass
             return
 
+        elif data == "menu_weather":
+            from bot.core.weather import get_weather_info
+            try:
+                text, _ = await get_weather_info("تهران")
+                weather_kb = InlineKeyboardMarkup([
+                    [
+                        InlineKeyboardButton("📍 سراوان", callback_data="weather_ref_سراوان"),
+                        InlineKeyboardButton("📍 تهران", callback_data="weather_ref_تهران"),
+                        InlineKeyboardButton("📍 مشهد", callback_data="weather_ref_مشهد"),
+                    ],
+                    [
+                        InlineKeyboardButton("📍 شیراز", callback_data="weather_ref_شیراز"),
+                        InlineKeyboardButton("📍 اصفهان", callback_data="weather_ref_اصفهان"),
+                        InlineKeyboardButton("📍 تبریز", callback_data="weather_ref_تبریز"),
+                    ],
+                    [
+                        InlineKeyboardButton("📍 رشت", callback_data="weather_ref_رشت"),
+                        InlineKeyboardButton("📍 اهواز", callback_data="weather_ref_اهواز"),
+                        InlineKeyboardButton("📍 چابهار", callback_data="weather_ref_چابهار"),
+                    ],
+                    [
+                        InlineKeyboardButton("🔄 بروزرسانی", callback_data="weather_ref_تهران"),
+                        InlineKeyboardButton("🔙 بازگشت به منو", callback_data="menu_main"),
+                    ]
+                ])
+                await query.edit_message_text(text, parse_mode="HTML", reply_markup=weather_kb)
+            except Exception:
+                pass
+            return
+
         elif data == "menu_close":
             try:
                 await query.message.delete()
             except Exception:
                 pass
             return
+
+    elif data.startswith("weather_ref_"):
+        await query.answer("🔄 در حال دریافت آب و هوای بروز...")
+        city = data.replace("weather_ref_", "").strip()
+        from bot.core.weather import get_weather_info
+        try:
+            text, _ = await get_weather_info(city)
+            weather_kb = InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton("📍 سراوان", callback_data="weather_ref_سراوان"),
+                    InlineKeyboardButton("📍 تهران", callback_data="weather_ref_تهران"),
+                    InlineKeyboardButton("📍 مشهد", callback_data="weather_ref_مشهد"),
+                ],
+                [
+                    InlineKeyboardButton("📍 شیراز", callback_data="weather_ref_شیراز"),
+                    InlineKeyboardButton("📍 اصفهان", callback_data="weather_ref_اصفهان"),
+                    InlineKeyboardButton("📍 رشت", callback_data="weather_ref_رشت"),
+                ],
+                [
+                    InlineKeyboardButton("🔄 بروزرسانی همین شهر", callback_data=f"weather_ref_{city}"),
+                    InlineKeyboardButton("🔙 بازگشت به منو", callback_data="menu_main"),
+                ]
+            ])
+            await query.edit_message_text(text, parse_mode="HTML", reply_markup=weather_kb)
+        except Exception:
+            pass
+        return
 
     elif data.startswith("game_"):
         await query.answer("🔄 در حال دریافت آفرهای بازی...")

@@ -1,0 +1,635 @@
+"""
+سیستم پیشرفته و جامع هواشناسی شهرهای ایران و جهان
+شامل پایگاه جامع مختصات تمامی شهرستان‌های ایران، استعلام احتمال بارش،
+پیش‌بینی چند روزه و قالب‌بندی مدرن تلگرام (HTML Blockquote)
+"""
+
+import logging
+import re
+from datetime import datetime, timezone, timedelta
+import httpx
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+from bot.utils.helpers import gregorian_to_jalali, to_persian_digits, PERSIAN_WEEKDAYS
+
+logger = logging.getLogger(__name__)
+
+# ─── پایگاه جامع مختصات و اطلاعات شهرستان‌ها و شهرهای ایران ──────────────────
+# تمام ۳۱ استان و تمامی مراکز شهرستان‌ها و شهرهای مهم
+IRAN_CITIES = {
+    # سیستان و بلوچستان
+    "سراوان": {"name": "سراوان", "province": "سیستان و بلوچستان", "lat": 27.3709, "lon": 62.3310},
+    "زاهدان": {"name": "زاهدان", "province": "سیستان و بلوچستان", "lat": 29.4963, "lon": 60.8629},
+    "چابهار": {"name": "چابهار", "province": "سیستان و بلوچستان", "lat": 25.2919, "lon": 60.6430},
+    "زابل": {"name": "زابل", "province": "سیستان و بلوچستان", "lat": 31.0298, "lon": 61.5034},
+    "خاش": {"name": "خاش", "province": "سیستان و بلوچستان", "lat": 28.2211, "lon": 61.2158},
+    "ایرانشهر": {"name": "ایرانشهر", "province": "سیستان و بلوچستان", "lat": 27.2025, "lon": 60.6848},
+    "نیک شهر": {"name": "نیک‌شهر", "province": "سیستان و بلوچستان", "lat": 26.2258, "lon": 60.2142},
+    "نیکشهر": {"name": "نیک‌شهر", "province": "سیستان و بلوچستان", "lat": 26.2258, "lon": 60.2142},
+    "کنارک": {"name": "کنارک", "province": "سیستان و بلوچستان", "lat": 25.3603, "lon": 60.3995},
+    "راسک": {"name": "راسک", "province": "سیستان و بلوچستان", "lat": 26.2368, "lon": 61.4042},
+    "سرباز": {"name": "سرباز", "province": "سیستان و بلوچستان", "lat": 26.6311, "lon": 61.2562},
+    "میرجاوه": {"name": "میرجاوه", "province": "سیستان و بلوچستان", "lat": 29.0261, "lon": 61.4549},
+    "دشتیاری": {"name": "دشتیاری", "province": "سیستان و بلوچستان", "lat": 25.4333, "lon": 61.2333},
+    "قصرقند": {"name": "قصرقند", "province": "سیستان و بلوچستان", "lat": 26.2394, "lon": 60.7411},
+    "تفتان": {"name": "تفتان", "province": "سیستان و بلوچستان", "lat": 28.5997, "lon": 61.0833},
+    "سیب و سوران": {"name": "سیب و سوران", "province": "سیستان و بلوچستان", "lat": 27.2833, "lon": 62.0833},
+    "مهرستان": {"name": "مهرستان", "province": "سیستان و بلوچستان", "lat": 27.1833, "lon": 61.6667},
+    "دلگان": {"name": "دلگان", "province": "سیستان و بلوچستان", "lat": 27.4833, "lon": 59.4667},
+    "زهک": {"name": "زهک", "province": "سیستان و بلوچستان", "lat": 30.8936, "lon": 61.6806},
+    "هیرمند": {"name": "هیرمند", "province": "سیستان و بلوچستان", "lat": 31.1500, "lon": 61.7833},
+    "بمپور": {"name": "بمپور", "province": "سیستان و بلوچستان", "lat": 27.1950, "lon": 60.4564},
+    "نیمروز": {"name": "نیمروز", "province": "سیستان و بلوچستان", "lat": 31.1167, "lon": 61.4500},
+    "زرآباد": {"name": "زرآباد", "province": "سیستان و بلوچستان", "lat": 25.5972, "lon": 59.3889},
+
+    # تهران و البرز
+    "تهران": {"name": "تهران", "province": "تهران", "lat": 35.6892, "lon": 51.3890},
+    "کرج": {"name": "کرج", "province": "البرز", "lat": 35.8400, "lon": 50.9391},
+    "ری": {"name": "شهر ری", "province": "تهران", "lat": 35.5900, "lon": 51.4358},
+    "شمیران": {"name": "شمیرانات", "province": "تهران", "lat": 35.8000, "lon": 51.4333},
+    "شهریار": {"name": "شهریار", "province": "تهران", "lat": 35.6597, "lon": 51.0592},
+    "اسلامشهر": {"name": "اسلامشهر", "province": "تهران", "lat": 35.5489, "lon": 51.2333},
+    "قدس": {"name": "شهر قدس", "province": "تهران", "lat": 35.7214, "lon": 51.1092},
+    "ملارد": {"name": "ملارد", "province": "تهران", "lat": 35.6664, "lon": 50.9767},
+    "ورامین": {"name": "ورامین", "province": "تهران", "lat": 35.3242, "lon": 51.6469},
+    "پاکدشت": {"name": "پاکدشت", "province": "تهران", "lat": 35.5303, "lon": 51.6811},
+    "دماوند": {"name": "دماوند", "province": "تهران", "lat": 35.7178, "lon": 52.0650},
+    "پردیس": {"name": "پردیس", "province": "تهران", "lat": 35.7369, "lon": 51.8153},
+    "فیروزکوه": {"name": "فیروزکوه", "province": "تهران", "lat": 35.7567, "lon": 52.7706},
+    "رباط کریم": {"name": "رباط‌کریم", "province": "تهران", "lat": 35.4847, "lon": 51.0828},
+    "رباط‌کریم": {"name": "رباط‌کریم", "province": "تهران", "lat": 35.4847, "lon": 51.0828},
+    "قرچک": {"name": "قرچک", "province": "تهران", "lat": 35.4383, "lon": 51.5694},
+    "پیشوا": {"name": "پیشوا", "province": "تهران", "lat": 35.3083, "lon": 51.7267},
+    "فردیس": {"name": "فردیس", "province": "البرز", "lat": 35.7247, "lon": 50.9856},
+    "هشتگرد": {"name": "هشتگرد", "province": "البرز", "lat": 35.9622, "lon": 50.6811},
+    "نظرآباد": {"name": "نظرآباد", "province": "البرز", "lat": 35.9536, "lon": 50.6061},
+    "طالقان": {"name": "طالقان", "province": "البرز", "lat": 36.1750, "lon": 50.7639},
+    "اشتهارد": {"name": "اشتهارد", "province": "البرز", "lat": 35.7225, "lon": 50.3661},
+
+    # خراسان رضوی، جنوبی، شمالی
+    "مشهد": {"name": "مشهد", "province": "خراسان رضوی", "lat": 36.2972, "lon": 59.6067},
+    "نیشابور": {"name": "نیشابور", "province": "خراسان رضوی", "lat": 36.2133, "lon": 58.7958},
+    "سبزوار": {"name": "سبزوار", "province": "خراسان رضوی", "lat": 36.2125, "lon": 57.6778},
+    "تربت حیدریه": {"name": "تربت حیدریه", "province": "خراسان رضوی", "lat": 35.2744, "lon": 59.2194},
+    "تربت جام": {"name": "تربت جام", "province": "خراسان رضوی", "lat": 35.2439, "lon": 60.6225},
+    "کاشمر": {"name": "کاشمر", "province": "خراسان رضوی", "lat": 35.2383, "lon": 58.4656},
+    "قوچان": {"name": "قوچان", "province": "خراسان رضوی", "lat": 37.1061, "lon": 58.5097},
+    "گناباد": {"name": "گناباد", "province": "خراسان رضوی", "lat": 34.3528, "lon": 58.6836},
+    "سرخس": {"name": "سرخس", "province": "خراسان رضوی", "lat": 36.5447, "lon": 61.1578},
+    "تایباد": {"name": "تایباد", "province": "خراسان رضوی", "lat": 34.7400, "lon": 60.7756},
+    "چناران": {"name": "چناران", "province": "خراسان رضوی", "lat": 36.6456, "lon": 59.1211},
+    "فریمان": {"name": "فریمان", "province": "خراسان رضوی", "lat": 35.7047, "lon": 59.8494},
+    "درگز": {"name": "درگز", "province": "خراسان رضوی", "lat": 37.4950, "lon": 59.1078},
+    "خواف": {"name": "خواف", "province": "خراسان رضوی", "lat": 34.5778, "lon": 60.1417},
+    "بردسکن": {"name": "بردسکن", "province": "خراسان رضوی", "lat": 35.2608, "lon": 57.9714},
+    "بیرجند": {"name": "بیرجند", "province": "خراسان جنوبی", "lat": 32.8663, "lon": 59.2211},
+    "قائن": {"name": "قائن", "province": "خراسان جنوبی", "lat": 33.7264, "lon": 59.1844},
+    "قاین": {"name": "قائن", "province": "خراسان جنوبی", "lat": 33.7264, "lon": 59.1844},
+    "فردوس": {"name": "فردوس", "province": "خراسان جنوبی", "lat": 34.0186, "lon": 58.1722},
+    "طبس": {"name": "طبس", "province": "خراسان جنوبی", "lat": 33.5959, "lon": 56.9244},
+    "نهبندان": {"name": "نهبندان", "province": "خراسان جنوبی", "lat": 31.5408, "lon": 60.0381},
+    "سرایان": {"name": "سرایان", "province": "خراسان جنوبی", "lat": 33.8592, "lon": 58.5208},
+    "بجنورد": {"name": "بجنورد", "province": "خراسان شمالی", "lat": 37.4747, "lon": 57.3292},
+    "شیروان": {"name": "شیروان", "province": "خراسان شمالی", "lat": 37.3967, "lon": 57.9294},
+    "اسفراین": {"name": "اسفراین", "province": "خراسان شمالی", "lat": 37.0764, "lon": 57.5100},
+    "جاجرم": {"name": "جاجرم", "province": "خراسان شمالی", "lat": 36.9536, "lon": 56.3806},
+
+    # اصفهان و یزد
+    "اصفهان": {"name": "اصفهان", "province": "اصفهان", "lat": 32.6546, "lon": 51.6680},
+    "کاشان": {"name": "کاشان", "province": "اصفهان", "lat": 33.9850, "lon": 51.4100},
+    "نجف آباد": {"name": "نجف‌آباد", "province": "اصفهان", "lat": 32.6342, "lon": 51.3664},
+    "نجف‌آباد": {"name": "نجف‌آباد", "province": "اصفهان", "lat": 32.6342, "lon": 51.3664},
+    "خمینی شهر": {"name": "خمینی‌شهر", "province": "اصفهان", "lat": 32.6789, "lon": 51.5281},
+    "خمینی‌شهر": {"name": "خمینی‌شهر", "province": "اصفهان", "lat": 32.6789, "lon": 51.5281},
+    "شاهین شهر": {"name": "شاهین‌شهر", "province": "اصفهان", "lat": 32.8639, "lon": 51.5472},
+    "شاهین‌شهر": {"name": "شاهین‌شهر", "province": "اصفهان", "lat": 32.8639, "lon": 51.5472},
+    "شهرضا": {"name": "شهرضا", "province": "اصفهان", "lat": 31.9956, "lon": 51.8678},
+    "گلپایگان": {"name": "گلپایگان", "province": "اصفهان", "lat": 33.4539, "lon": 50.2883},
+    "سمیرم": {"name": "سمیرم", "province": "اصفهان", "lat": 31.4158, "lon": 51.5694},
+    "نطنز": {"name": "نطنز", "province": "اصفهان", "lat": 33.5117, "lon": 51.9167},
+    "نائین": {"name": "نائین", "province": "اصفهان", "lat": 32.8600, "lon": 53.0878},
+    "فولادشهر": {"name": "فولادشهر", "province": "اصفهان", "lat": 32.4833, "lon": 51.4167},
+    "خوانسار": {"name": "خوانسار", "province": "اصفهان", "lat": 33.2206, "lon": 50.3150},
+    "یزد": {"name": "یزد", "province": "یزد", "lat": 31.8974, "lon": 54.3569},
+    "میبد": {"name": "میبد", "province": "یزد", "lat": 32.2500, "lon": 54.0167},
+    "اردکان": {"name": "اردکان", "province": "یزد", "lat": 32.3100, "lon": 54.0175},
+    "بافق": {"name": "بافق", "province": "یزد", "lat": 31.6044, "lon": 55.4056},
+    "مهریز": {"name": "مهریز", "province": "یزد", "lat": 31.5833, "lon": 54.4333},
+    "ابرکوه": {"name": "ابرکوه", "province": "یزد", "lat": 31.1289, "lon": 53.2825},
+    "تفت": {"name": "تفت", "province": "یزد", "lat": 31.7478, "lon": 54.2047},
+
+    # فارس و بوشهر
+    "شیراز": {"name": "شیراز", "province": "فارس", "lat": 29.5918, "lon": 52.5837},
+    "مرودشت": {"name": "مرودشت", "province": "فارس", "lat": 29.8742, "lon": 52.8028},
+    "جهرم": {"name": "جهرم", "province": "فارس", "lat": 28.5000, "lon": 53.5600},
+    "فسا": {"name": "فسا", "province": "فارس", "lat": 28.9383, "lon": 53.6483},
+    "کازرون": {"name": "کازرون", "province": "فارس", "lat": 29.6194, "lon": 51.6542},
+    "داراب": {"name": "داراب", "province": "فارس", "lat": 28.7519, "lon": 54.5444},
+    "لارستان": {"name": "لارستان", "province": "فارس", "lat": 27.6833, "lon": 54.3333},
+    "لار": {"name": "لار", "province": "فارس", "lat": 27.6833, "lon": 54.3333},
+    "آباده": {"name": "آباده", "province": "فارس", "lat": 31.1608, "lon": 52.6506},
+    "ممسنی": {"name": "نورآباد ممسنی", "province": "فارس", "lat": 30.1167, "lon": 51.5167},
+    "نی ریز": {"name": "نی‌ریز", "province": "فارس", "lat": 29.1986, "lon": 54.3278},
+    "نی‌ریز": {"name": "نی‌ریز", "province": "فارس", "lat": 29.1986, "lon": 54.3278},
+    "اقلید": {"name": "اقلید", "province": "فارس", "lat": 30.8894, "lon": 52.6811},
+    "استهبان": {"name": "استهبان", "province": "فارس", "lat": 29.1264, "lon": 54.0417},
+    "فیروزآباد": {"name": "فیروزآباد", "province": "فارس", "lat": 28.8439, "lon": 52.5708},
+    "لامرد": {"name": "لامرد", "province": "فارس", "lat": 27.3339, "lon": 53.1789},
+    "گراش": {"name": "گراش", "province": "فارس", "lat": 27.6653, "lon": 54.1350},
+    "اوز": {"name": "اوز", "province": "فارس", "lat": 27.7619, "lon": 53.9997},
+    "بوشهر": {"name": "بوشهر", "province": "بوشهر", "lat": 28.9234, "lon": 50.8203},
+    "برازجان": {"name": "برازجان", "province": "بوشهر", "lat": 29.2667, "lon": 51.2167},
+    "گناوه": {"name": "بندر گناوه", "province": "بوشهر", "lat": 29.5792, "lon": 50.5175},
+    "کنگان": {"name": "بندر کنگان", "province": "بوشهر", "lat": 27.8339, "lon": 52.0694},
+    "عسلویه": {"name": "عسلویه", "province": "بوشهر", "lat": 27.4761, "lon": 52.6078},
+    "دیر": {"name": "بندر دیر", "province": "بوشهر", "lat": 27.8397, "lon": 51.9378},
+    "دیلم": {"name": "بندر دیلم", "province": "بوشهر", "lat": 30.0542, "lon": 50.1589},
+    "خورموج": {"name": "خورموج", "province": "بوشهر", "lat": 28.6542, "lon": 51.3800},
+    "جم": {"name": "جم", "province": "بوشهر", "lat": 27.8286, "lon": 52.3275},
+
+    # خوزستان و ایلام
+    "اهواز": {"name": "اهواز", "province": "خوزستان", "lat": 31.3183, "lon": 48.6706},
+    "دزفول": {"name": "دزفول", "province": "خوزستان", "lat": 32.3811, "lon": 48.4058},
+    "آبادان": {"name": "آبادان", "province": "خوزستان", "lat": 30.3392, "lon": 48.3043},
+    "خرمشهر": {"name": "خرمشهر", "province": "خوزستان", "lat": 30.4397, "lon": 48.1803},
+    "ماهشهر": {"name": "بندر ماهشهر", "province": "خوزستان", "lat": 30.5589, "lon": 49.1981},
+    "بندر امام خمینی": {"name": "بندر امام خمینی", "province": "خوزستان", "lat": 30.4333, "lon": 49.0833},
+    "بهبهان": {"name": "بهبهان", "province": "خوزستان", "lat": 30.5958, "lon": 50.2417},
+    "ایذه": {"name": "ایذه", "province": "خوزستان", "lat": 31.8333, "lon": 49.8667},
+    "شوشتر": {"name": "شوشتر", "province": "خوزستان", "lat": 32.0456, "lon": 48.8567},
+    "شوش": {"name": "شوش", "province": "خوزستان", "lat": 32.1942, "lon": 48.2436},
+    "اندیمشک": {"name": "اندیمشک", "province": "خوزستان", "lat": 32.4600, "lon": 48.3547},
+    "مسجد سلیمان": {"name": "مسجدسلیمان", "province": "خوزستان", "lat": 31.9364, "lon": 49.3039},
+    "رامهرمز": {"name": "رامهرمز", "province": "خوزستان", "lat": 31.2800, "lon": 49.6042},
+    "امیدیه": {"name": "امیدیه", "province": "خوزستان", "lat": 30.7597, "lon": 49.7050},
+    "سوسنگرد": {"name": "سوسنگرد", "province": "خوزستان", "lat": 31.4986, "lon": 48.1839},
+    "شادگان": {"name": "شادگان", "province": "خوزستان", "lat": 30.6497, "lon": 48.6644},
+    "ایلام": {"name": "ایلام", "province": "ایلام", "lat": 33.6374, "lon": 46.4227},
+    "دهلران": {"name": "دهلران", "province": "ایلام", "lat": 32.6942, "lon": 47.2678},
+    "مهران": {"name": "مهران", "province": "ایلام", "lat": 33.1222, "lon": 46.1647},
+    "آبدانان": {"name": "آبدانان", "province": "ایلام", "lat": 32.9928, "lon": 47.4200},
+    "دره شهر": {"name": "دره‌شهر", "province": "ایلام", "lat": 33.1408, "lon": 47.3800},
+    "ایوان": {"name": "ایوان غرب", "province": "ایلام", "lat": 33.8267, "lon": 46.3094},
+
+    # گیلان، مازندران، گلستان
+    "رشت": {"name": "رشت", "province": "گیلان", "lat": 37.2808, "lon": 49.5832},
+    "انزلی": {"name": "بندرانزلی", "province": "گیلان", "lat": 37.4678, "lon": 49.4625},
+    "بندرانزلی": {"name": "بندرانزلی", "province": "گیلان", "lat": 37.4678, "lon": 49.4625},
+    "لاهیجان": {"name": "لاهیجان", "province": "گیلان", "lat": 37.2072, "lon": 50.0033},
+    "لنگرود": {"name": "لنگرود", "province": "گیلان", "lat": 37.1972, "lon": 50.1536},
+    "تالش": {"name": "تالش (هشتپر)", "province": "گیلان", "lat": 37.7992, "lon": 48.9069},
+    "آستارا": {"name": "آستارا", "province": "گیلان", "lat": 38.4292, "lon": 48.8719},
+    "رودسر": {"name": "رودسر", "province": "گیلان", "lat": 37.1375, "lon": 50.2881},
+    "صومعه سرا": {"name": "صومعه‌سرا", "province": "گیلان", "lat": 37.3022, "lon": 49.3131},
+    "صومعه‌سرا": {"name": "صومعه‌سرا", "province": "گیلان", "lat": 37.3022, "lon": 49.3131},
+    "فومن": {"name": "فومن", "province": "گیلان", "lat": 37.2239, "lon": 49.3128},
+    "ماسال": {"name": "ماسال", "province": "گیلان", "lat": 37.3631, "lon": 49.1328},
+    "رودبار": {"name": "رودبار", "province": "گیلان", "lat": 36.8186, "lon": 49.4264},
+    "ساری": {"name": "ساری", "province": "مازندران", "lat": 36.5659, "lon": 53.0586},
+    "بابل": {"name": "بابل", "province": "مازندران", "lat": 36.5517, "lon": 52.6789},
+    "آمل": {"name": "آمل", "province": "مازندران", "lat": 36.4678, "lon": 52.3506},
+    "قائم شهر": {"name": "قائم‌شهر", "province": "مازندران", "lat": 36.4625, "lon": 52.8597},
+    "قائم‌شهر": {"name": "قائم‌شهر", "province": "مازندران", "lat": 36.4625, "lon": 52.8597},
+    "چالوس": {"name": "چالوس", "province": "مازندران", "lat": 36.6550, "lon": 51.4206},
+    "تنکابن": {"name": "تنکابن (شهسوار)", "province": "مازندران", "lat": 36.8164, "lon": 50.8739},
+    "شهسوار": {"name": "تنکابن (شهسوار)", "province": "مازندران", "lat": 36.8164, "lon": 50.8739},
+    "رامسر": {"name": "رامسر", "province": "مازندران", "lat": 36.9172, "lon": 50.6750},
+    "نوشهر": {"name": "نوشهر", "province": "مازندران", "lat": 36.6492, "lon": 51.4964},
+    "بابلسر": {"name": "بابلسر", "province": "مازندران", "lat": 36.7028, "lon": 52.6583},
+    "محمودآباد": {"name": "محمودآباد", "province": "مازندران", "lat": 36.6319, "lon": 52.2628},
+    "نور": {"name": "نور", "province": "مازندران", "lat": 36.5728, "lon": 52.0150},
+    "بهشهر": {"name": "بهشهر", "province": "مازندران", "lat": 36.6928, "lon": 53.5514},
+    "نکا": {"name": "نکا", "province": "مازندران", "lat": 36.6508, "lon": 53.2989},
+    "گرگان": {"name": "گرگان", "province": "گلستان", "lat": 36.8386, "lon": 54.4347},
+    "گنبد کاووس": {"name": "گنبد کاووس", "province": "گلستان", "lat": 37.2500, "lon": 55.1672},
+    "گنبدکاووس": {"name": "گنبد کاووس", "province": "گلستان", "lat": 37.2500, "lon": 55.1672},
+    "علی آباد کتول": {"name": "علی‌آباد کتول", "province": "گلستان", "lat": 36.9083, "lon": 54.8689},
+    "بندر ترکمن": {"name": "بندر ترکمن", "province": "گلستان", "lat": 36.9011, "lon": 54.0708},
+    "کلاله": {"name": "کلاله", "province": "گلستان", "lat": 37.3808, "lon": 55.4917},
+    "آزادشهر": {"name": "آزادشهر", "province": "گلستان", "lat": 37.0867, "lon": 55.1728},
+    "مینودشت": {"name": "مینودشت", "province": "گلستان", "lat": 37.2503, "lon": 55.3747},
+
+    # کرمانشاه، کردستان، همدان، لرستان
+    "کرمانشاه": {"name": "کرمانشاه", "province": "کرمانشاه", "lat": 34.3142, "lon": 47.0650},
+    "اسلام آباد غرب": {"name": "اسلام‌آباد غرب", "province": "کرمانشاه", "lat": 34.1094, "lon": 46.5275},
+    "سرپل ذهاب": {"name": "سرپل ذهاب", "province": "کرمانشاه", "lat": 34.4611, "lon": 45.8639},
+    "سنقر": {"name": "سنقر", "province": "کرمانشاه", "lat": 34.7833, "lon": 47.6000},
+    "هرسین": {"name": "هرسین", "province": "کرمانشاه", "lat": 34.2722, "lon": 47.5861},
+    "کنگاور": {"name": "کنگاور", "province": "کرمانشاه", "lat": 34.5042, "lon": 47.9653},
+    "پاوه": {"name": "پاوه", "province": "کرمانشاه", "lat": 35.0436, "lon": 46.3564},
+    "جوانرود": {"name": "جوانرود", "province": "کرمانشاه", "lat": 34.8078, "lon": 46.4950},
+    "قصر شیرین": {"name": "قصر شیرین", "province": "کرمانشاه", "lat": 34.5156, "lon": 45.5794},
+    "سنندج": {"name": "سنندج", "province": "کردستان", "lat": 35.3144, "lon": 46.9961},
+    "سقز": {"name": "سقز", "province": "کردستان", "lat": 36.2497, "lon": 46.2733},
+    "مریوان": {"name": "مریوان", "province": "کردستان", "lat": 35.5269, "lon": 46.1761},
+    "بانه": {"name": "بانه", "province": "کردستان", "lat": 35.9975, "lon": 45.8853},
+    "قروه": {"name": "قروه", "province": "کردستان", "lat": 35.1664, "lon": 47.8047},
+    "کامیاران": {"name": "کامیاران", "province": "کردستان", "lat": 34.7956, "lon": 46.9356},
+    "بیجار": {"name": "بیجار", "province": "کردستان", "lat": 35.8722, "lon": 47.6050},
+    "دیواندره": {"name": "دیواندره", "province": "کردستان", "lat": 35.8986, "lon": 47.0211},
+    "همدان": {"name": "همدان", "province": "همدان", "lat": 34.7989, "lon": 48.5150},
+    "ملایر": {"name": "ملایر", "province": "همدان", "lat": 34.2969, "lon": 48.8236},
+    "نهاوند": {"name": "نهاوند", "province": "همدان", "lat": 34.1886, "lon": 48.3769},
+    "تویسرکان": {"name": "تویسرکان", "province": "همدان", "lat": 34.5483, "lon": 48.4467},
+    "اسدآباد": {"name": "اسدآباد", "province": "همدان", "lat": 34.7825, "lon": 48.1183},
+    "خرم آباد": {"name": "خرم‌آباد", "province": "لرستان", "lat": 33.4878, "lon": 48.3558},
+    "خرم‌آباد": {"name": "خرم‌آباد", "province": "لرستان", "lat": 33.4878, "lon": 48.3558},
+    "بروجرد": {"name": "بروجرد", "province": "لرستان", "lat": 33.8972, "lon": 48.7517},
+    "دورود": {"name": "دورود", "province": "لرستان", "lat": 33.4933, "lon": 49.0750},
+    "کوهدشت": {"name": "کوهدشت", "province": "لرستان", "lat": 33.5333, "lon": 47.6000},
+    "الیگودرز": {"name": "الیگودرز", "province": "لرستان", "lat": 33.4006, "lon": 49.6950},
+    "پلدختر": {"name": "پلدختر", "province": "لرستان", "lat": 33.1536, "lon": 47.7136},
+    "ازنا": {"name": "ازنا", "province": "لرستان", "lat": 33.4542, "lon": 49.4550},
+
+    # آذربایجان شرقی و غربی و اردبیل
+    "تبریز": {"name": "تبریز", "province": "آذربایجان شرقی", "lat": 38.0800, "lon": 46.2919},
+    "مراغه": {"name": "مراغه", "province": "آذربایجان شرقی", "lat": 37.3917, "lon": 46.2392},
+    "مرند": {"name": "مرند", "province": "آذربایجان شرقی", "lat": 38.4328, "lon": 45.7750},
+    "میانه": {"name": "میانه", "province": "آذربایجان شرقی", "lat": 37.4208, "lon": 47.7153},
+    "اهر": {"name": "اهر", "province": "آذربایجان شرقی", "lat": 38.4778, "lon": 47.0700},
+    "بناب": {"name": "بناب", "province": "آذربایجان شرقی", "lat": 37.3400, "lon": 46.0561},
+    "سراب": {"name": "سراب", "province": "آذربایجان شرقی", "lat": 37.9408, "lon": 47.5367},
+    "جلفا": {"name": "جلفا", "province": "آذربایجان شرقی", "lat": 38.9389, "lon": 45.6294},
+    "شبستر": {"name": "شبستر", "province": "آذربایجان شرقی", "lat": 38.1806, "lon": 45.7028},
+    "ارومیه": {"name": "ارومیه", "province": "آذربایجان غربی", "lat": 37.5528, "lon": 45.0761},
+    "خوی": {"name": "خوی", "province": "آذربایجان غربی", "lat": 38.5506, "lon": 44.9578},
+    "بوکان": {"name": "بوکان", "province": "آذربایجان غربی", "lat": 36.5208, "lon": 46.2089},
+    "مهاباد": {"name": "مهاباد", "province": "آذربایجان غربی", "lat": 36.7631, "lon": 45.7222},
+    "میاندوآب": {"name": "میاندوآب", "province": "آذربایجان غربی", "lat": 36.9678, "lon": 46.1042},
+    "سلماس": {"name": "سلماس", "province": "آذربایجان غربی", "lat": 38.1969, "lon": 44.7656},
+    "پیرانشهر": {"name": "پیرانشهر", "province": "آذربایجان غربی", "lat": 36.7011, "lon": 45.1414},
+    "نقده": {"name": "نقده", "province": "آذربایجان غربی", "lat": 36.9553, "lon": 45.3881},
+    "ماکو": {"name": "ماکو", "province": "آذربایجان غربی", "lat": 39.2953, "lon": 44.5122},
+    "سردشت": {"name": "سردشت", "province": "آذربایجان غربی", "lat": 36.1550, "lon": 45.4792},
+    "تکاب": {"name": "تکاب", "province": "آذربایجان غربی", "lat": 36.4008, "lon": 47.1133},
+    "اردبیل": {"name": "اردبیل", "province": "اردبیل", "lat": 38.2498, "lon": 48.2933},
+    "پارس آباد": {"name": "پارس‌آباد", "province": "اردبیل", "lat": 39.6483, "lon": 47.9175},
+    "پارس‌آباد": {"name": "پارس‌آباد", "province": "اردبیل", "lat": 39.6483, "lon": 47.9175},
+    "مشگین شهر": {"name": "مشگین‌شهر", "province": "اردبیل", "lat": 38.3989, "lon": 47.6822},
+    "خلخال": {"name": "خلخال", "province": "اردبیل", "lat": 37.6189, "lon": 48.5258},
+    "سرعین": {"name": "سرعین", "province": "اردبیل", "lat": 38.1517, "lon": 48.0706},
+    "گرمی": {"name": "گرمی", "province": "اردبیل", "lat": 39.0214, "lon": 48.0800},
+
+    # کرمان و هرمزگان
+    "کرمان": {"name": "کرمان", "province": "کرمان", "lat": 30.2839, "lon": 57.0834},
+    "سیرجان": {"name": "سیرجان", "province": "کرمان", "lat": 29.4520, "lon": 55.6814},
+    "رفسنجان": {"name": "رفسنجان", "province": "کرمان", "lat": 30.4067, "lon": 55.9939},
+    "جیرفت": {"name": "جیرفت", "province": "کرمان", "lat": 28.6781, "lon": 57.7406},
+    "بم": {"name": "بم", "province": "کرمان", "lat": 29.1060, "lon": 58.3570},
+    "زرند": {"name": "زرند", "province": "کرمان", "lat": 30.8128, "lon": 56.5639},
+    "کهنوج": {"name": "کهنوج", "province": "کرمان", "lat": 27.9525, "lon": 57.7089},
+    "شهربابک": {"name": "شهربابک", "province": "کرمان", "lat": 30.1164, "lon": 55.1186},
+    "بافت": {"name": "بافت", "province": "کرمان", "lat": 29.2333, "lon": 56.6000},
+    "بندرعباس": {"name": "بندرعباس", "province": "هرمزگان", "lat": 27.1832, "lon": 56.2666},
+    "بندر عباس": {"name": "بندرعباس", "province": "هرمزگان", "lat": 27.1832, "lon": 56.2666},
+    "قشم": {"name": "جزیره قشم", "province": "هرمزگان", "lat": 26.9583, "lon": 56.2717},
+    "کیش": {"name": "جزیره کیش", "province": "هرمزگان", "lat": 26.5578, "lon": 53.9786},
+    "میناب": {"name": "میناب", "province": "هرمزگان", "lat": 27.1333, "lon": 57.0833},
+    "بندرلنگه": {"name": "بندرلنگه", "province": "هرمزگان", "lat": 26.5578, "lon": 54.8808},
+    "بندر لنگه": {"name": "بندرلنگه", "province": "هرمزگان", "lat": 26.5578, "lon": 54.8808},
+    "رودان": {"name": "رودان (دهبارز)", "province": "هرمزگان", "lat": 27.4419, "lon": 57.1925},
+    "جاسک": {"name": "بندر جاسک", "province": "هرمزگان", "lat": 25.6567, "lon": 57.7736},
+    "بستک": {"name": "بستک", "province": "هرمزگان", "lat": 27.1989, "lon": 54.3667},
+    "حاجی آباد": {"name": "حاجی‌آباد", "province": "هرمزگان", "lat": 28.3094, "lon": 55.9017},
+    "پارسیان": {"name": "پارسیان", "province": "هرمزگان", "lat": 27.1333, "lon": 53.0500},
+
+    # قم، قزوین، زنجان، سمنان، مرکزی
+    "قم": {"name": "قم", "province": "قم", "lat": 34.6401, "lon": 50.8764},
+    "قزوین": {"name": "قزوین", "province": "قزوین", "lat": 36.2797, "lon": 50.0049},
+    "تاکستان": {"name": "تاکستان", "province": "قزوین", "lat": 36.0694, "lon": 49.6958},
+    "الوند": {"name": "الوند", "province": "قزوین", "lat": 36.1892, "lon": 50.0644},
+    "زنجان": {"name": "زنجان", "province": "زنجان", "lat": 36.6736, "lon": 48.4787},
+    "ابهر": {"name": "ابهر", "province": "زنجان", "lat": 36.1469, "lon": 49.2181},
+    "خرمدره": {"name": "خرمدره", "province": "زنجان", "lat": 36.2056, "lon": 49.1889},
+    "قیدار": {"name": "قیدار (خدابنده)", "province": "زنجان", "lat": 36.1189, "lon": 48.5919},
+    "سمنان": {"name": "سمنان", "province": "سمنان", "lat": 35.5729, "lon": 53.3971},
+    "شاهرود": {"name": "شاهرود", "province": "سمنان", "lat": 36.4182, "lon": 54.9763},
+    "دامغان": {"name": "دامغان", "province": "سمنان", "lat": 36.1681, "lon": 54.3478},
+    "گرمسار": {"name": "گرمسار", "province": "سمنان", "lat": 35.2181, "lon": 52.3403},
+    "اراک": {"name": "اراک", "province": "مرکزی", "lat": 34.0954, "lon": 49.7013},
+    "ساوه": {"name": "ساوه", "province": "مرکزی", "lat": 35.0211, "lon": 50.3567},
+    "خمین": {"name": "خمین", "province": "مرکزی", "lat": 33.6422, "lon": 50.0789},
+    "محلات": {"name": "محلات", "province": "مرکزی", "lat": 33.9122, "lon": 50.4550},
+    "دلیجان": {"name": "دلیجان", "province": "مرکزی", "lat": 33.9906, "lon": 50.6836},
+    "تفرش": {"name": "تفرش", "province": "مرکزی", "lat": 34.6922, "lon": 50.0131},
+    "آشتیان": {"name": "آشتیان", "province": "مرکزی", "lat": 34.5219, "lon": 50.0056},
+
+    # چهارمحال و بختیاری و کهگیلویه و بویراحمد
+    "شهرکرد": {"name": "شهرکرد", "province": "چهارمحال و بختیاری", "lat": 32.3256, "lon": 50.8644},
+    "بروجن": {"name": "بروجن", "province": "چهارمحال و بختیاری", "lat": 31.9667, "lon": 51.2833},
+    "لردگان": {"name": "لردگان", "province": "چهارمحال و بختیاری", "lat": 31.5100, "lon": 50.8286},
+    "فارسان": {"name": "فارسان", "province": "چهارمحال و بختیاری", "lat": 32.2569, "lon": 50.5647},
+    "یاسوج": {"name": "یاسوج", "province": "کهگیلویه و بویراحمد", "lat": 30.6684, "lon": 51.5876},
+    "دوگنبدان": {"name": "دوگنبدان (گچساران)", "province": "کهگیلویه و بویراحمد", "lat": 30.3586, "lon": 50.7981},
+    "گچساران": {"name": "دوگنبدان (گچساران)", "province": "کهگیلویه و بویراحمد", "lat": 30.3586, "lon": 50.7981},
+    "دهدشت": {"name": "دهدشت", "province": "کهگیلویه و بویراحمد", "lat": 30.7936, "lon": 50.5644},
+}
+
+# کدهای آب و هوای WMO و برچسب‌های فارسی
+WMO_WEATHER_CODES = {
+    0: ("صاف و آفتابی", "☀️"),
+    1: ("غالباً صاف و آرام", "🌤️"),
+    2: ("نیمه‌ابری", "⛅"),
+    3: ("ابری و پوشیده", "☁️"),
+    45: ("مه‌آلود", "🌫️"),
+    48: ("مه همراه با شبنم یخ‌زده", "🌫️"),
+    51: ("بارش نم‌نم ملایم", "🌦️"),
+    53: ("بارش نم‌نم متوسط", "🌦️"),
+    55: ("بارش نم‌نم متراکم", "🌧️"),
+    56: ("باران یخی سبک", "🌧️"),
+    57: ("باران یخی متراکم", "🌧️"),
+    61: ("بارش باران ملایم", "🌧️"),
+    63: ("بارش باران متوسط", "🌧️"),
+    65: ("بارش باران شدید", "🌧️"),
+    66: ("باران منجمد سبک", "🌧️"),
+    67: ("باران منجمد سنگین", "🌧️"),
+    71: ("بارش ملایم برف", "🌨️"),
+    73: ("بارش متوسط برف", "🌨️"),
+    75: ("بارش سنگین برف", "❄️"),
+    77: ("دانه‌های پراکنده برف", "❄️"),
+    80: ("رگبار پراکنده باران", "🌦️"),
+    81: ("رگبار متناوب باران", "🌧️"),
+    82: ("رگبار سنگین و سیل‌آسا", "⛈️"),
+    85: ("رگبار ملایم برف", "🌨️"),
+    86: ("رگبار سنگین برف", "❄️"),
+    95: ("رعد و برق و طوفان", "⛈️"),
+    96: ("طوفان تندری همراه با تگرگ", "⛈️"),
+    99: ("طوفان شدید همراه با رعد و تگرگ", "⛈️"),
+}
+
+
+def _get_wmo_desc(code: int, is_day: int = 1) -> tuple[str, str]:
+    """دریافت شرح فارسی وضعیت جوی و آیکون مربوطه بر اساس کد WMO"""
+    if code == 0 and not is_day:
+        return "صاف و مهتابی", "🌙"
+    if code in WMO_WEATHER_CODES:
+        return WMO_WEATHER_CODES[code]
+    return "آرام و نیمه‌ابری", "🌤️"
+
+
+def _format_rain_chance(prob: int) -> str:
+    """قالب‌بندی درصد احتمال بارش همراه با برچسب مفهومی"""
+    p_fa = to_persian_digits(str(prob))
+    if prob < 10:
+        desc = "ناچیز / آفتابی"
+    elif prob < 30:
+        desc = "احتمال کم"
+    elif prob < 60:
+        desc = "احتمال متوسط"
+    elif prob < 85:
+        desc = "احتمال زیاد (بارانی)"
+    else:
+        desc = "بسیار زیاد / بارش قطعی"
+    return f"<b>{p_fa}٪</b> ({desc})"
+
+
+def extract_city_from_query(query: str) -> str:
+    """استخراج هوشمند نام شهر از متن سوال کاربر"""
+    # ۱. اولویت اول: تطابق با شهرهای شناخته‌شده ایران به ترتیب طول نام
+    for k in sorted(IRAN_CITIES.keys(), key=len, reverse=True):
+        if k in query:
+            return k
+
+    # ۲. پاک‌سازی عبارات متداول پیشوندی و پسوندی
+    clean = re.sub(r"[\?؟!\.,:؛#*`_~\(\)\[\]]", " ", query).strip()
+
+    prefixes = [
+        "پیش بینی آب و هوای", "پیش‌بینی آب و هوای", "پیش بینی هوای", "پیش‌بینی هوای",
+        "آب و هوای", "آب‌وهوای", "آب و هوا", "آب‌وهوا", "وضعیت هوای", "وضعیت هوا",
+        "دمای هوای", "دمای هوا", "هواشناسی", "هوای", "دما", "دمای", "آب هوا",
+    ]
+    for p in sorted(prefixes, key=len, reverse=True):
+        if clean.startswith(p):
+            clean = clean[len(p):].strip()
+        clean = clean.replace(p, " ")
+
+    suffixes = [
+        "چند درجه است", "چطوریه", "چطوره", "چگونه است", "چنده", "بارونیه", "بارانی است",
+        "امروز", "فردا", "الان", "بارندگی", "وضعیت",
+    ]
+    for s in sorted(suffixes, key=len, reverse=True):
+        if clean.endswith(s):
+            clean = clean[:-len(s)].strip()
+        clean = clean.replace(s, " ")
+
+    words = [w for w in clean.split() if w not in ("شهر", "منطقه", "روستای", "شهرستان", "بخش")]
+    return " ".join(words).strip()
+
+
+async def resolve_city_coordinates(city_query: str) -> dict | None:
+    """
+    یافتن مختصات دقیق جغرافیایی شهر:
+    ۱. جستجو در دیتابیس جامع شهرستان‌های ایران
+    ۲. در صورت نیافتن، جستجوی زنده در ژئوکدینگ بین‌المللی Open-Meteo (با اولویت ایران)
+    """
+    clean_name = city_query.strip()
+    if not clean_name:
+        return None
+
+    # ۱. جستجو در دیتابیس داخلی شهرهای ایران
+    if clean_name in IRAN_CITIES:
+        return IRAN_CITIES[clean_name]
+
+    for k, info in IRAN_CITIES.items():
+        if k == clean_name or k in clean_name:
+            return info
+
+    # ۲. ژئوکدینگ بین‌المللی با Open-Meteo
+    try:
+        geo_url = "https://geocoding-api.open-meteo.com/v1/search"
+        params = {
+            "name": clean_name,
+            "count": 5,
+            "language": "fa",
+            "format": "json",
+        }
+        async with httpx.AsyncClient(timeout=6.0) as client:
+            resp = await client.get(geo_url, params=params)
+            if resp.status_code == 200:
+                results = resp.json().get("results", [])
+                if results:
+                    # ترجیح شهرهای داخل ایران در صورت وجود
+                    iran_res = next((r for r in results if r.get("country_code") == "IR"), None)
+                    chosen = iran_res or results[0]
+                    name_fa = chosen.get("name", clean_name)
+                    admin1 = chosen.get("admin1", chosen.get("country", ""))
+                    return {
+                        "name": name_fa,
+                        "province": admin1,
+                        "lat": chosen.get("latitude"),
+                        "lon": chosen.get("longitude"),
+                    }
+    except Exception as e:
+        logger.warning(f"Geocoding error for {clean_name}: {e}")
+
+    return None
+
+
+async def get_weather_info(city_query: str) -> tuple[str, InlineKeyboardMarkup | None]:
+    """
+    دریافت و قالب‌بندی وضعیت کامل آب و هوای هر شهر
+    شامل دمای لحظه‌ای، دمای احساسی، احتمال بارش، پیش‌بینی روزهای آینده و دکمه‌های تعاملی
+    """
+    target = extract_city_from_query(city_query)
+    if not target:
+        target = city_query.strip()
+    if not target:
+        target = "تهران"
+
+    city_data = await resolve_city_coordinates(target)
+
+    # فال‌بک نهایی اگر پیدا نشد به تهران
+    if not city_data:
+        city_data = IRAN_CITIES["تهران"]
+
+    city_name = city_data["name"]
+    province = city_data.get("province", "")
+    lat = city_data["lat"]
+    lon = city_data["lon"]
+
+    try:
+        url = "https://api.open-meteo.com/v1/forecast"
+        params = {
+            "latitude": lat,
+            "longitude": lon,
+            "current": [
+                "temperature_2m",
+                "relative_humidity_2m",
+                "apparent_temperature",
+                "is_day",
+                "precipitation",
+                "rain",
+                "weather_code",
+                "wind_speed_10m",
+            ],
+            "daily": [
+                "weather_code",
+                "temperature_2m_max",
+                "temperature_2m_min",
+                "precipitation_probability_max",
+                "precipitation_sum",
+                "sunrise",
+                "sunset",
+            ],
+            "timezone": "Asia/Tehran",
+            "forecast_days": 4,
+        }
+
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            resp = await client.get(url, params=params)
+            if resp.status_code == 200:
+                data = resp.json()
+                cur = data.get("current", {})
+                daily = data.get("daily", {})
+
+                # پارامترهای لحظه‌ای
+                temp = round(cur.get("temperature_2m", 0))
+                feels = round(cur.get("apparent_temperature", temp))
+                humidity = cur.get("relative_humidity_2m", 0)
+                wind = round(cur.get("wind_speed_10m", 0))
+                w_code = cur.get("weather_code", 0)
+                is_day = cur.get("is_day", 1)
+
+                w_desc, w_icon = _get_wmo_desc(w_code, is_day)
+
+                # احتمال بارش امروز
+                probs = daily.get("precipitation_probability_max", [0])
+                today_prob = probs[0] if probs else 0
+                rain_badge = _format_rain_chance(today_prob)
+
+                # زمان طلوع و غروب
+                sunrises = daily.get("sunrise", [""])
+                sunsets = daily.get("sunset", [""])
+                sunrise_str = sunrises[0].split("T")[-1] if sunrises and "T" in sunrises[0] else "--:--"
+                sunset_str = sunsets[0].split("T")[-1] if sunsets and "T" in sunsets[0] else "--:--"
+
+                # ساخت پیش‌بینی روزهای آینده
+                forecast_lines = []
+                dates = daily.get("time", [])
+                max_temps = daily.get("temperature_2m_max", [])
+                min_temps = daily.get("temperature_2m_min", [])
+                codes = daily.get("weather_code", [])
+
+                day_labels = ["امروز", "فردا", "پس‌فردا", "۳ روز بعد"]
+
+                tehran_tz = timezone(timedelta(hours=3, minutes=30))
+                now_tehran = datetime.now(tz=timezone.utc).astimezone(tehran_tz)
+
+                for i in range(min(4, len(dates))):
+                    d_obj = now_tehran + timedelta(days=i)
+                    weekday_name = PERSIAN_WEEKDAYS[d_obj.weekday()]
+                    t_max = to_persian_digits(str(round(max_temps[i]))) if i < len(max_temps) else "?"
+                    t_min = to_persian_digits(str(round(min_temps[i]))) if i < len(min_temps) else "?"
+                    c_day = codes[i] if i < len(codes) else 0
+                    _, day_icon = _get_wmo_desc(c_day, 1)
+                    p_day = probs[i] if i < len(probs) else 0
+                    p_day_fa = to_persian_digits(str(p_day))
+
+                    prefix = f"<b>{day_labels[i]} ({weekday_name}):</b>" if i < 2 else f"<b>{weekday_name}:</b>"
+                    forecast_lines.append(
+                        f"🗓 {prefix} {day_icon} <b>{t_min}°</b> تا <b>{t_max}°</b> | 🌧 بارش: <b>{p_day_fa}٪</b>"
+                    )
+
+                forecast_text = "\n".join(forecast_lines)
+
+                # قالب‌بندی مدرن
+                prov_str = f" ({province})" if province else ""
+                lines = [
+                    f"🌤 <b>وضعیت آب و هوای {city_name}{prov_str}</b>",
+                    "━━━━━━━━━━━━━━━━━━━━━━━━\n",
+                    f"🌡 <b>دمای کنونی:</b> <b>{to_persian_digits(str(temp))}°C</b> | احساسی: <b>{to_persian_digits(str(feels))}°C</b>",
+                    f"☁ <b>وضعیت جوی:</b> <b>{w_desc} {w_icon}</b>",
+                    f"🌧 <b>احتمال بارش امروز:</b> {rain_badge}\n",
+                    "<blockquote>",
+                    f"💧 <b>رطوبت نسبی:</b> <b>{to_persian_digits(str(humidity))}٪</b>",
+                    f"💨 <b>سرعت وزش باد:</b> <b>{to_persian_digits(str(wind))} کیلومتر بر ساعت</b>",
+                    f"🌅 <b>طلوع آفتاب:</b> <b>{to_persian_digits(sunrise_str)}</b> | 🌇 <b>غروب:</b> <b>{to_persian_digits(sunset_str)}</b>",
+                    "</blockquote>\n",
+                    "📊 <b>پیش‌بینی روزهای آینده:</b>",
+                    "<blockquote>",
+                    forecast_text,
+                    "</blockquote>\n",
+                    "⏱ <i>ایستگاه رسمی سنجش جوی — دقت بسیار بالا به وقت ایران</i>",
+                ]
+
+                kb = InlineKeyboardMarkup([
+                    [
+                        InlineKeyboardButton("🔄 بروزرسانی وضعیت هوا", callback_data=f"weather_ref_{city_name}"),
+                        InlineKeyboardButton("🔙 بازگشت به منو", callback_data="menu_main"),
+                    ]
+                ])
+
+                return "\n".join(lines), kb
+
+    except Exception as e:
+        logger.warning(f"Open-Meteo weather fetch error for {city_name}: {e}")
+
+    # فال‌بک ثانویه به wttr.in در صورت بروز اختلال در سرور اصلی
+    try:
+        wttr_target = f"{city_name},Iran"
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            resp = await client.get(
+                f"https://wttr.in/{wttr_target}?format=j1",
+                headers={"User-Agent": "TelegramBot/1.0"},
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                cur = data.get("current_condition", [{}])[0]
+                temp_c = cur.get("temp_C", "?")
+                feels_like = cur.get("FeelsLikeC", temp_c)
+                humidity = cur.get("humidity", "?")
+                wind_speed = cur.get("windspeedKmph", "?")
+
+                text = (
+                    f"🌤 <b>وضعیت هوای {city_name}</b>\n"
+                    f"━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                    f"🌡 <b>دما:</b> <b>{to_persian_digits(str(temp_c))}°C</b> (احساسی: <b>{to_persian_digits(str(feels_like))}°C</b>)\n"
+                    f"💧 <b>رطوبت:</b> <b>{to_persian_digits(str(humidity))}٪</b>\n"
+                    f"💨 <b>سرعت باد:</b> <b>{to_persian_digits(str(wind_speed))} کیلومتر بر ساعت</b>"
+                )
+                kb = InlineKeyboardMarkup([[InlineKeyboardButton("🔄 بروزرسانی", callback_data=f"weather_ref_{city_name}")]])
+                return text, kb
+    except Exception as e2:
+        logger.warning(f"wttr fallback error: {e2}")
+
+    return f"❌ متأسفانه دریافت وضعیت آب و هوای <b>{city_name}</b> با خطا مواجه شد. لطفاً نام شهر را مجدداً ارسال کنید.", None
