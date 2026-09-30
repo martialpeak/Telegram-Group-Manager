@@ -2,10 +2,11 @@
 هندلرهای Callback — فیدبک، رای‌گیری، گزارش، عمومی
 """
 
+import html
 import logging
 from datetime import datetime, timedelta, timezone
 
-from telegram import Update
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
 from config import ADMIN_IDS
@@ -205,8 +206,13 @@ async def on_general_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         kb = get_start_keyboard(bot_username, is_adm, is_priv, user.id)
         try:
             await query.edit_message_text(text, parse_mode="HTML", reply_markup=kb)
-        except Exception:
-            pass
+        except Exception as e:
+            if "Message is not modified" not in str(e):
+                logger.warning(f"Failed to edit message in help_main: {e}")
+                try:
+                    await query.edit_message_text(text, reply_markup=kb)
+                except Exception:
+                    pass
         return
 
     elif data in ("help_user", "help_admin", "help_ai"):
@@ -344,13 +350,17 @@ async def on_general_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
                     ],
                     [
                         InlineKeyboardButton("⚡ رمزارزها (BTC/TON)", callback_data="prc_crypto"),
-                        InlineKeyboardButton("🔙 بازگشت به منو", callback_data="prc_menu"),
+                    ],
+                    [
+                        InlineKeyboardButton("🔙 منوی قیمت‌ها", callback_data="prc_menu"),
+                        InlineKeyboardButton("🏠 منوی اصلی", callback_data="menu_main"),
                     ]
                 ])
                 try:
                     await query.edit_message_text(curr, parse_mode="HTML", reply_markup=kb)
-                except Exception:
-                    pass
+                except Exception as e:
+                    if "Message is not modified" not in str(e):
+                        logger.warning(f"Error editing prc_currency: {e}")
             else:
                 await query.answer("❌ در حال حاضر دریافت نرخ ارز با مشکل مواجه شد.", show_alert=True)
             return
@@ -365,13 +375,17 @@ async def on_general_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
                     ],
                     [
                         InlineKeyboardButton("⚡ رمزارزها (BTC/TON)", callback_data="prc_crypto"),
-                        InlineKeyboardButton("🔙 بازگشت به منو", callback_data="prc_menu"),
+                    ],
+                    [
+                        InlineKeyboardButton("🔙 منوی قیمت‌ها", callback_data="prc_menu"),
+                        InlineKeyboardButton("🏠 منوی اصلی", callback_data="menu_main"),
                     ]
                 ])
                 try:
                     await query.edit_message_text(gold, parse_mode="HTML", reply_markup=kb)
-                except Exception:
-                    pass
+                except Exception as e:
+                    if "Message is not modified" not in str(e):
+                        logger.warning(f"Error editing prc_gold: {e}")
             else:
                 await query.answer("❌ اطلاعات طلا و سکه دریافت نشد.", show_alert=True)
             return
@@ -386,13 +400,17 @@ async def on_general_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
                     ],
                     [
                         InlineKeyboardButton("🪙 طلا و انواع سکه", callback_data="prc_gold"),
-                        InlineKeyboardButton("🔙 بازگشت به منو", callback_data="prc_menu"),
+                    ],
+                    [
+                        InlineKeyboardButton("🔙 منوی قیمت‌ها", callback_data="prc_menu"),
+                        InlineKeyboardButton("🏠 منوی اصلی", callback_data="menu_main"),
                     ]
                 ])
                 try:
                     await query.edit_message_text(crypto, parse_mode="HTML", reply_markup=kb)
-                except Exception:
-                    pass
+                except Exception as e:
+                    if "Message is not modified" not in str(e):
+                        logger.warning(f"Error editing prc_crypto: {e}")
             else:
                 await query.answer("❌ ارتباط با بازار رمزارز برقرار نشد.", show_alert=True)
             return
@@ -413,13 +431,17 @@ async def on_general_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
                     ],
                     [
                         InlineKeyboardButton("🔄 بروزرسانی قیمت", callback_data=f"prc_it_{enc[:30]}"),
-                        InlineKeyboardButton("🔙 بازگشت به منو", callback_data="prc_menu"),
+                    ],
+                    [
+                        InlineKeyboardButton("🔙 منوی قیمت‌ها", callback_data="prc_menu"),
+                        InlineKeyboardButton("🏠 منوی اصلی", callback_data="menu_main"),
                     ]
                 ])
                 try:
                     await query.edit_message_text(prod["text"], parse_mode="HTML", reply_markup=kb, disable_web_page_preview=True)
-                except Exception:
-                    pass
+                except Exception as e:
+                    if "Message is not modified" not in str(e):
+                        logger.warning(f"Error editing prc_it_: {e}")
             else:
                 await query.answer("❌ کالایی در ترب یافت نشد.", show_alert=True)
             return
@@ -442,20 +464,24 @@ async def on_general_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
                     InlineKeyboardButton("💻 قیمت لپ‌تاپ", callback_data="prc_it_لپ تاپ"),
                     InlineKeyboardButton("🎮 قیمت کنسول PS5", callback_data="prc_it_پلی استیشن 5"),
                 ],
+                [
+                    InlineKeyboardButton("🔙 بازگشت به منوی اصلی", callback_data="menu_main"),
+                ],
             ])
             try:
                 await query.edit_message_text(res["text"], parse_mode="HTML", reply_markup=kb)
-            except Exception:
-                pass
+            except Exception as e:
+                if "Message is not modified" not in str(e):
+                    logger.warning(f"Error editing prc_menu: {e}")
             return
 
     elif data.startswith("menu_"):
         await query.answer()
-        chat = query.message.chat
+        chat = query.message.chat if query.message else None
         user = query.from_user
 
         if data == "menu_main":
-            name = user.first_name if user else "دوست"
+            name = html.escape(user.first_name) if user and user.first_name else "دوست"
             text = (
                 f"🤖 <b>منوی هوشمند و خدمات گروه</b>\n"
                 f"━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
@@ -490,8 +516,30 @@ async def on_general_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
             ])
             try:
                 await query.edit_message_text(text, parse_mode="HTML", reply_markup=kb)
-            except Exception:
-                pass
+            except Exception as e:
+                err_str = str(e)
+                if "Message is not modified" in err_str:
+                    try:
+                        await query.answer("شما هم‌اکنون در منوی اصلی هستید.")
+                    except Exception:
+                        pass
+                else:
+                    logger.warning(f"Failed to edit message in menu_main: {e}")
+                    plain_text = (
+                        "🤖 منوی هوشمند و خدمات گروه\n"
+                        "━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                        f"👋 سلام {user.first_name if user and user.first_name else 'دوست'} عزیز، به داشبورد تعاملی خوش آمدید!\n"
+                        "برای دسترسی سریع و بدون اسپم، یکی از گزینه‌های زیر را انتخاب کنید:"
+                    )
+                    try:
+                        await query.edit_message_text(plain_text, reply_markup=kb)
+                    except Exception as e2:
+                        logger.warning(f"Plain text fallback in menu_main failed: {e2}")
+                        try:
+                            if query.message:
+                                await query.message.reply_text(text, parse_mode="HTML", reply_markup=kb)
+                        except Exception as e3:
+                            logger.error(f"Reply fallback in menu_main failed: {e3}")
             return
 
         elif data == "menu_profile":
@@ -499,13 +547,14 @@ async def on_general_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
             text, kb = await get_profile_card_data(user, chat, context)
             try:
                 await query.edit_message_text(text, parse_mode="HTML", reply_markup=kb)
-            except Exception:
-                pass
+            except Exception as e:
+                if "Message is not modified" not in str(e):
+                    logger.warning(f"Error in menu_profile: {e}")
             return
 
         elif data == "menu_top":
             from bot.utils.helpers import to_persian_digits
-            top_users = await db.get_top_users(chat.id, limit=10)
+            top_users = await db.get_top_users(chat.id, limit=10) if chat else []
             rank_icons = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
             lines = [
                 "🏆 <b>فعال‌ترین و برترین کاربران گروه بر اساس فعالیت:</b>",
@@ -516,7 +565,8 @@ async def on_general_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
                 for i, u in enumerate(top_users):
                     icon = rank_icons[i] if i < len(rank_icons) else f"#{i+1}"
                     pts_fa = to_persian_digits(f"{u['points']:,}")
-                    u_name = u["full_name"] or f"کاربر {u['user_id']}"
+                    raw_name = u["full_name"] or f"کاربر {u['user_id']}"
+                    u_name = html.escape(raw_name)
                     lines.append(f"{icon} <b>{u_name}</b> — <b>{pts_fa}</b> امتیاز فعالیت")
             else:
                 lines.append("هنوز فعالیتی ثبت نشده است.")
@@ -532,13 +582,14 @@ async def on_general_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
             ])
             try:
                 await query.edit_message_text("\n".join(lines), parse_mode="HTML", reply_markup=kb)
-            except Exception:
-                pass
+            except Exception as e:
+                if "Message is not modified" not in str(e):
+                    logger.warning(f"Error in menu_top: {e}")
             return
 
         elif data == "menu_topkarma":
             from bot.utils.helpers import to_persian_digits
-            top_list = await db.get_top_karma_users(chat.id, limit=10)
+            top_list = await db.get_top_karma_users(chat.id, limit=10) if chat else []
             rank_icons = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
             lines = [
                 "⭐ <b>محبوب‌ترین و مفیدترین اعضای گروه (بر اساس کارما):</b>",
@@ -549,7 +600,8 @@ async def on_general_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
                 for i, item in enumerate(top_list):
                     icon = rank_icons[i] if i < len(rank_icons) else f"#{i+1}"
                     k_fa = to_persian_digits(str(item["karma"]))
-                    u_name = item["name"] or f"کاربر {item['user_id']}"
+                    raw_name = item["name"] or f"کاربر {item['user_id']}"
+                    u_name = html.escape(raw_name)
                     lines.append(f"{icon} <b>{u_name}</b> — <b>{k_fa}</b> کارما ⭐")
             else:
                 lines.append("هنوز امتیازی برای اعضا ثبت نشده است.")
@@ -566,8 +618,9 @@ async def on_general_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
             ])
             try:
                 await query.edit_message_text("\n".join(lines), parse_mode="HTML", reply_markup=kb)
-            except Exception:
-                pass
+            except Exception as e:
+                if "Message is not modified" not in str(e):
+                    logger.warning(f"Error in menu_topkarma: {e}")
             return
 
         elif data == "menu_prices":
@@ -582,13 +635,15 @@ async def on_general_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
                     InlineKeyboardButton("⚡ بازار رمزارزها (BTC/TON)", callback_data="prc_crypto"),
                 ],
                 [
+                    InlineKeyboardButton("🔍 جستجوی کالا و اجناس (ترب)", callback_data="prc_menu"),
                     InlineKeyboardButton("🔙 بازگشت به منو", callback_data="menu_main"),
                 ]
             ])
             try:
                 await query.edit_message_text(res["text"], parse_mode="HTML", reply_markup=kb)
-            except Exception:
-                pass
+            except Exception as e:
+                if "Message is not modified" not in str(e):
+                    logger.warning(f"Error in menu_prices: {e}")
             return
 
         elif data == "menu_datetime":
@@ -602,8 +657,9 @@ async def on_general_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
             ])
             try:
                 await query.edit_message_text(txt, parse_mode="HTML", reply_markup=kb)
-            except Exception:
-                pass
+            except Exception as e:
+                if "Message is not modified" not in str(e):
+                    logger.warning(f"Error in menu_datetime: {e}")
             return
 
         elif data == "menu_rules":
@@ -623,8 +679,9 @@ async def on_general_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
             ])
             try:
                 await query.edit_message_text(rules_text, parse_mode="HTML", reply_markup=kb)
-            except Exception:
-                pass
+            except Exception as e:
+                if "Message is not modified" not in str(e):
+                    logger.warning(f"Error in menu_rules: {e}")
             return
 
         elif data == "menu_help":
@@ -635,8 +692,9 @@ async def on_general_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
             ])
             try:
                 await query.edit_message_text(txt, parse_mode="HTML", reply_markup=kb)
-            except Exception:
-                pass
+            except Exception as e:
+                if "Message is not modified" not in str(e):
+                    logger.warning(f"Error in menu_help: {e}")
             return
 
         elif data == "menu_games":
@@ -645,8 +703,9 @@ async def on_general_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
                 games = await get_free_games(limit=5)
                 text, kb = format_free_games_message(games)
                 await query.edit_message_text(text, parse_mode="HTML", reply_markup=kb, disable_web_page_preview=True)
-            except Exception:
-                pass
+            except Exception as e:
+                if "Message is not modified" not in str(e):
+                    logger.warning(f"Error in menu_games: {e}")
             return
 
         elif data == "menu_news":
@@ -655,8 +714,9 @@ async def on_general_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
                 news = await get_tech_news(limit=5)
                 text, kb = format_tech_news_message(news)
                 await query.edit_message_text(text, parse_mode="HTML", reply_markup=kb, disable_web_page_preview=True)
-            except Exception:
-                pass
+            except Exception as e:
+                if "Message is not modified" not in str(e):
+                    logger.warning(f"Error in menu_news: {e}")
             return
 
         elif data == "menu_weather":
@@ -685,8 +745,9 @@ async def on_general_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
                     ]
                 ])
                 await query.edit_message_text(text, parse_mode="HTML", reply_markup=weather_kb)
-            except Exception:
-                pass
+            except Exception as e:
+                if "Message is not modified" not in str(e):
+                    logger.warning(f"Error in menu_weather: {e}")
             return
 
         elif data == "menu_close":

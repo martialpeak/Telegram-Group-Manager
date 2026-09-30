@@ -4,6 +4,7 @@
 پیش‌بینی چند روزه و قالب‌بندی مدرن تلگرام (HTML Blockquote)
 """
 
+import html
 import logging
 import re
 from datetime import datetime, timezone, timedelta
@@ -703,9 +704,14 @@ async def get_weather_info(city_query: str) -> tuple[str, InlineKeyboardMarkup |
                     f"💧 <b>رطوبت:</b> <b>{to_persian_digits(str(humidity))}٪</b>\n"
                     f"💨 <b>سرعت باد:</b> <b>{to_persian_digits(str(wind_speed))} کیلومتر بر ساعت</b>"
                 )
-                kb = InlineKeyboardMarkup([[InlineKeyboardButton("🔄 بروزرسانی", callback_data=f"weather_ref_{city_name}")]])
+                kb = InlineKeyboardMarkup([
+                    [
+                        InlineKeyboardButton("🔄 بروزرسانی", callback_data=f"weather_ref_{city_name}"),
+                        InlineKeyboardButton("🔙 بازگشت به منو", callback_data="menu_main"),
+                    ]
+                ])
                 return text, kb
     except Exception as e2:
         logger.warning(f"wttr fallback error: {e2}")
 
-    return f"❌ متأسفانه دریافت وضعیت آب و هوای <b>{city_name}</b> با خطا مواجه شد. لطفاً نام شهر را مجدداً ارسال کنید.", None
+    return f"❌ متأسفانه دریافت وضعیت آب و هوای <b>{html.escape(city_name)}</b> با خطا مواجه شد. لطفاً نام شهر را مجدداً ارسال کنید.", None

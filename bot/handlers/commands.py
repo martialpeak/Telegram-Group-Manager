@@ -2,6 +2,7 @@
 دستورات ربات تلگرام
 """
 
+import html
 import logging
 from datetime import datetime, timedelta, timezone
 
@@ -130,6 +131,7 @@ def get_start_keyboard(bot_username: str, is_admin: bool, is_private: bool, user
     ])
     rows.append([
         InlineKeyboardButton("🤖 امکانات هوش مصنوعی", callback_data="help_ai"),
+        InlineKeyboardButton("📋 داشبورد و خدمات", callback_data="menu_main"),
     ])
     if not is_private:
         rows.append([
@@ -220,7 +222,10 @@ def get_help_keyboard(tab: str, is_admin: bool) -> InlineKeyboardMarkup:
     for i in range(0, len(btns), 2):
         rows.append(btns[i:i+2])
 
-    rows.append([InlineKeyboardButton("🔙 بازگشت به منوی اصلی", callback_data="help_main")])
+    rows.append([
+        InlineKeyboardButton("🔙 بازگشت به راهنما", callback_data="help_main"),
+        InlineKeyboardButton("🏠 منوی اصلی", callback_data="menu_main"),
+    ])
     return InlineKeyboardMarkup(rows)
 
 
@@ -1972,6 +1977,9 @@ async def cmd_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 InlineKeyboardButton("💻 قیمت لپ‌تاپ", callback_data="prc_it_لپ تاپ"),
                 InlineKeyboardButton("🎮 قیمت کنسول PS5", callback_data="prc_it_پلی استیشن 5"),
             ],
+            [
+                InlineKeyboardButton("🔙 بازگشت به منوی اصلی", callback_data="menu_main"),
+            ],
         ])
         await message.reply_text(res["text"], parse_mode="HTML", reply_markup=kb)
         return
@@ -2008,6 +2016,11 @@ async def cmd_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
             InlineKeyboardButton("🪙 طلا و انواع سکه", callback_data="prc_gold"),
         ])
 
+    if kb_rows:
+        kb_rows.append([
+            InlineKeyboardButton("🔙 منوی قیمت‌ها", callback_data="prc_menu"),
+            InlineKeyboardButton("🏠 منوی اصلی", callback_data="menu_main"),
+        ])
     kb = InlineKeyboardMarkup(kb_rows) if kb_rows else None
 
     try:
@@ -2041,7 +2054,7 @@ async def get_profile_card_data(target_user, chat, context) -> tuple[str, Inline
     from bot.core.user_levels import level_label, get_config
 
     uid = target_user.id
-    name = target_user.first_name or "کاربر"
+    name = html.escape(target_user.first_name or "کاربر")
     uname = f"@{target_user.username}" if target_user.username else "ندارد"
 
     # دریافت آمارها از دیتابیس
@@ -2159,7 +2172,8 @@ async def cmd_topkarma(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for i, item in enumerate(top_list):
         icon = rank_icons[i] if i < len(rank_icons) else f"#{i+1}"
         k_fa = to_persian_digits(str(item["karma"]))
-        u_name = item["name"] or f"کاربر {item['user_id']}"
+        raw_name = item["name"] or f"کاربر {item['user_id']}"
+        u_name = html.escape(raw_name)
         lines.append(f"{icon} <b>{u_name}</b> — <b>{k_fa}</b> امتیاز کارما ⭐")
 
     lines.append("</blockquote>\n")
@@ -2188,7 +2202,7 @@ async def cmd_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not message:
         return
     user = message.from_user
-    name = user.first_name if user else "دوست"
+    name = html.escape(user.first_name) if user and user.first_name else "دوست"
 
     text = (
         f"🤖 <b>منوی هوشمند و خدمات گروه</b>\n"
