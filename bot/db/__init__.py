@@ -30,6 +30,9 @@ from .database import (
     # points & karma & badges
     get_points, add_points, get_top_users,
     add_karma, get_karma, get_top_karma_users, get_user_badges,
+    # announcements
+    set_announcement_setting, get_announcement_settings,
+    get_subscribed_announcement_chats, update_last_announced,
 )
 
 __all__ = [
@@ -52,4 +55,7 @@ __all__ = [
     "get_violation_stats", "get_user_daily_stats",
     "get_points", "add_points", "get_top_users",
     "add_karma", "get_karma", "get_top_karma_users", "get_user_badges",
+    "set_announcement_setting", "get_announcement_settings",
+    "get_subscribed_announcement_chats", "update_last_announced",
 ]
+

@@ -44,11 +44,106 @@ async def _daily_scheduler():
             logger.warning(f"daily scheduler error: {e}")
 
 
+async def _announcements_scheduler(application):
+    """
+    بررسی دوره‌ای و اعلان خودکار آفرهای بازی رایگان و اخبار فناوری به گروه‌های عضو
+    """
+    import asyncio
+    from bot.core.news_deals import get_free_games, get_tech_news
+    from telegram import InlineKeyboardMarkup, InlineKeyboardButton
+
+    await asyncio.sleep(120)  # تأخیر ۲ دقیقه‌ای اولیه پس از شروع
+
+    while True:
+        try:
+            # ۱. بررسی آفرهای بازی رایگان برای گروه‌های عضو
+            game_chats = await db.get_subscribed_announcement_chats("games")
+            if game_chats:
+                games = await get_free_games(limit=1)
+                if games:
+                    latest = games[0]
+                    g_title = latest["title"]
+                    text = (
+                        "🎁 <b>آفر جدید و بازی رایگان ویژه!</b>\n"
+                        "━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                        f"🕹 <b>{g_title}</b>\n"
+                        "<blockquote>"
+                        f"📱 <b>پلتفرم:</b> <b>{latest['platform']}</b>\n"
+                        f"💰 <b>ارزش اصلی:</b> <b>{latest['worth']}</b> ➔ <b>۱۰۰٪ رایگان!</b>\n"
+                        f"⏰ <b>مهلت دریافت:</b>\n   <b>{latest['end_date_shamsi']}</b>\n"
+                        f"🔗 <a href=\"{latest['link']}\">جهت دریافت رایگان اینجا کلیک کنید</a>"
+                        "</blockquote>\n\n"
+                        "💡 <i>نکته: بازی پس از فعال‌سازی برای همیشه در اکانت شما باقی می‌ماند.</i>"
+                    )
+                    kb = InlineKeyboardMarkup([
+                        [InlineKeyboardButton("📥 دریافت مستقیم بازی", url=latest["link"])],
+                        [InlineKeyboardButton("🎮 مشاهده سایر بازی‌های رایگان", callback_data="menu_games")],
+                    ])
+                    for chat_id in game_chats:
+                        try:
+                            st = await db.get_announcement_settings(chat_id)
+                            if st.get("last_game_title") != g_title:
+                                await application.bot.send_message(
+                                    chat_id=chat_id,
+                                    text=text,
+                                    parse_mode="HTML",
+                                    reply_markup=kb,
+                                    disable_web_page_preview=True,
+                                )
+                                await db.update_last_announced(chat_id, "game", g_title)
+                                await asyncio.sleep(1.5)
+                        except Exception as ce:
+                            logger.warning(f"Could not send game announcement to {chat_id}: {ce}")
+
+            # ۲. بررسی اخبار فناوری و هوش مصنوعی برای گروه‌های عضو
+            news_chats = await db.get_subscribed_announcement_chats("news")
+            if news_chats:
+                news_items = await get_tech_news(limit=1)
+                if news_items:
+                    n_item = news_items[0]
+                    n_title = n_item["title"]
+                    n_text = (
+                        "📢 <b>فوری / تازه‌ترین خبر فناوری و هوش مصنوعی:</b>\n"
+                        "━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                        f"📌 <b>{n_title}</b>\n"
+                        "<blockquote>"
+                        f"📝 {n_item['desc']}...\n\n"
+                        f"🏷 <i>دسته‌بندی: {n_item['tag']} | منبع: {n_item['source']}</i>\n"
+                        f"🔗 <a href=\"{n_item['link']}\">مطالعه کامل خبر</a>"
+                        "</blockquote>"
+                    )
+                    n_kb = InlineKeyboardMarkup([
+                        [InlineKeyboardButton("📰 مطالعه کامل خبر", url=n_item["link"])],
+                        [InlineKeyboardButton("🌐 سایر اخبار امروز", callback_data="news_cat_all")],
+                    ])
+                    for chat_id in news_chats:
+                        try:
+                            st = await db.get_announcement_settings(chat_id)
+                            if st.get("last_news_title") != n_title:
+                                await application.bot.send_message(
+                                    chat_id=chat_id,
+                                    text=n_text,
+                                    parse_mode="HTML",
+                                    reply_markup=n_kb,
+                                    disable_web_page_preview=True,
+                                )
+                                await db.update_last_announced(chat_id, "news", n_title)
+                                await asyncio.sleep(1.5)
+                        except Exception as ce:
+                            logger.warning(f"Could not send news announcement to {chat_id}: {ce}")
+
+        except Exception as e:
+            logger.warning(f"announcements scheduler error: {e}")
+
+        await asyncio.sleep(7200)  # هر ۲ ساعت یکبار
+
+
 async def post_init(application):
     await db.init_db()
     # scheduler برای پاک کردن اخطارهای قدیمی — هر ۲۴ ساعت
     import asyncio
     asyncio.create_task(_daily_scheduler())
+    asyncio.create_task(_announcements_scheduler(application))
     logger.info("✅ پایگاه داده آماده شد.")
     logger.info("🚀 ربات در حال اجرا است.")
 
@@ -159,10 +254,21 @@ def main():
     app.add_handler(CommandHandler("menu", handlers.cmd_menu))
     app.add_handler(CommandHandler("panel", handlers.cmd_menu))
     app.add_handler(CommandHandler("dashboard", handlers.cmd_menu))
+    app.add_handler(CommandHandler("freegames", handlers.cmd_free_games))
+    app.add_handler(CommandHandler("games", handlers.cmd_free_games))
+    app.add_handler(CommandHandler("deals", handlers.cmd_free_games))
+    app.add_handler(CommandHandler("bazi", handlers.cmd_free_games))
+    app.add_handler(CommandHandler("technews", handlers.cmd_tech_news))
+    app.add_handler(CommandHandler("news", handlers.cmd_tech_news))
+    app.add_handler(CommandHandler("akhbar", handlers.cmd_tech_news))
+    app.add_handler(CommandHandler("ainews", handlers.cmd_tech_news))
+    app.add_handler(CommandHandler("vpnnews", handlers.cmd_tech_news))
+    app.add_handler(CommandHandler("autogames", handlers.cmd_autogames))
+    app.add_handler(CommandHandler("autonews", handlers.cmd_autonews))
 
     # ── Callback ها ───────────────────────────────────────────────────────────
     app.add_handler(CallbackQueryHandler(handlers.on_report_callback,  pattern=r"^rpt_"))
-    app.add_handler(CallbackQueryHandler(handlers.on_general_callback, pattern=r"^(rules|myrank_|tbtn_|help_|ainf_|qunb_|prc_|dt_|menu_|prof_)"))
+    app.add_handler(CallbackQueryHandler(handlers.on_general_callback, pattern=r"^(rules|myrank_|tbtn_|help_|ainf_|qunb_|prc_|dt_|menu_|prof_|game_|news_)"))
     app.add_handler(CallbackQueryHandler(handlers.on_feedback_callback, pattern=r"^fb_"))
     app.add_handler(CallbackQueryHandler(handlers.on_feedback_callback, pattern=r"^vote_"))
     app.add_handler(CallbackQueryHandler(handlers.on_admin_answer_callback, pattern=r"^adm_"))

@@ -197,6 +197,16 @@ async def init_db():
             created_at   TEXT DEFAULT (datetime('now'))
         );
 
+        -- تنظیمات ارسال خودکار آفر بازی‌های رایگان و اخبار تکنولوژی به گروه‌ها
+        CREATE TABLE IF NOT EXISTS group_announcements (
+            chat_id         INTEGER PRIMARY KEY,
+            games_enabled   INTEGER NOT NULL DEFAULT 0,
+            news_enabled    INTEGER NOT NULL DEFAULT 0,
+            last_game_title TEXT,
+            last_news_title TEXT,
+            updated_at      TEXT DEFAULT (datetime('now'))
+        );
+
         CREATE INDEX IF NOT EXISTS idx_karma_chat_user ON user_karma(chat_id, karma);
         CREATE INDEX IF NOT EXISTS idx_karma_cooldown  ON karma_log(from_user_id, to_user_id, chat_id, created_at);
 
@@ -1232,6 +1242,75 @@ async def get_user_badges(user_id: int, chat_id: int, msg_count: int, karma: int
         badges.append("✨ عضو تازه‌نفس")
 
     return badges
+
+
+# ─── اطلاع‌رسانی خودکار بازی‌های رایگان و اخبار به گروه‌ها ─────────────────────
+
+async def set_announcement_setting(chat_id: int, setting_type: str, enabled: bool) -> bool:
+    """
+    تنظیم وضعیت ارسال خودکار آفر بازی‌ها یا اخبار در گروه:
+    setting_type: 'games' یا 'news'
+    """
+    col = "games_enabled" if setting_type == "games" else "news_enabled"
+    val = 1 if enabled else 0
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            f"""INSERT INTO group_announcements (chat_id, {col}, updated_at)
+                VALUES (?, ?, datetime('now'))
+                ON CONFLICT(chat_id) DO UPDATE
+                SET {col}=?, updated_at=datetime('now')""",
+            (chat_id, val, val),
+        )
+        await db.commit()
+    return True
+
+
+async def get_announcement_settings(chat_id: int) -> dict:
+    """دریافت وضعیت اشتراک آفر بازی‌ها و اخبار در گروه"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute(
+            "SELECT games_enabled, news_enabled, last_game_title, last_news_title FROM group_announcements WHERE chat_id=?",
+            (chat_id,),
+        )
+        row = await cur.fetchone()
+        if row:
+            return {
+                "games_enabled": bool(row[0]),
+                "news_enabled": bool(row[1]),
+                "last_game_title": row[2] or "",
+                "last_news_title": row[3] or "",
+            }
+        return {
+            "games_enabled": False,
+            "news_enabled": False,
+            "last_game_title": "",
+            "last_news_title": "",
+        }
+
+
+async def get_subscribed_announcement_chats(setting_type: str) -> list[int]:
+    """دریافت تمام گروه‌هایی که اشتراک ارسال خودکار را فعال کرده‌اند"""
+    col = "games_enabled" if setting_type == "games" else "news_enabled"
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute(
+            f"SELECT chat_id FROM group_announcements WHERE {col}=1"
+        )
+        rows = await cur.fetchall()
+        return [r[0] for r in rows]
+
+
+async def update_last_announced(chat_id: int, field: str, value: str):
+    """ذخیره آخرین عنوان ارسالی برای جلوگیری از ارسال پیام تکراری"""
+    col = "last_game_title" if field == "game" else "last_news_title"
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            f"""INSERT INTO group_announcements (chat_id, {col}, updated_at)
+                VALUES (?, ?, datetime('now'))
+                ON CONFLICT(chat_id) DO UPDATE
+                SET {col}=?, updated_at=datetime('now')""",
+            (chat_id, value, value),
+        )
+        await db.commit()
 
 
 async def save_upgrade_pending(

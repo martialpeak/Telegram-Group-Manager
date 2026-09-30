@@ -468,6 +468,10 @@ async def on_general_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
                     InlineKeyboardButton("⚡ بازار رمزارزها", callback_data="prc_crypto"),
                 ],
                 [
+                    InlineKeyboardButton("🎮 آفرهای بازی رایگان", callback_data="menu_games"),
+                    InlineKeyboardButton("📰 اخبار تکنولوژی و AI", callback_data="menu_news"),
+                ],
+                [
                     InlineKeyboardButton("🪪 شناسنامه و پروفایل من", callback_data="menu_profile"),
                     InlineKeyboardButton("🏆 فعال‌ترین‌های چت", callback_data="menu_top"),
                 ],
@@ -634,12 +638,56 @@ async def on_general_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
                 pass
             return
 
+        elif data == "menu_games":
+            from bot.core.news_deals import get_free_games, format_free_games_message
+            try:
+                games = await get_free_games(limit=5)
+                text, kb = format_free_games_message(games)
+                await query.edit_message_text(text, parse_mode="HTML", reply_markup=kb, disable_web_page_preview=True)
+            except Exception:
+                pass
+            return
+
+        elif data == "menu_news":
+            from bot.core.news_deals import get_tech_news, format_tech_news_message
+            try:
+                news = await get_tech_news(limit=5)
+                text, kb = format_tech_news_message(news)
+                await query.edit_message_text(text, parse_mode="HTML", reply_markup=kb, disable_web_page_preview=True)
+            except Exception:
+                pass
+            return
+
         elif data == "menu_close":
             try:
                 await query.message.delete()
             except Exception:
                 pass
             return
+
+    elif data.startswith("game_"):
+        await query.answer("🔄 در حال دریافت آفرهای بازی...")
+        from bot.core.news_deals import get_free_games, format_free_games_message
+        try:
+            games = await get_free_games(limit=5)
+            text, kb = format_free_games_message(games)
+            await query.edit_message_text(text, parse_mode="HTML", reply_markup=kb, disable_web_page_preview=True)
+        except Exception:
+            pass
+        return
+
+    elif data.startswith("news_"):
+        await query.answer("🔄 در حال بروزرسانی اخبار...")
+        cat_key = data.replace("news_cat_", "")
+        category = None if cat_key in ("all", "") else cat_key
+        from bot.core.news_deals import get_tech_news, format_tech_news_message
+        try:
+            news = await get_tech_news(category=category, limit=5)
+            text, kb = format_tech_news_message(news, category=category)
+            await query.edit_message_text(text, parse_mode="HTML", reply_markup=kb, disable_web_page_preview=True)
+        except Exception:
+            pass
+        return
 
     elif data.startswith("prof_refresh_"):
         await query.answer("🔄 در حال بروزرسانی کارت...")

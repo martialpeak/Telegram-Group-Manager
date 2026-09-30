@@ -2203,6 +2203,10 @@ async def cmd_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             InlineKeyboardButton("⚡ بازار رمزارزها", callback_data="prc_crypto"),
         ],
         [
+            InlineKeyboardButton("🎮 آفرهای بازی رایگان", callback_data="menu_games"),
+            InlineKeyboardButton("📰 اخبار تکنولوژی و AI", callback_data="menu_news"),
+        ],
+        [
             InlineKeyboardButton("🪪 شناسنامه و پروفایل من", callback_data="menu_profile"),
             InlineKeyboardButton("🏆 فعال‌ترین‌های چت", callback_data="menu_top"),
         ],
@@ -2220,6 +2224,161 @@ async def cmd_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ])
 
     await message.reply_text(text, parse_mode="HTML", reply_markup=kb)
+
+
+# ─── دستورات بازی‌های رایگان و اخبار روز ─────────────────────────────────────────
+
+async def _is_user_group_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    """بررسی دسترسی ادمین برای تغییر تنظیمات گروه"""
+    user_id = update.effective_user.id
+    if _is_admin(user_id):
+        return True
+    chat = update.effective_chat
+    if chat.type == ChatType.PRIVATE:
+        return True
+    try:
+        member = await context.bot.get_chat_member(chat.id, user_id)
+        return member.status in ("creator", "administrator")
+    except Exception:
+        return False
+
+
+async def cmd_free_games(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    استعلام و نمایش بازی‌های ۱۰۰٪ رایگان کامپیوتر و گوشی با مهلت انقضای شمسی
+    دستورات: /freegames, /games, /deals, /bazi
+    """
+    message = update.message
+    if not message:
+        return
+
+    from bot.core.news_deals import get_free_games, format_free_games_message
+
+    wait_msg = await message.reply_text("🎮 <i>در حال بررسی و دریافت آفرهای ۱۰۰٪ رایگان استیم و اپیک‌گیمز...</i>", parse_mode="HTML")
+    try:
+        games = await get_free_games(limit=5)
+        text, kb = format_free_games_message(games)
+        await wait_msg.edit_text(text, parse_mode="HTML", reply_markup=kb, disable_web_page_preview=True)
+    except Exception as e:
+        logger.error(f"Error in cmd_free_games: {e}")
+        await wait_msg.edit_text("❌ متأسفانه در برقراری ارتباط با سرورهای گیمین تسک خطایی رخ داد. لطفاً لحظاتی بعد مجدداً تلاش کنید.")
+
+
+async def cmd_tech_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    استعلام جدیدترین اخبار هوش مصنوعی، اینترنت و تکنولوژی با لینک منبع
+    دستورات: /technews, /news, /akhbar, /ainews, /vpnnews
+    """
+    message = update.message
+    if not message:
+        return
+
+    from bot.core.news_deals import get_tech_news, format_tech_news_message
+
+    cmd_text = (message.text or "").split()[0].lower()
+    args = [a.lower() for a in (context.args or [])]
+
+    category = None
+    if "ainews" in cmd_text or "ai" in args:
+        category = "ai"
+    elif "vpnnews" in cmd_text or "vpn" in args:
+        category = "vpn"
+
+    cat_label = "هوش مصنوعی" if category == "ai" else ("اینترنت و VPN" if category == "vpn" else "تکنولوژی")
+    wait_msg = await message.reply_text(f"📰 <i>در حال دریافت جدیدترین اخبار {cat_label}...</i>", parse_mode="HTML")
+    try:
+        news = await get_tech_news(category=category, limit=5)
+        text, kb = format_tech_news_message(news, category=category)
+        await wait_msg.edit_text(text, parse_mode="HTML", reply_markup=kb, disable_web_page_preview=True)
+    except Exception as e:
+        logger.error(f"Error in cmd_tech_news: {e}")
+        await wait_msg.edit_text("❌ در دریافت اخبار فناوری خطایی رخ داد. لطفاً لحظاتی دیگر مجدداً بررسی فرمایید.")
+
+
+async def cmd_autogames(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    تنظیم ارسال خودکار بازی‌های رایگان در گروه: /autogames on|off
+    """
+    message = update.message
+    if not message:
+        return
+
+    if not await _is_user_group_admin(update, context):
+        await message.reply_text("⛔ این تنظیمات فقط توسط ادمین‌های گروه یا مدیر ربات قابل تغییر است.")
+        return
+
+    chat_id = message.chat_id
+    args = [a.lower() for a in (context.args or [])]
+    settings = await db.get_announcement_settings(chat_id)
+
+    if not args:
+        status_str = "🟢 فعال" if settings["games_enabled"] else "🔴 غیرفعال"
+        await message.reply_text(
+            f"🎮 <b>وضعیت اعلان خودکار بازی‌های رایگان:</b> {status_str}\n\n"
+            f"برای تغییر وضعیت:\n"
+            f"• <code>/autogames on</code> — فعال‌سازی اعلان خودکار آفرهای جدید\n"
+            f"• <code>/autogames off</code> — غیرفعال‌سازی اعلان خودکار",
+            parse_mode="HTML"
+        )
+        return
+
+    action = args[0]
+    if action in ("on", "enable", "1", "روشن", "فعال"):
+        await db.set_announcement_setting(chat_id, "games", True)
+        await message.reply_text(
+            "✅ <b>اعلان خودکار بازی‌های رایگان فعال شد!</b>\n\n"
+            "از این پس هر زمان بازی یا آفر ۱۰۰٪ رایگان جدیدی (کامپیوتر یا موبایل) منتشر شود، "
+            "همراه با تاریخ انقضای شمسی و لینک دریافت در گروه ارسال خواهد شد.",
+            parse_mode="HTML"
+        )
+    elif action in ("off", "disable", "0", "خاموش", "غیرفعال"):
+        await db.set_announcement_setting(chat_id, "games", False)
+        await message.reply_text("🔴 <b>اعلان خودکار بازی‌های رایگان در این گروه غیرفعال شد.</b>", parse_mode="HTML")
+    else:
+        await message.reply_text("⚠️ لطفاً از <code>/autogames on</code> یا <code>/autogames off</code> استفاده کنید.", parse_mode="HTML")
+
+
+async def cmd_autonews(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    تنظیم ارسال خودکار اخبار هوش مصنوعی و اینترنت در گروه: /autonews on|off
+    """
+    message = update.message
+    if not message:
+        return
+
+    if not await _is_user_group_admin(update, context):
+        await message.reply_text("⛔ این تنظیمات فقط توسط ادمین‌های گروه یا مدیر ربات قابل تغییر است.")
+        return
+
+    chat_id = message.chat_id
+    args = [a.lower() for a in (context.args or [])]
+    settings = await db.get_announcement_settings(chat_id)
+
+    if not args:
+        status_str = "🟢 فعال" if settings["news_enabled"] else "🔴 غیرفعال"
+        await message.reply_text(
+            f"📰 <b>وضعیت اعلان خودکار اخبار فناوری و AI:</b> {status_str}\n\n"
+            f"برای تغییر وضعیت:\n"
+            f"• <code>/autonews on</code> — فعال‌سازی اعلان خودکار مهم‌ترین اخبار روز\n"
+            f"• <code>/autonews off</code> — غیرفعال‌سازی اعلان خودکار",
+            parse_mode="HTML"
+        )
+        return
+
+    action = args[0]
+    if action in ("on", "enable", "1", "روشن", "فعال"):
+        await db.set_announcement_setting(chat_id, "news", True)
+        await message.reply_text(
+            "✅ <b>اعلان خودکار اخبار هوش مصنوعی و اینترنت فعال شد!</b>\n\n"
+            "مهم‌ترین تحولات تکنولوژی، VPN و هوش مصنوعی در زمان انتشار برای گروه ارسال خواهد شد.",
+            parse_mode="HTML"
+        )
+    elif action in ("off", "disable", "0", "خاموش", "غیرفعال"):
+        await db.set_announcement_setting(chat_id, "news", False)
+        await message.reply_text("🔴 <b>اعلان خودکار اخبار فناوری در این گروه غیرفعال شد.</b>", parse_mode="HTML")
+    else:
+        await message.reply_text("⚠️ لطفاً از <code>/autonews on</code> یا <code>/autonews off</code> استفاده کنید.", parse_mode="HTML")
+
 
 
 
