@@ -19,6 +19,7 @@ from bot.utils.helpers import (
     get_persian_date_info,
     is_datetime_query,
     get_datetime_response,
+    to_persian_digits,
 )
 
 logger = logging.getLogger(__name__)
@@ -943,258 +944,381 @@ async def _weather_search(question: str) -> str | None:
     return None
 
 
-# ─── Currency API ───────────────────────────────────────────────────────────
+# ─── سیستم استعلام نرخ ارز، طلا و سکه (TGJU + Wallex + Telegram Fallback) ───
+
+# کش کوتاه‌مدت برای سرعت پاسخ‌دهی و جلوگیری از فشار به سرورها (TTL: ۳ دقیقه)
+_MARKET_RATES_CACHE: dict = {}
+_MARKET_RATES_CACHE_TIME: float = 0.0
+_MARKET_CACHE_TTL: float = 180.0
 
 # کلمات کلیدی طلا و سکه
-_GOLD_KEYWORDS = ("طلا", "طلای 18", "طلای ۱۸", "گرم طلا", "سکه", "سککه", "امامی", "بهار آزادی", "بهار ازادی")
-_COIN_MAP = [
-    ("COIN_EMAMI", "🪙 سکه امامی"),
-    ("COIN_BAHAR", "🪙 سکه بهار آزادی"),
-    ("COIN_HALF", "🪙 نیم سکه"),
-    ("COIN_QUARTER", "🪙 ربع سکه"),
-    ("COIN_GRAMI", "🪙 سکه گرمی"),
-]
+_GOLD_KEYWORDS = (
+    "طلا", "طلای 18", "طلای ۱۸", "گرم طلا", "سکه", "سککه", "امامی",
+    "بهار آزادی", "بهار ازادی", "نیم سکه", "ربع سکه", "سکه گرمی"
+)
+
+
+async def _get_live_market_rates() -> dict:
+    """
+    دریافت جامع و زنده نرخ‌های ارز، طلا و سکه از معتبرترین مراجع بازار:
+    ۱. TGJU (شبکه اطلاع‌رسانی طلا، سکه و ارز) - منبع رسمی بازار آزاد فردوسی
+    ۲. Wallex / Bitpin - صرافی‌های معتبر داخلی برای نرخ زنده تتر (USDT)
+    ۳. تلگرام (@Price33) - پشتیبان در صورت هرگونه اختلال اینترنت
+    """
+    global _MARKET_RATES_CACHE, _MARKET_RATES_CACHE_TIME
+    import time
+    import httpx
+
+    now = time.time()
+    if _MARKET_RATES_CACHE and (now - _MARKET_RATES_CACHE_TIME < _MARKET_CACHE_TTL):
+        return _MARKET_RATES_CACHE
+
+    rates = {}
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Referer": "https://www.tgju.org/",
+    }
+
+    # ۱. استعلام از TGJU (شبکه اطلاع‌رسانی طلا، سکه و ارز تهران)
+    try:
+        async with httpx.AsyncClient(timeout=8, follow_redirects=True, headers=headers) as client:
+            resp = await client.get("https://call.tgju.org/ajax.json")
+            if resp.status_code == 200:
+                cur = resp.json().get("current", {})
+
+                def _parse_tgju(key: str) -> dict | None:
+                    item = cur.get(key, {})
+                    p_str = item.get("p")
+                    if not p_str:
+                        return None
+                    try:
+                        clean_p = str(p_str).replace(",", "").strip()
+                        p_toman = float(clean_p) / 10
+                        h_str = item.get("h")
+                        l_str = item.get("l")
+                        high_t = float(str(h_str).replace(",", "")) / 10 if h_str else p_toman
+                        low_t = float(str(l_str).replace(",", "")) / 10 if l_str else p_toman
+                        return {
+                            "price": p_toman,
+                            "price_rial": p_toman * 10,
+                            "high": high_t,
+                            "low": low_t,
+                            "time": item.get("t", ""),
+                        }
+                    except (ValueError, TypeError):
+                        return None
+
+                tgju_mapping = {
+                    "USD": "price_dollar_rl",
+                    "EUR": "price_eur",
+                    "GBP": "price_gbp",
+                    "AED": "price_aed",
+                    "TRY": "price_try",
+                    "CNY": "price_cny",
+                    "CAD": "price_cad",
+                    "AUD": "price_aud",
+                    "KWD": "price_kwd",
+                    "IQD": "price_iqd",
+                    "GOLD18": "tgju_gold_irg18",
+                    "COIN_EMAMI": "sekee",
+                    "COIN_HALF": "nim",
+                    "COIN_QUARTER": "rob",
+                    "COIN_GRAMI": "gerami",
+                }
+                for code, key in tgju_mapping.items():
+                    val = _parse_tgju(key)
+                    if not val and code == "GOLD18":
+                        val = _parse_tgju("geram18")
+                    if val:
+                        rates[code] = val
+                rates["source"] = "شبکه اطلاع‌رسانی طلا و ارز (TGJU)"
+    except Exception as e:
+        logger.warning(f"TGJU rate fetch failed: {e}")
+
+    # ۲. استعلام نرخ لحظه‌ای تتر (USDT) از صرافی‌های والکس و بیت‌پین
+    try:
+        async with httpx.AsyncClient(timeout=6, follow_redirects=True, headers=headers) as client:
+            rw = await client.get("https://api.wallex.ir/v1/markets")
+            if rw.status_code == 200:
+                wd = rw.json()
+                u_stats = wd.get("result", {}).get("symbols", {}).get("USDTTMN", {}).get("stats", {})
+                last_w = u_stats.get("lastPrice")
+                if last_w:
+                    p = float(last_w)
+                    rates["USDT"] = {
+                        "price": p,
+                        "price_rial": p * 10,
+                        "high": float(u_stats.get("highPrice", p)) if u_stats.get("highPrice") else p,
+                        "low": float(u_stats.get("lowPrice", p)) if u_stats.get("lowPrice") else p,
+                        "time": "معاملات ۲۴ ساعته",
+                    }
+    except Exception as e:
+        logger.warning(f"Wallex rate fetch failed: {e}")
+
+    if "USDT" not in rates:
+        try:
+            async with httpx.AsyncClient(timeout=6, follow_redirects=True, headers=headers) as client:
+                rb = await client.get("https://api.bitpin.ir/v1/mkt/markets/")
+                if rb.status_code == 200:
+                    for m in rb.json().get("results", []):
+                        if m.get("code") in ("USDT_IRT", "usdt_irt"):
+                            p = float(m.get("price"))
+                            rates["USDT"] = {
+                                "price": p,
+                                "price_rial": p * 10,
+                                "high": p,
+                                "low": p,
+                                "time": "معاملات ۲۴ ساعته",
+                            }
+                            break
+        except Exception as e:
+            logger.warning(f"Bitpin rate fetch failed: {e}")
+
+    # ۳. فال‌بک کانال تلگرام (@Price33) در صورت نبود نرخ‌های اصلی
+    if not rates or "USD" not in rates:
+        try:
+            ch_prices = await _read_channel_currency()
+            if ch_prices:
+                for k, v in ch_prices.items():
+                    if k not in rates:
+                        p_t = v / 10
+                        rates[k] = {
+                            "price": p_t,
+                            "price_rial": v,
+                            "high": p_t,
+                            "low": p_t,
+                            "time": "کانال بازار ارز",
+                        }
+                rates["source"] = "کانال بازار ارز"
+        except Exception as e:
+            logger.warning(f"Channel currency fallback failed: {e}")
+
+    if rates:
+        _MARKET_RATES_CACHE = rates
+        _MARKET_RATES_CACHE_TIME = now
+        return rates
+
+    return _MARKET_RATES_CACHE
+
 
 async def _gold_api_search(query: str) -> str | None:
-    """قیمت طلا و سکه از کانال @Price33"""
-    import httpx
+    """استعلام دقیق قیمت طلا و سکه از TGJU و بازار آزاد"""
     q = query.lower()
     if not any(k in q for k in _GOLD_KEYWORDS):
         return None
 
-    channel_prices = await _read_channel_currency()
-    if not channel_prices:
+    rates = await _get_live_market_rates()
+    if not rates:
         return None
 
-    gold18 = channel_prices.get("GOLD18", 0)
-    if gold18 > 0:
-        gold_line = f"   🥇 طلای ۱۸ عیار (هر گرم): {gold18 // 10:,.0f} تومان"
-    else:
-        gold_line = None
+    gold18 = rates.get("GOLD18", {}).get("price", 0)
+    gold18_rial = rates.get("GOLD18", {}).get("price_rial", 0)
+    sekee = rates.get("COIN_EMAMI", {}).get("price", 0)
+    nim = rates.get("COIN_HALF", {}).get("price", 0)
+    rob = rates.get("COIN_QUARTER", {}).get("price", 0)
+    gerami = rates.get("COIN_GRAMI", {}).get("price", 0)
+    usd = rates.get("USD", {}).get("price", 0)
+    usdt = rates.get("USDT", {}).get("price", 0)
 
-    coin_lines = []
-    for code, label in _COIN_MAP:
-        price = channel_prices.get(code, 0)
-        if price > 0:
-            coin_lines.append(f"   {label}: {price // 10:,.0f} تومان")
-
-    if not gold_line and not coin_lines:
+    if not gold18 and not sekee:
         return None
 
-    lines = ["🏅 قیمت طلا و سکه", "━━━━━━━━━━━━━━━━━━━━━━━━", ""]
-    if gold_line:
-        lines.append(gold_line)
-    if coin_lines:
-        lines.extend(coin_lines)
-    lines.append("")
-    lines.append("📅 قیمت‌های روز بازار")
+    source_name = rates.get("source", "شبکه اطلاع‌رسانی طلا و ارز (TGJU)")
+    from bot.utils.helpers import get_persian_date_info
+    date_info = get_persian_date_info()
+
+    lines = [
+        "🏅 <b>قیمت روز طلا و انواع سکه در بازار تهران:</b>",
+        "━━━━━━━━━━━━━━━━━━━━━━━━\n",
+        "<blockquote>",
+    ]
+    if gold18:
+        g_fa = to_persian_digits(f"{gold18:,.0f}")
+        gr_fa = to_persian_digits(f"{gold18_rial:,.0f}")
+        lines.append(f"🥇 <b>طلای ۱۸ عیار (هر گرم):</b>\n   <b>{g_fa}</b> تومان  <code>({gr_fa} ریال)</code>\n")
+    if sekee:
+        s_fa = to_persian_digits(f"{sekee:,.0f}")
+        lines.append(f"🪙 <b>سکه تمام طرح جدید (امامی):</b>\n   <b>{s_fa}</b> تومان")
+    if nim:
+        n_fa = to_persian_digits(f"{nim:,.0f}")
+        lines.append(f"🪙 <b>نیم سکه بهار آزادی:</b>\n   <b>{n_fa}</b> تومان")
+    if rob:
+        r_fa = to_persian_digits(f"{rob:,.0f}")
+        lines.append(f"🪙 <b>ربع سکه بهار آزادی:</b>\n   <b>{r_fa}</b> تومان")
+    if gerami:
+        gm_fa = to_persian_digits(f"{gerami:,.0f}")
+        lines.append(f"🪙 <b>سکه گرمی:</b>\n   <b>{gm_fa}</b> تومان")
+    lines.append("</blockquote>\n")
+
+    indicators = []
+    if usd:
+        u_fa = to_persian_digits(f"{usd:,.0f}")
+        indicators.append(f"💵 دلار آزاد: <b>{u_fa}</b> تومان")
+    if usdt:
+        ut_fa = to_persian_digits(f"{usdt:,.0f}")
+        indicators.append(f"⚡ تتر: <b>{ut_fa}</b> تومان")
+    if indicators:
+        lines.append("📊 <b>شاخص ارز مرتبط:</b>")
+        lines.append("   " + " | ".join(indicators) + "\n")
+
+    t_fa = to_persian_digits(date_info["time_str"])
+    lines.append(f"🗓 <i>تاریخ: {date_info['date_fa_full']} — ساعت {t_fa}</i>")
+    lines.append(f"🌐 <i>منبع: {source_name}</i>")
+
     return "\n".join(lines)
 
+
 async def _currency_api_search(query: str) -> str | None:
-    """دریافت قیمت ارز از API مستقیم"""
-    import httpx
+    """استعلام دقیق نرخ روز دلار، تتر، یورو و ارزهای بازار آزاد از TGJU و والکس"""
     q = query.lower()
-    
-    # تشخیص نوع ارز
-    currency_map = {
-        "دلار": ("USD", "دلار آمریکا", "$"),
-        "یورو": ("EUR", "یورو", "€"),
-        "پوند": ("GBP", "پوند انگلیس", "£"),
-        "لیر": ("TRY", "لیر ترکیه", "₺"),
-        "درهم": ("AED", "درهم امارات", "د.إ"),
-        "یوان": ("CNY", "یوان چین", "¥"),
-        "ین": ("JPY", "ین ژاپن", "¥"),
-        "کرون": ("SEK", "کرون سوئد", "kr"),
-        "وون": ("KRW", "وون کره", "₩"),
+
+    currency_defs = {
+        "دلار": ("USD", "دلار آمریکا (بازار آزاد)", "$", "💵"),
+        "تتر": ("USDT", "تتر (USDT / دلار دیجیتال)", "₮", "⚡"),
+        "usdt": ("USDT", "تتر (USDT / دلار دیجیتال)", "₮", "⚡"),
+        "یورو": ("EUR", "یورو اروپا", "€", "💶"),
+        "پوند": ("GBP", "پوند انگلیس", "£", "💷"),
+        "درهم": ("AED", "درهم امارات", "د.إ", "🇦🇪"),
+        "لیر": ("TRY", "لیر ترکیه", "₺", "🇹🇷"),
+        "یوان": ("CNY", "یوان چین", "¥", "🇨🇳"),
+        "کانادا": ("CAD", "دلار کانادا", "C$", "🇨🇦"),
+        "استرالیا": ("AUD", "دلار استرالیا", "A$", "🇦🇺"),
+        "دینار کویت": ("KWD", "دینار کویت", "KWD", "🇰🇼"),
+        "دینار عراق": ("IQD", "دینار عراق", "IQD", "🇮🇶"),
     }
-    
-    # کریپتو: تتر/USDT
-    is_crypto = "تتر" in q or "usdt" in q
-    
+
     target_code = None
     target_name = None
     target_symbol = ""
-    for keyword, (code, name, symbol) in currency_map.items():
+    target_icon = "💵"
+
+    for keyword, (code, name, symbol, icon) in currency_defs.items():
         if keyword in q:
             target_code = code
             target_name = name
             target_symbol = symbol
+            target_icon = icon
             break
-    
-    if is_crypto:
-        target_name = "تتر (USDT)"
-        target_symbol = "₮"
-    
-    if not target_code and not is_crypto:
+
+    # پیش‌فرض در صورت گفتن «ارز» یا «قیمت ارز»: دلار آمریکا
+    if not target_code:
         target_code = "USD"
-        target_name = "دلار آمریکا"
+        target_name = "دلار آمریکا (بازار آزاد)"
         target_symbol = "$"
-    
-    try:
-        async with httpx.AsyncClient(timeout=10, follow_redirects=True) as client:
-            # گرفتن نرخ USD به IRR
-            resp = await client.get("https://open.er-api.com/v6/latest/USD")
-            logger.info(f"Currency API: HTTP {resp.status_code}")
-            if resp.status_code != 200:
-                return None
-            data = resp.json()
-            rates = data.get("rates", {})
-            usd_to_irr = rates.get("IRR")
-            
-            if not usd_to_irr:
-                logger.warning("IRR not found in API response")
-                return None
-            
-            raw_date = data.get("time_last_update_utc", "نامشخص")
-            date = raw_date[:16] if len(raw_date) > 16 else raw_date
-            
-            if is_crypto:
-                # اول از کانال تلگرام قیمت بگیر
-                channel_prices = await _read_channel_currency()
-                
-                if channel_prices and "USDT" in channel_prices:
-                    market_price = channel_prices["USDT"]
-                    market_toman = market_price / 10
-                    logger.info(f"💰 Using channel price for USDT: {market_price} IRR")
-                else:
-                    # fallback به CoinGecko
-                    try:
-                        cg_resp = await client.get(
-                            "https://api.coingecko.com/api/v3/simple/price",
-                            params={"ids": "tether", "vs_currencies": "usd"},
-                        )
-                        if cg_resp.status_code == 200:
-                            cg_data = cg_resp.json()
-                            usdt_usd = cg_data.get("tether", {}).get("usd", 1.0)
-                        else:
-                            usdt_usd = 1.0
-                    except Exception:
-                        usdt_usd = 1.0
-                    market_price = usd_to_irr * usdt_usd
-                    market_toman = market_price / 10
-                
-                # سایر ارزها از کانال
-                usd_price = channel_prices.get("USD", 0) / 10 if channel_prices and "USD" in channel_prices else usd_to_irr / 10
-                eur_price = channel_prices.get("EUR", 0) / 10 if channel_prices and "EUR" in channel_prices else 0
-                gbp_price = channel_prices.get("GBP", 0) / 10 if channel_prices and "GBP" in channel_prices else 0
-                
-                other_lines = []
-                if usd_price > 0: other_lines.append(f"   💵 دلار: {usd_price:,.0f} تومان")
-                if eur_price > 0: other_lines.append(f"   💶 یورو: {eur_price:,.0f} تومان")
-                if gbp_price > 0: other_lines.append(f"   💷 پوند: {gbp_price:,.0f} تومان")
-                other_prices = "\n".join(other_lines)
-                
-                source = ""
-                
-                result = (
-                    f"💰 قیمت تتر (USDT)\n"
-                    f"━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-                    f"📊 قیمت بازار:\n"
-                    f"   {market_toman:,.0f} تومان\n"
-                    f"   ({market_price:,.0f} ریال)\n\n"
-                    f"📊 سایر ارزها:\n"
-                    f"{other_prices}\n\n"
-                    f"📅 {date}\n"
-                    f"{source}"
-                )
-                return result
-            else:
-                # ارز رسمی - قیمت بازار از کانال @Price33
-                target_to_usd = rates.get(target_code, 1)
-                target_to_irr_official = usd_to_irr / target_to_usd if target_code != "USD" else usd_to_irr
-                
-                # اول از کانال تلگرام قیمت بگیر
-                channel_prices = await _read_channel_currency()
-                
-                if channel_prices and target_code in channel_prices:
-                    # قیمت مستقیم از کانال (تبدیل شده به ریال)
-                    market_price = channel_prices[target_code]
-                    market_toman = market_price / 10
-                    logger.info(f"💰 Using Telegram channel price for {target_code}: {market_price} IRR")
-                else:
-                    # fallback به API بین‌المللی
-                    market_price = usd_to_irr / target_to_usd if target_code != "USD" else usd_to_irr
-                    market_toman = market_price / 10
-                    logger.info(f"💰 Fallback to API for {target_code}: {market_price} IRR")
-                
-                # سایر ارزها از کانال
-                eur_price = channel_prices.get("EUR", 0) / 10 if channel_prices and "EUR" in channel_prices else 0
-                gbp_price = channel_prices.get("GBP", 0) / 10 if channel_prices and "GBP" in channel_prices else 0
-                try_price = channel_prices.get("TRY", 0) / 10 if channel_prices and "TRY" in channel_prices else 0
-                usdt_price = channel_prices.get("USDT", 0) / 10 if channel_prices and "USDT" in channel_prices else 0
-                
-                # فرمت قیمت‌ها
-                price_lines = []
-                if eur_price > 0: price_lines.append(f"   💶 یورو: {eur_price:,.0f} تومان")
-                if gbp_price > 0: price_lines.append(f"   💷 پوند: {gbp_price:,.0f} تومان")
-                if try_price > 0: price_lines.append(f"   💴 لیر: {try_price:,.0f} تومان")
-                if usdt_price > 0: price_lines.append(f"   💵 تتر: {usdt_price:,.0f} تومان")
-                other_prices = "\n".join(price_lines)
-                
-                source = ""
-                
-                result = (
-                    f"💰 قیمت {target_name} ({target_symbol})\n"
-                    f"━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-                    f"📊 قیمت بازار:\n"
-                    f"   {market_toman:,.0f} تومان\n"
-                    f"   ({market_price:,.0f} ریال)\n\n"
-                    f"🏦 نرخ رسمی:\n"
-                    f"   {target_to_irr_official/10:,.0f} تومان\n\n"
-                    f"📊 سایر ارزها:\n"
-                    f"{other_prices}\n\n"
-                    f"📅 {date}\n"
-                    f"{source}"
-                )
-                return result
-    except Exception as e:
-        logger.warning(f"currency API failed: {e}")
-        import traceback
-        logger.warning(f"traceback: {traceback.format_exc()}")
-    
-    return None
+        target_icon = "💵"
+
+    rates = await _get_live_market_rates()
+    if not rates:
+        return None
+
+    target_data = rates.get(target_code)
+    if not target_data and target_code == "USD":
+        target_data = rates.get("USDT")
+
+    if not target_data:
+        return None
+
+    price_toman = target_data["price"]
+    price_rial = target_data["price_rial"]
+    high_toman = target_data.get("high", price_toman)
+    low_toman = target_data.get("low", price_toman)
+
+    from bot.utils.helpers import get_persian_date_info
+    date_info = get_persian_date_info()
+    source_name = rates.get("source", "شبکه اطلاع‌رسانی طلا و ارز (TGJU)")
+
+    p_fa = to_persian_digits(f"{price_toman:,.0f}")
+    r_fa = to_persian_digits(f"{price_rial:,.0f}")
+
+    lines = [
+        f"{target_icon} <b>قیمت روز {target_name}:</b>",
+        "━━━━━━━━━━━━━━━━━━━━━━━━\n",
+        "<blockquote>",
+        f"📊 <b>نرخ معامله در بازار:</b>\n   <b>{p_fa}</b> تومان\n   <code>({r_fa} ریال)</code>\n",
+    ]
+
+    # اگر استعلام دلار اسکناس است، نرخ تتر را هم کنارش بگذار
+    if target_code == "USD" and "USDT" in rates:
+        usdt_p = rates["USDT"]["price"]
+        ut_fa = to_persian_digits(f"{usdt_p:,.0f}")
+        lines.append(f"⚡ <b>دلار دیجیتال (تتر USDT):</b>\n   <b>{ut_fa}</b> تومان <i>(صرافی‌های آنلاین)</i>\n")
+    elif target_code == "USDT" and "USD" in rates:
+        usd_p = rates["USD"]["price"]
+        u_fa = to_persian_digits(f"{usd_p:,.0f}")
+        lines.append(f"💵 <b>دلار اسکناس (بازار فردوسی):</b>\n   <b>{u_fa}</b> تومان\n")
+
+    if high_toman and low_toman and high_toman != low_toman:
+        h_fa = to_persian_digits(f"{high_toman:,.0f}")
+        l_fa = to_persian_digits(f"{low_toman:,.0f}")
+        lines.append(f"📈 <b>دامنه نوسان امروز:</b>\n   کف: {l_fa} | سقف: {h_fa} تومان")
+
+    lines.append("</blockquote>\n")
+
+    # سایر ارزهای مهم بازار
+    other_items = []
+    other_codes = [c for c in ["USD", "USDT", "EUR", "AED", "GBP", "TRY"] if c != target_code][:4]
+    code_labels = {
+        "USD": ("💵 دلار", "تومان"),
+        "USDT": ("⚡ تتر", "تومان"),
+        "EUR": ("💶 یورو", "تومان"),
+        "AED": ("🇦🇪 درهم", "تومان"),
+        "GBP": ("💷 پوند", "تومان"),
+        "TRY": ("🇹🇷 لیر", "تومان"),
+    }
+    for c in other_codes:
+        if c in rates:
+            p = rates[c]["price"]
+            p_formatted = to_persian_digits(f"{p:,.0f}")
+            lbl, cur_unit = code_labels.get(c, (c, "تومان"))
+            other_items.append(f"   {lbl}: <b>{p_formatted}</b> {cur_unit}")
+
+    if other_items:
+        lines.append("📊 <b>سایر ارزهای مهم بازار:</b>")
+        lines.extend(other_items)
+        lines.append("")
+
+    t_fa = to_persian_digits(date_info["time_str"])
+    lines.append(f"🗓 <i>تاریخ: {date_info['date_fa_full']} — ساعت {t_fa}</i>")
+    lines.append(f"🌐 <i>منبع: {source_name}</i>")
+
+    return "\n".join(lines)
 
 
-# ─── خواندن قیمت ارز از کانال تلگرام (@Price33) ────────────────────────────
+# ─── خواندن قیمت ارز از کانال تلگرام (@Price33) به عنوان پشتیبان ────────────
 
 async def _read_channel_currency(channel_username: str = "Price33") -> dict | None:
-    """خواندن آخرین قیمت ارز از کانال تلگرام با اسکرپر وب"""
+    """خواندن آخرین قیمت ارز از کانال تلگرام با اسکرپر وب به عنوان فال‌بک"""
     import httpx
     import re
-    
+
     try:
         url = f"https://t.me/s/{channel_username}"
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         }
-        
-        async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
+
+        async with httpx.AsyncClient(timeout=10, follow_redirects=True) as client:
             resp = await client.get(url, headers=headers)
             if resp.status_code != 200:
                 logger.warning(f"Channel scrape failed: HTTP {resp.status_code}")
                 return None
-            
+
             html = resp.text
-            
-            # پیدا کردن آخرین پیام
             messages = re.findall(r'<div class="tgme_widget_message_text[^"]*"[^>]*>(.*?)</div>', html, re.DOTALL)
             if not messages:
                 logger.warning("No messages found in channel")
                 return None
-            
-            last_msg = messages[-1]  # آخرین پیام
-            
+
+            last_msg = messages[-1]
+
             # تبدیل اعداد عربی/فارسی به انگلیسی
             arabic_nums = "٠١٢٣٤٥٦٧٨٩"
             persian_nums = "۰۱۲۳۴۵۶۷۸۹"
             for i, (ar, fa) in enumerate(zip(arabic_nums, persian_nums)):
                 last_msg = last_msg.replace(ar, str(i)).replace(fa, str(i))
-            
-            # حذف HTML tags
+
             last_msg = re.sub(r'<[^>]+>', '', last_msg)
-            
-            # الگوهای استخراج قیمت (تومان)
-            # فرمت: يورو : 214,000 یا دلار آمريکا : 187,300
+
             patterns = [
                 (r"(?:يورو|یورو)[:\s]*(\d[\d,]+)", "EUR"),
                 (r"(?:دلار|دلار آمريکا|دلار آمریکا)[:\s]*(\d[\d,]+)", "USD"),
@@ -1204,7 +1328,6 @@ async def _read_channel_currency(channel_username: str = "Price33") -> dict | No
                 (r"(?:يوآن|یوان|يوآن چين|یوان چین)[:\s]*(\d[\d,]+)", "CNY"),
                 (r"(?:لير|لير ترکيه|لیر ترکیه)[:\s]*(\d[\d,]+)", "TRY"),
                 (r"(?:دینار|دینار کویت)[:\s]*(\d[\d,]+)", "KWD"),
-                # طلا و سکه
                 (r"طلا[يی]\s*۱۸\s*ع[يی]ار\s*هر\s*گرم\s*[:：]?\s*(\d[\d,]+)", "GOLD18"),
                 (r"طلا[يی]\s*18\s*ع[يی]ار\s*هر\s*گرم\s*[:：]?\s*(\d[\d,]+)", "GOLD18"),
                 (r"سکه\s*امام[يی]\s*[:：]?\s*(\d[\d,]+)", "COIN_EMAMI"),
@@ -1215,29 +1338,20 @@ async def _read_channel_currency(channel_username: str = "Price33") -> dict | No
                 (r"ربع\s*سکه\s*[:：]?\s*(\d[\d,]+)", "COIN_QUARTER"),
                 (r"سکه\s*گرم[يی]\s*[:：]?\s*(\d[\d,]+)", "COIN_GRAMI"),
             ]
-            
+
             prices = {}
             for pattern, code in patterns:
                 match = re.search(pattern, last_msg)
                 if match:
                     price_str = match.group(1).replace(",", "")
                     try:
-                        # قیمت به تومان است، ضرب در 10 برای ریال
                         prices[code] = int(price_str) * 10
-                        logger.info(f"💰 Channel price: {code} = {prices[code]} IRR")
                     except ValueError:
                         pass
-            
-            if prices:
-                logger.info(f"✅ Loaded {len(prices)} prices from @{channel_username}")
-            else:
-                logger.warning(f"No prices found in channel message: {last_msg[:200]}")
-            
+
             return prices if prices else None
     except Exception as e:
         logger.warning(f"channel currency read failed: {e}")
-        import traceback
-        logger.warning(f"traceback: {traceback.format_exc()}")
     return None
 
 
