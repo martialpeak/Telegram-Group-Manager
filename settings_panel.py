@@ -712,13 +712,17 @@ async def cmd_update(update: Update, context: ContextTypes.DEFAULT_TYPE):
         changes_txt = changes[:400] if changes else "بدون تغییر"
 
         # ۶. آپدیت پکیج‌ها (فقط اگه requirements.txt تغییر کرده)
-        rc2, _ = await _run(["git", "diff", "--name-only", f"{current}..HEAD", "requirements.txt"], timeout=10)
-        if "requirements.txt" in (rc2 or ""):
-            await msg.edit_text("📦 آپدیت پکیج‌های Python...")
+        rc_diff, diff_out = await _run(["git", "diff", "--name-only", f"{current}..HEAD", "requirements.txt"], timeout=10)
+        if rc_diff == 0 and "requirements.txt" in (diff_out or ""):
+            await msg.edit_text("📦 در حال به‌روزرسانی پکیج‌های Python...")
             venv_pip = os.path.join(bot_dir, "venv", "bin", "pip")
             if not os.path.exists(venv_pip):
-                venv_pip = sys.executable.replace("python", "pip")
-            await _run([venv_pip, "install", "-q", "-r", os.path.join(bot_dir, "requirements.txt")], timeout=120)
+                venv_pip = os.path.join(bot_dir, "venv", "Scripts", "pip.exe")
+            if os.path.exists(venv_pip):
+                pip_cmd = [venv_pip, "install", "-q", "-r", os.path.join(bot_dir, "requirements.txt")]
+            else:
+                pip_cmd = [sys.executable, "-m", "pip", "install", "-q", "-r", os.path.join(bot_dir, "requirements.txt")]
+            await _run(pip_cmd, timeout=180)
 
         # ۷. ذخیره اطلاعات برای پیام بعد از restart
         import json

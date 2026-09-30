@@ -285,8 +285,8 @@ def main():
     app.add_handler(CommandHandler("ocr", handlers.cmd_ocr))
     app.add_handler(CommandHandler("read", handlers.cmd_ocr))
     app.add_handler(CommandHandler("matn", handlers.cmd_ocr))
-    app.add_handler(CommandHandler("متن", handlers.cmd_ocr))
-    app.add_handler(CommandHandler("اسکن", handlers.cmd_ocr))
+    app.add_handler(CommandHandler("scan", handlers.cmd_ocr))
+    app.add_handler(MessageHandler(filters.Regex(r"^/(متن|اسکن)(\s|$)"), handlers.cmd_ocr))
 
     # ── Callback ها ───────────────────────────────────────────────────────────
     app.add_handler(CallbackQueryHandler(handlers.on_report_callback,  pattern=r"^rpt_"))

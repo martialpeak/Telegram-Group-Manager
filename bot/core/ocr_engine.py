@@ -14,7 +14,13 @@ import logging
 import time
 from typing import Optional, Tuple
 
-from PIL import Image, ImageOps
+try:
+    from PIL import Image, ImageOps
+    HAS_PIL = True
+except ImportError:
+    HAS_PIL = False
+    Image = None
+    ImageOps = None
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
@@ -59,6 +65,8 @@ def _get_local_engine():
 
 def preprocess_image(image_bytes: bytes, max_dimension: int = 2560) -> bytes:
     """بهینه‌سازی ابعاد، جهت (EXIF) و فرمت تصویر برای پردازش سریع و دقیق"""
+    if not HAS_PIL or not Image or not ImageOps:
+        return image_bytes
     try:
         img = Image.open(io.BytesIO(image_bytes))
         # تصحیح جهت چرخش بر اساس EXIF
@@ -155,12 +163,15 @@ async def _ocr_gemini(image_bytes: bytes, mode: str = "full") -> Optional[str]:
     prompt = prompts.get(mode, prompts["full"])
 
     try:
-        pil_img = Image.open(io.BytesIO(image_bytes))
+        if HAS_PIL and Image:
+            content_part = Image.open(io.BytesIO(image_bytes))
+        else:
+            content_part = {"mime_type": "image/jpeg", "data": image_bytes}
         loop = asyncio.get_running_loop()
         response = await loop.run_in_executor(
             None,
             lambda: model.generate_content(
-                [prompt, pil_img],
+                [prompt, content_part],
                 generation_config=genai.types.GenerationConfig(
                     temperature=0.1,
                     max_output_tokens=3000,

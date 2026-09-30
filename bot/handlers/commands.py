@@ -2502,7 +2502,16 @@ async def cmd_ocr(update: Update, context: ContextTypes.DEFAULT_TYPE):
         cache_ocr_image(f_short, image_bytes)
 
         # بررسی آرگومان‌های احتمالی ورودی
-        cmd_args = [a.lower() for a in (context.args or [])]
+        if getattr(context, "args", None):
+            cmd_args = [a.lower() for a in context.args]
+        elif message.text:
+            parts = message.text.split()
+            cmd_args = [p.lower() for p in parts[1:]] if len(parts) > 1 else []
+        elif message.caption:
+            parts = message.caption.split()
+            cmd_args = [p.lower() for p in parts[1:]] if len(parts) > 1 else []
+        else:
+            cmd_args = []
         mode = "receipt" if any(k in cmd_args for k in ("receipt", "fish", "فیش", "رسید")) else "translate" if any(k in cmd_args for k in ("tr", "translate", "ترجمه")) else "summary" if any(k in cmd_args for k in ("sum", "summary", "خلاصه")) else "full"
 
         res = await extract_text_from_image(image_bytes, mode=mode, provider="auto")
