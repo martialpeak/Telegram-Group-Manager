@@ -282,10 +282,15 @@ def main():
     app.add_handler(CommandHandler("weather", handlers.cmd_weather))
     app.add_handler(CommandHandler("hava", handlers.cmd_weather))
     app.add_handler(CommandHandler("havashenasi", handlers.cmd_weather))
+    app.add_handler(CommandHandler("ocr", handlers.cmd_ocr))
+    app.add_handler(CommandHandler("read", handlers.cmd_ocr))
+    app.add_handler(CommandHandler("matn", handlers.cmd_ocr))
+    app.add_handler(CommandHandler("متن", handlers.cmd_ocr))
+    app.add_handler(CommandHandler("اسکن", handlers.cmd_ocr))
 
     # ── Callback ها ───────────────────────────────────────────────────────────
     app.add_handler(CallbackQueryHandler(handlers.on_report_callback,  pattern=r"^rpt_"))
-    app.add_handler(CallbackQueryHandler(handlers.on_general_callback, pattern=r"^(rules|myrank_|tbtn_|help_|ainf_|qunb_|prc_|dt_|menu_|prof_|game_|news_|weather_)"))
+    app.add_handler(CallbackQueryHandler(handlers.on_general_callback, pattern=r"^(rules|myrank_|tbtn_|help_|ainf_|qunb_|prc_|dt_|menu_|prof_|game_|news_|weather_|ocr_)"))
     app.add_handler(CallbackQueryHandler(handlers.on_feedback_callback, pattern=r"^fb_"))
     app.add_handler(CallbackQueryHandler(handlers.on_feedback_callback, pattern=r"^vote_"))
     app.add_handler(CallbackQueryHandler(handlers.on_admin_answer_callback, pattern=r"^adm_"))

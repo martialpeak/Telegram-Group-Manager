@@ -145,6 +145,7 @@ def get_help_user_text() -> str:
         "📖 <b>راهنمای دستورات اعضای گروه:</b>\n\n"
         "<blockquote>"
         "🔹 <code>/price [نام کالا یا ارز]</code> ▫️ استعلام قیمت روز کالاها (ترب)، طلا، دلار و رمزارزها\n"
+        "🔹 <code>/ocr</code> ▫️ استخراج هوشمند متن از عکس، فیش بانکی و ترجمه تصویر\n"
         "🔹 <code>/time</code> ▫️ تقویم خورشیدی و میلادی، روز هفته و ساعت رسمی ایران\n"
         "🔹 <code>/info</code> ▫️ شناسنامه، سطح و آمار کامل شما یا کاربر دیگر\n"
         "🔹 <code>/myrank</code> ▫️ مشاهده پروفایل، رتبه و وضعیت جریمه\n"
@@ -2229,11 +2230,14 @@ async def cmd_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             InlineKeyboardButton("🗓 تقویم و ساعت رسمی", callback_data="menu_datetime"),
         ],
         [
+            InlineKeyboardButton("🔍 تبدیل عکس به متن (OCR)", callback_data="menu_ocr"),
             InlineKeyboardButton("🏆 فعال‌ترین‌های چت", callback_data="menu_top"),
-            InlineKeyboardButton("📜 قوانین گروه", callback_data="menu_rules"),
         ],
         [
+            InlineKeyboardButton("📜 قوانین گروه", callback_data="menu_rules"),
             InlineKeyboardButton("❓ راهنمای دستورات", callback_data="menu_help"),
+        ],
+        [
             InlineKeyboardButton("❌ بستن منو", callback_data="menu_close"),
         ]
     ])
@@ -2427,6 +2431,89 @@ async def cmd_weather(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"Error in cmd_weather: {e}")
         await wait_msg.edit_text("❌ متأسفانه در برقراری ارتباط با ایستگاه هواشناسی خطایی رخ داد. لطفاً لحظاتی دیگر مجدداً تلاش کنید.")
+
+
+# ─── /ocr — سامانه تبدیل عکس به متن (OCR هوشمند و فیش‌خوان) ───────────────────
+
+async def cmd_ocr(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    استخراج هوشمند متن از تصاویر، اسناد و رسیدهای بانکی با موتور دوگانه هوش مصنوعی و محلی
+    دستورات: /ocr, /read, /matn, /متن, /اسکن
+    """
+    import io
+    message = update.message
+    if not message:
+        return
+
+    # پیدا کردن پیام حاوی عکس (یا در ریپلای یا در خود پیام)
+    target_msg = None
+    if message.reply_to_message and (
+        message.reply_to_message.photo
+        or (message.reply_to_message.document and getattr(message.reply_to_message.document, "mime_type", "").startswith("image/"))
+    ):
+        target_msg = message.reply_to_message
+    elif message.photo or (message.document and getattr(message.document, "mime_type", "").startswith("image/")):
+        target_msg = message
+
+    if not target_msg:
+        help_text = (
+            "🔍 <b>سامانه تبدیل هوشمند عکس به متن (OCR دوگانه)</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "📌 <b>راهنمای استفاده:</b>\n"
+            "۱. روی هر عکس، فاکتور یا اسکرین‌شات <b>ریپلای</b> کنید و بنویسید <code>/ocr</code>\n"
+            "۲. یا عکس مورد نظر را مستقیماً همراه با متن <code>/ocr</code> یا <code>/متن</code> ارسال فرمایید.\n\n"
+            "✨ <b>قابلیت‌های موتور هوشمند:</b>\n"
+            "• استخراج دقیق متن فارسی چاپی و دست‌نویس با هوش مصنوعی (Gemini Vision)\n"
+            "• تحلیل و جداسازی خودکار رسید و فیش‌های بانکی (مبلغ، کارت، کد پیگیری)\n"
+            "• ترجمه فوری متن تصویر به زبان فارسی روان\n"
+            "• موتور آفلاین و محلی (RapidOCR) در زمان اختلال اینترنت بین‌الملل"
+        )
+        await message.reply_text(help_text, parse_mode="HTML")
+        return
+
+    # استخراج بزرگ‌ترین سایز تصویر
+    file_id = None
+    if target_msg.photo:
+        file_id = target_msg.photo[-1].file_id
+    elif target_msg.document:
+        file_id = target_msg.document.file_id
+
+    if not file_id:
+        await message.reply_text("❌ فایلی برای اسکن یافت نشد.")
+        return
+
+    wait_msg = await message.reply_text("🔍 <i>در حال دریافت و اسکن هوشمند تصویر...</i>", parse_mode="HTML")
+
+    try:
+        tg_file = await context.bot.get_file(file_id)
+        buf = io.BytesIO()
+        await tg_file.download_to_memory(buf)
+        image_bytes = buf.getvalue()
+
+        from bot.core.ocr_engine import (
+            extract_text_from_image,
+            format_ocr_response,
+            build_ocr_keyboard,
+            cache_ocr_image,
+        )
+
+        # کش کردن بایت‌های تصویر برای استفاده در دکمه‌های اینلاین
+        f_short = file_id[-20:] if len(file_id) > 20 else file_id
+        cache_ocr_image(f_short, image_bytes)
+
+        # بررسی آرگومان‌های احتمالی ورودی
+        cmd_args = [a.lower() for a in (context.args or [])]
+        mode = "receipt" if any(k in cmd_args for k in ("receipt", "fish", "فیش", "رسید")) else "translate" if any(k in cmd_args for k in ("tr", "translate", "ترجمه")) else "summary" if any(k in cmd_args for k in ("sum", "summary", "خلاصه")) else "full"
+
+        res = await extract_text_from_image(image_bytes, mode=mode, provider="auto")
+        text_out = format_ocr_response(res, mode=mode)
+        kb = build_ocr_keyboard(file_id, current_mode=mode)
+
+        await wait_msg.edit_text(text_out, parse_mode="HTML", reply_markup=kb)
+    except Exception as e:
+        logger.error(f"Error in cmd_ocr: {e}")
+        await wait_msg.edit_text("❌ متأسفانه در اسکن تصویر خطایی رخ داد. لطفاً تصویر دیگری ارسال کنید.")
+
 
 
 

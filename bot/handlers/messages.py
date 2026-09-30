@@ -324,7 +324,20 @@ async def on_media_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if message.from_user.is_bot:
         return
     if message.chat.type == ChatType.PRIVATE:
+        if message.photo or (message.document and getattr(message.document, "mime_type", "").startswith("image/")):
+            from bot.handlers.commands import cmd_ocr
+            await cmd_ocr(update, context)
         return
+
+    # ─── تشخیص خودکار درخواست OCR در کپشن تصویر در گروه ──────────────────────
+    caption = (message.caption or "").strip()
+    if (message.photo or (message.document and getattr(message.document, "mime_type", "").startswith("image/"))) and caption:
+        ocr_keywords = ["/ocr", "/read", "/matn", "/متن", "/اسکن", "ocr", "متنشو", "متن این", "بخون اینو", "فیش بانکی", "رسید واریز"]
+        c_lower = caption.lower()
+        if any(kw in c_lower for kw in ocr_keywords):
+            from bot.handlers.commands import cmd_ocr
+            await cmd_ocr(update, context)
+            return
 
     # auto-tag
     user = message.from_user

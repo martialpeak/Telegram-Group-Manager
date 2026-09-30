@@ -506,11 +506,14 @@ async def on_general_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
                     InlineKeyboardButton("🗓 تقویم و ساعت رسمی", callback_data="menu_datetime"),
                 ],
                 [
+                    InlineKeyboardButton("🔍 تبدیل عکس به متن (OCR)", callback_data="menu_ocr"),
                     InlineKeyboardButton("🏆 فعال‌ترین‌های چت", callback_data="menu_top"),
-                    InlineKeyboardButton("📜 قوانین گروه", callback_data="menu_rules"),
                 ],
                 [
+                    InlineKeyboardButton("📜 قوانین گروه", callback_data="menu_rules"),
                     InlineKeyboardButton("❓ راهنمای دستورات", callback_data="menu_help"),
+                ],
+                [
                     InlineKeyboardButton("❌ بستن منو", callback_data="menu_close"),
                 ]
             ])
@@ -750,6 +753,29 @@ async def on_general_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
                     logger.warning(f"Error in menu_weather: {e}")
             return
 
+        elif data == "menu_ocr":
+            ocr_text = (
+                "🔍 <b>سامانه تبدیل عکس به متن (OCR هوشمند و فیش‌خوان)</b>\n"
+                "━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                "📌 <b>نحوه استفاده سریع:</b>\n"
+                "۱. روی هر عکس یا سندی در چت <b>ریپلای</b> بزنید و بنویسید <code>/ocr</code>\n"
+                "۲. یا عکس را مستقیماً با متن <code>/ocr</code> یا <code>/متن</code> ارسال کنید.\n\n"
+                "✨ <b>امکانات ویژه:</b>\n"
+                "• <b>استخراج متن کامل:</b> چاپی، دست‌نویس و اسکرین‌شات با دقت ۹۹٪\n"
+                "• <b>تحلیل رسید بانکی:</b> استخراج خودکار مبلغ، شماره کارت و کد رهگیری\n"
+                "• <b>ترجمه فوری:</b> خواندن متن تصویر و ترجمه به فارسی روان\n"
+                "• <b>موتور محلی آفلاین:</b> پردازش سریع بدون نیاز به اینترنت بین‌الملل"
+            )
+            kb = InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔙 بازگشت به منو", callback_data="menu_main")]
+            ])
+            try:
+                await query.edit_message_text(ocr_text, parse_mode="HTML", reply_markup=kb)
+            except Exception as e:
+                if "Message is not modified" not in str(e):
+                    logger.warning(f"Error in menu_ocr: {e}")
+            return
+
         elif data == "menu_close":
             try:
                 await query.message.delete()
@@ -820,6 +846,44 @@ async def on_general_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
             await query.edit_message_text(text, parse_mode="HTML", reply_markup=kb)
         except Exception:
             pass
+        return
+
+    elif data.startswith("ocr_"):
+        await query.answer("🔄 در حال پردازش تصویر...")
+        from bot.core.ocr_engine import (
+            extract_text_from_image,
+            format_ocr_response,
+            build_ocr_keyboard,
+            get_cached_ocr_image,
+        )
+
+        parts = data.split("_")
+        # فرمت: ocr_m_<mode>_<file_id> یا ocr_p_<prov>_<file_id>
+        action_type = parts[1] if len(parts) > 1 else ""
+        val = parts[2] if len(parts) > 2 else ""
+        f_short = parts[3] if len(parts) > 3 else ""
+
+        mode = "full"
+        provider = "auto"
+        if action_type == "m":
+            mode = val
+        elif action_type == "p":
+            provider = val
+
+        image_bytes = get_cached_ocr_image(f_short)
+        if not image_bytes:
+            await query.answer("⚠️ مهلت پردازش این تصویر منقضی شده است. لطفاً دستور /ocr را مجدداً روی عکس ارسال فرمایید.", show_alert=True)
+            return
+
+        res = await extract_text_from_image(image_bytes, mode=mode, provider=provider)
+        text_out = format_ocr_response(res, mode=mode)
+        kb = build_ocr_keyboard(f_short, current_mode=mode, current_prov=provider)
+
+        try:
+            await query.edit_message_text(text_out, parse_mode="HTML", reply_markup=kb)
+        except Exception as e:
+            if "Message is not modified" not in str(e):
+                logger.warning(f"Error editing OCR callback: {e}")
         return
 
     else:
