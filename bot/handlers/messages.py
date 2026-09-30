@@ -525,6 +525,87 @@ async def _handle_direct_datetime_query(message, text: str, bot_username: str = 
     return False
 
 
+async def _handle_karma_trigger(message) -> bool:
+    """
+    تشخیص ریپلای تشکر و اعطای کارما به پاسخ‌دهنده:
+    الگوها: + یا +1 یا تشکر، ممنون، دمت گرم و...
+    """
+    if not message.reply_to_message:
+        return False
+
+    replied_msg = message.reply_to_message
+    replied_user = replied_msg.from_user
+    if not replied_user or replied_user.is_bot:
+        return False
+
+    text = message.text.strip().lower()
+
+    # کلمات و علائم افزایش کارما
+    exact_triggers = {
+        "+", "+1", "++", "👍", "❤️", "🌹", "سپاس", "ممنون", "مرسی", "تشکر",
+        "دمت گرم", "دمتگرم", "دستت درد نکنه", "عالی بود", "خیلی ممنون",
+        "حل شد مرسی", "حل شد ممنون", "تشکر فراوان", "thanks", "thx", "ty", "thank you"
+    }
+
+    is_karma = False
+    if text in exact_triggers:
+        is_karma = True
+    elif text.startswith("+") and len(text) <= 3:
+        is_karma = True
+    elif any(text.startswith(p) for p in ["ممنون", "مرسی", "تشکر", "دمت گرم", "دستت درد نکنه"]) and len(text.split()) <= 4:
+        is_karma = True
+
+    if not is_karma:
+        return False
+
+    from_user = message.from_user
+    chat = message.chat
+
+    ok, reason, new_karma = await db.add_karma(from_user.id, replied_user.id, chat.id)
+    if ok:
+        target_name = replied_user.first_name or "کاربر"
+        from bot.utils.helpers import to_persian_digits
+        k_fa = to_persian_digits(str(new_karma))
+        rep_text = (
+            f"⭐ <b>به اعتبار <a href=\"tg://user?id={replied_user.id}\">{target_name}</a> ۱ امتیاز کارما افزوده شد!</b>\n"
+            f"📊 مجموع کارمای این کاربر در گروه: <b>{k_fa}</b> ⭐"
+        )
+        try:
+            await message.reply_text(rep_text, parse_mode="HTML")
+        except Exception as e:
+            logger.warning(f"Failed to send karma notification: {e}")
+        return True
+    elif reason == "self_karma":
+        try:
+            await message.reply_text("❌ شما نمی‌توانید به خودتان امتیاز کارما دهید!", parse_mode="HTML")
+        except Exception:
+            pass
+        return True
+    elif reason.startswith("cooldown:"):
+        sec = reason.split(":")[1]
+        try:
+            from bot.utils.helpers import to_persian_digits
+            mins = max(1, int(int(sec) / 60))
+            await message.reply_text(
+                f"⏳ برای امتیازدهی دوباره به این کاربر باید حدود {to_persian_digits(str(mins))} دقیقه دیگر صبر کنید.",
+                parse_mode="HTML"
+            )
+        except Exception:
+            pass
+        return True
+    elif reason == "daily_limit":
+        try:
+            await message.reply_text(
+                "⚠️ سقف امتیازدهی روزانه شما به پایان رسیده است. فردا مجدداً تلاش کنید.",
+                parse_mode="HTML"
+            )
+        except Exception:
+            pass
+        return True
+
+    return False
+
+
 # ─── هندلر اصلی پیام‌های متنی ────────────────────────────────────────────────
 
 async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -552,6 +633,10 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ── استعلام مستقیم تاریخ و ساعت (امروز چندمه، چند شنبه است و...) ───────
     if await _handle_direct_datetime_query(message, message.text, context.bot.username):
+        return
+
+    # ── سیستم اهدا و ثبت امتیاز کارما به پاسخ‌های کمکی ────────────────────
+    if await _handle_karma_trigger(message):
         return
 
     if _is_admin(user.id):

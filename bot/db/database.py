@@ -180,6 +180,26 @@ async def init_db():
             PRIMARY KEY (user_id, chat_id)
         );
 
+        -- جدول امتیاز کارما و اعتبار کاربران در گروه
+        CREATE TABLE IF NOT EXISTS user_karma (
+            user_id INTEGER NOT NULL,
+            chat_id INTEGER NOT NULL,
+            karma   INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (user_id, chat_id)
+        );
+
+        -- لاگ تاریخچه اهدا و دریافت کارما جهت اعمال Cooldown و جلوگیری از تبانی
+        CREATE TABLE IF NOT EXISTS karma_log (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            from_user_id INTEGER NOT NULL,
+            to_user_id   INTEGER NOT NULL,
+            chat_id      INTEGER NOT NULL,
+            created_at   TEXT DEFAULT (datetime('now'))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_karma_chat_user ON user_karma(chat_id, karma);
+        CREATE INDEX IF NOT EXISTS idx_karma_cooldown  ON karma_log(from_user_id, to_user_id, chat_id, created_at);
+
         CREATE INDEX IF NOT EXISTS idx_warnings_user  ON warnings(user_id, chat_id);
         CREATE INDEX IF NOT EXISTS idx_msglog_chat    ON message_log(chat_id, created_at);
         CREATE INDEX IF NOT EXISTS idx_kb_question    ON knowledge_base(question);
@@ -1067,6 +1087,151 @@ async def get_top_users(chat_id: int, limit: int = 10) -> list[dict]:
             {"user_id": r[0], "points": r[1], "full_name": r[2] or ""}
             for r in rows
         ]
+
+
+# ─── سیستم کارما، اعتبار و نشان‌های افتخار ───────────────────────────────────
+
+async def add_karma(from_user_id: int, to_user_id: int, chat_id: int) -> tuple[bool, str, int]:
+    """
+    افزایش امتیاز کارما و اعتبار برای کاربر پاسخ‌دهنده:
+    - بررسی می‌کند کاربر به خودش امتیاز ندهد
+    - کول‌داون ۵ دقیقه‌ای بین دو کاربر مشخص
+    - سقف ۱۵ کارما در روز از یک کاربر
+    بازمی‌گرداند: (موفقیت, پیام_وضعیت, مجموع_کارما)
+    """
+    if from_user_id == to_user_id:
+        return False, "self_karma", 0
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        # ۱. بررسی کول‌داون (حداقل ۵ دقیقه بین دو کاربر یکسان)
+        cur = await db.execute(
+            """SELECT created_at FROM karma_log
+               WHERE from_user_id=? AND to_user_id=? AND chat_id=?
+               ORDER BY id DESC LIMIT 1""",
+            (from_user_id, to_user_id, chat_id),
+        )
+        row = await cur.fetchone()
+        if row and row[0]:
+            cur_time = await db.execute("SELECT (strftime('%s', 'now') - strftime('%s', ?))", (row[0],))
+            diff_row = await cur_time.fetchone()
+            if diff_row and diff_row[0] is not None and diff_row[0] < 300:  # 300 seconds = 5 minutes
+                remaining = 300 - diff_row[0]
+                return False, f"cooldown:{remaining}", 0
+
+        # ۲. بررسی سقف روزانه از این کاربر
+        cur_daily = await db.execute(
+            """SELECT COUNT(*) FROM karma_log
+               WHERE from_user_id=? AND chat_id=? AND date(created_at) = date('now')""",
+            (from_user_id, chat_id),
+        )
+        daily_count = (await cur_daily.fetchone())[0]
+        if daily_count >= 15:
+            return False, "daily_limit", 0
+
+        # ۳. ثبت لاگ
+        await db.execute(
+            """INSERT INTO karma_log (from_user_id, to_user_id, chat_id)
+               VALUES (?, ?, ?)""",
+            (from_user_id, to_user_id, chat_id),
+        )
+
+        # ۴. افزایش کارما
+        await db.execute(
+            """INSERT INTO user_karma (user_id, chat_id, karma)
+               VALUES (?, ?, 1)
+               ON CONFLICT(user_id, chat_id) DO UPDATE
+               SET karma = karma + 1""",
+            (to_user_id, chat_id),
+        )
+
+        # ۵. اهدای ۵ امتیاز کلی گروه به کاربر
+        await db.execute(
+            """INSERT INTO user_points (user_id, chat_id, points)
+               VALUES (?, ?, 5)
+               ON CONFLICT(user_id, chat_id) DO UPDATE
+               SET points = points + 5""",
+            (to_user_id, chat_id),
+        )
+
+        await db.commit()
+
+        # دریافت مجموع جدید کارما
+        cur_k = await db.execute(
+            "SELECT karma FROM user_karma WHERE user_id=? AND chat_id=?",
+            (to_user_id, chat_id),
+        )
+        k_row = await cur_k.fetchone()
+        new_karma = k_row[0] if k_row else 1
+        return True, "ok", new_karma
+
+
+async def get_karma(user_id: int, chat_id: int) -> int:
+    """دریافت امتیاز کارمای یک کاربر در گروه"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute(
+            "SELECT karma FROM user_karma WHERE user_id=? AND chat_id=?",
+            (user_id, chat_id),
+        )
+        row = await cur.fetchone()
+        return row[0] if row else 0
+
+
+async def get_top_karma_users(chat_id: int, limit: int = 10) -> list[dict]:
+    """برترین و محبوب‌ترین کاربران گروه بر اساس کارما"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute(
+            """SELECT uk.user_id, uk.karma, COALESCE(usr.full_name, usr.username, '') as name
+               FROM user_karma uk
+               LEFT JOIN user_profile usr
+                 ON usr.user_id = uk.user_id AND usr.chat_id = uk.chat_id
+               WHERE uk.chat_id=? AND uk.karma > 0
+               ORDER BY uk.karma DESC
+               LIMIT ?""",
+            (chat_id, limit),
+        )
+        rows = await cur.fetchall()
+        return [
+            {"user_id": r[0], "karma": r[1], "name": r[2] or f"کاربر {r[0]}"}
+            for r in rows
+        ]
+
+
+async def get_user_badges(user_id: int, chat_id: int, msg_count: int, karma: int) -> list[str]:
+    """تولید نشان‌های افتخار (Badges) برای کاربر بر اساس سوابق و فعالیت"""
+    badges = []
+    if karma >= 50:
+        badges.append("🌟 اسطوره پاسخگویی")
+    elif karma >= 20:
+        badges.append("⭐ یاور برتر گروه")
+    elif karma >= 5:
+        badges.append("🤝 همراه پاسخگو")
+
+    if msg_count >= 2000:
+        badges.append("👑 کهنه‌سوار گروه")
+    elif msg_count >= 500:
+        badges.append("💬 فوق‌فعال")
+    elif msg_count >= 100:
+        badges.append("🗣 پرحرف و پویا")
+    elif msg_count >= 20:
+        badges.append("🌱 عضو فعال")
+
+    # بررسی سابقه عضویت از user_profile
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute(
+            "SELECT first_seen FROM user_profile WHERE user_id=? AND chat_id=?",
+            (user_id, chat_id),
+        )
+        row = await cur.fetchone()
+        if row and row[0]:
+            cur_diff = await db.execute("SELECT (strftime('%s', 'now') - strftime('%s', ?))", (row[0],))
+            d_row = await cur_diff.fetchone()
+            if d_row and d_row[0] and d_row[0] > 30 * 86400:
+                badges.append("🏛 پیشکسوت گروه")
+
+    if not badges:
+        badges.append("✨ عضو تازه‌نفس")
+
+    return badges
 
 
 async def save_upgrade_pending(

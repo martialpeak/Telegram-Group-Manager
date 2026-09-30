@@ -2033,4 +2033,193 @@ async def cmd_datetime(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await message.reply_text(txt, parse_mode="HTML", reply_markup=kb)
 
 
+# ─── /profile /me — شناسنامه و کارت کاربری با نشان‌های افتخار ────────────────
+
+async def get_profile_card_data(target_user, chat, context) -> tuple[str, InlineKeyboardMarkup]:
+    """تولید متن و کیبورد کارت کاربری برای نمایش متنی یا درون منو"""
+    from bot.utils.helpers import to_persian_digits
+    from bot.core.user_levels import level_label, get_config
+
+    uid = target_user.id
+    name = target_user.first_name or "کاربر"
+    uname = f"@{target_user.username}" if target_user.username else "ندارد"
+
+    # دریافت آمارها از دیتابیس
+    level = await db.get_user_level(uid, chat.id)
+    cfg = get_config(level)
+    points = await db.get_points(uid, chat.id)
+    karma = await db.get_karma(uid, chat.id)
+    total_msgs = await db.get_message_count(uid, chat.id)
+    warns = await db.get_warnings(uid, chat.id)
+    badges = await db.get_user_badges(uid, chat.id, total_msgs, karma)
+
+    # موقعیت کاربر در گروه
+    tg_role = "👤 عضو عادی"
+    try:
+        cm = await context.bot.get_chat_member(chat.id, uid)
+        st = getattr(cm, "status", "")
+        if st in ("creator", "owner"):
+            tg_role = "👑 مالک / سازنده گروه"
+        elif st == "administrator":
+            tg_role = "🛡️ مدیر گروه"
+    except Exception:
+        pass
+
+    warn_disp = "✅ پاک (بدون اخطار)" if warns == 0 else f"⚠️ {to_persian_digits(str(warns))} از ۳ اخطار"
+
+    pts_fa = to_persian_digits(f"{points:,}")
+    k_fa = to_persian_digits(f"{karma:,}")
+    m_fa = to_persian_digits(f"{total_msgs:,}")
+
+    badges_formatted = "  " + "  |  ".join(badges) if badges else "  ✨ عضو تازه‌نفس"
+
+    text = (
+        f"🪪 <b>کارت شناسنامه و هویت کاربری:</b>\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"👤 <b>کاربر:</b> <a href=\"tg://user?id={uid}\">{name}</a> <code>({uname})</code>\n"
+        f"🆔 <b>شناسه عددی:</b> <code>{uid}</code>\n"
+        f"🏷 <b>سمت در گروه:</b> <b>{tg_role}</b>\n\n"
+        f"<blockquote>"
+        f"🎖 <b>سطح عضویت:</b> <b>{level_label(level)}</b>\n"
+        f"⭐ <b>اعتبار کارما:</b> <b>{k_fa}</b> ⭐\n"
+        f"🏆 <b>امتیاز کل فعالیت:</b> <b>{pts_fa}</b> امتیاز\n"
+        f"💬 <b>تعداد کل پیام‌ها:</b> <b>{m_fa}</b> پیام\n"
+        f"🛡️ <b>وضعیت انضباطی:</b> <b>{warn_disp}</b>"
+        f"</blockquote>\n\n"
+        f"🏅 <b>نشان‌های افتخار کسب‌شده:</b>\n"
+        f"<blockquote>\n{badges_formatted}\n</blockquote>"
+    )
+
+    kb = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("🏆 برترین‌های پیام", callback_data="menu_top"),
+            InlineKeyboardButton("⭐ محبوب‌ترین‌ها (کارما)", callback_data="menu_topkarma"),
+        ],
+        [
+            InlineKeyboardButton("🔄 بروزرسانی کارت", callback_data=f"prof_refresh_{uid}"),
+            InlineKeyboardButton("🔙 منوی اصلی", callback_data="menu_main"),
+        ]
+    ])
+
+    return text, kb
+
+
+async def cmd_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    نمایش کارت پروفایل و هویت کاربری (/profile, /me, /mystats)
+    """
+    message = update.message
+    if not message:
+        return
+    chat = message.chat
+    if chat.type == ChatType.PRIVATE:
+        await message.reply_text("❌ این دستور مخصوص گروه‌ها است.")
+        return
+
+    target_user = message.from_user
+    if message.reply_to_message and message.reply_to_message.from_user and not message.reply_to_message.from_user.is_bot:
+        target_user = message.reply_to_message.from_user
+
+    text, kb = await get_profile_card_data(target_user, chat, context)
+    await message.reply_text(text, parse_mode="HTML", reply_markup=kb)
+
+
+# ─── /topkarma — برترین و محبوب‌ترین کاربران گروه بر اساس کارما ───────────────
+
+async def cmd_topkarma(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    نمایش جدول برترین کاربران دارای بیشترین امتیاز کارما در گروه (/topkarma, /karma)
+    """
+    message = update.message
+    if not message:
+        return
+    chat = message.chat
+    if chat.type == ChatType.PRIVATE:
+        await message.reply_text("❌ این دستور مخصوص گروه‌ها است.")
+        return
+
+    from bot.utils.helpers import to_persian_digits
+    top_list = await db.get_top_karma_users(chat.id, limit=10)
+
+    if not top_list:
+        await message.reply_text(
+            "⭐ <b>هنوز امتیازی برای اعضای گروه ثبت نشده است!</b>\n\n"
+            "💡 <i>راهنما: کافیست در ریپلای به پیام‌های مفید دیگران، علامت (+) یا کلماتی مانند «ممنون» یا «تشکر» ارسال کنید تا به آنها امتیاز کارما تعلق گیرد.</i>",
+            parse_mode="HTML"
+        )
+        return
+
+    rank_icons = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
+    lines = [
+        "⭐ <b>محبوب‌ترین و مفیدترین اعضای گروه (بر اساس کارما):</b>",
+        "━━━━━━━━━━━━━━━━━━━━━━━━\n",
+        "<blockquote>",
+    ]
+
+    for i, item in enumerate(top_list):
+        icon = rank_icons[i] if i < len(rank_icons) else f"#{i+1}"
+        k_fa = to_persian_digits(str(item["karma"]))
+        u_name = item["name"] or f"کاربر {item['user_id']}"
+        lines.append(f"{icon} <b>{u_name}</b> — <b>{k_fa}</b> امتیاز کارما ⭐")
+
+    lines.append("</blockquote>\n")
+    lines.append("💡 <i>نکته: با ریپلای تشکر و علامت (+) به پاسخ‌های خوب دیگران، به اعتبار آن‌ها بیفزایید.</i>")
+
+    kb = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("🏆 برترین‌های پیام", callback_data="menu_top"),
+            InlineKeyboardButton("👤 پروفایل من", callback_data="menu_profile"),
+        ],
+        [
+            InlineKeyboardButton("🔙 بازگشت به منو", callback_data="menu_main"),
+        ]
+    ])
+
+    await message.reply_text("\n".join(lines), parse_mode="HTML", reply_markup=kb)
+
+
+# ─── /menu — منوی شیشه‌ای جامع و داشبورد گروه ────────────────────────────────
+
+async def cmd_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    منوی شیشه‌ای و داشبورد تعاملی گروه (/menu, /panel, /dashboard)
+    """
+    message = update.message
+    if not message:
+        return
+    user = message.from_user
+    name = user.first_name if user else "دوست"
+
+    text = (
+        f"🤖 <b>منوی هوشمند و خدمات گروه</b>\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"👋 سلام <b>{name}</b> عزیز، به داشبورد تعاملی خوش آمدید!\n"
+        f"برای دسترسی سریع و بدون اسپم، یکی از گزینه‌های زیر را انتخاب کنید:"
+    )
+
+    kb = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("💰 استعلام زنده ارز و طلا", callback_data="menu_prices"),
+            InlineKeyboardButton("⚡ بازار رمزارزها", callback_data="prc_crypto"),
+        ],
+        [
+            InlineKeyboardButton("🪪 شناسنامه و پروفایل من", callback_data="menu_profile"),
+            InlineKeyboardButton("🏆 فعال‌ترین‌های چت", callback_data="menu_top"),
+        ],
+        [
+            InlineKeyboardButton("⭐ محبوب‌ترین‌ها (کارما)", callback_data="menu_topkarma"),
+            InlineKeyboardButton("🗓 تقویم و ساعت رسمی", callback_data="menu_datetime"),
+        ],
+        [
+            InlineKeyboardButton("📜 قوانین گروه", callback_data="menu_rules"),
+            InlineKeyboardButton("❓ راهنمای دستورات", callback_data="menu_help"),
+        ],
+        [
+            InlineKeyboardButton("❌ بستن منو", callback_data="menu_close"),
+        ]
+    ])
+
+    await message.reply_text(text, parse_mode="HTML", reply_markup=kb)
+
+
 

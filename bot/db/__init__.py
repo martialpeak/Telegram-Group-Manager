@@ -27,6 +27,9 @@ from .database import (
     # stats
     get_stats, get_daily_stats,
     get_violation_stats, get_user_daily_stats,
+    # points & karma & badges
+    get_points, add_points, get_top_users,
+    add_karma, get_karma, get_top_karma_users, get_user_badges,
 )
 
 __all__ = [
@@ -47,4 +50,6 @@ __all__ = [
     "get_pending_reports", "update_report_status", "get_report_count",
     "get_stats", "get_daily_stats",
     "get_violation_stats", "get_user_daily_stats",
+    "get_points", "add_points", "get_top_users",
+    "add_karma", "get_karma", "get_top_karma_users", "get_user_badges",
 ]

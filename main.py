@@ -152,10 +152,17 @@ def main():
     app.add_handler(CommandHandler("saat", handlers.cmd_datetime))
     app.add_handler(CommandHandler("tarikh", handlers.cmd_datetime))
     app.add_handler(CommandHandler("calendar", handlers.cmd_datetime))
+    app.add_handler(CommandHandler("profile", handlers.cmd_profile))
+    app.add_handler(CommandHandler("me", handlers.cmd_profile))
+    app.add_handler(CommandHandler("topkarma", handlers.cmd_topkarma))
+    app.add_handler(CommandHandler("karma", handlers.cmd_topkarma))
+    app.add_handler(CommandHandler("menu", handlers.cmd_menu))
+    app.add_handler(CommandHandler("panel", handlers.cmd_menu))
+    app.add_handler(CommandHandler("dashboard", handlers.cmd_menu))
 
     # ── Callback ها ───────────────────────────────────────────────────────────
     app.add_handler(CallbackQueryHandler(handlers.on_report_callback,  pattern=r"^rpt_"))
-    app.add_handler(CallbackQueryHandler(handlers.on_general_callback, pattern=r"^(rules|myrank_|tbtn_|help_|ainf_|qunb_|prc_|dt_)"))
+    app.add_handler(CallbackQueryHandler(handlers.on_general_callback, pattern=r"^(rules|myrank_|tbtn_|help_|ainf_|qunb_|prc_|dt_|menu_|prof_)"))
     app.add_handler(CallbackQueryHandler(handlers.on_feedback_callback, pattern=r"^fb_"))
     app.add_handler(CallbackQueryHandler(handlers.on_feedback_callback, pattern=r"^vote_"))
     app.add_handler(CallbackQueryHandler(handlers.on_admin_answer_callback, pattern=r"^adm_"))

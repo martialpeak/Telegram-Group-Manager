@@ -449,6 +449,212 @@ async def on_general_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
                 pass
             return
 
+    elif data.startswith("menu_"):
+        await query.answer()
+        chat = query.message.chat
+        user = query.from_user
+
+        if data == "menu_main":
+            name = user.first_name if user else "دوست"
+            text = (
+                f"🤖 <b>منوی هوشمند و خدمات گروه</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                f"👋 سلام <b>{name}</b> عزیز، به داشبورد تعاملی خوش آمدید!\n"
+                f"برای دسترسی سریع و بدون اسپم، یکی از گزینه‌های زیر را انتخاب کنید:"
+            )
+            kb = InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton("💰 استعلام زنده ارز و طلا", callback_data="menu_prices"),
+                    InlineKeyboardButton("⚡ بازار رمزارزها", callback_data="prc_crypto"),
+                ],
+                [
+                    InlineKeyboardButton("🪪 شناسنامه و پروفایل من", callback_data="menu_profile"),
+                    InlineKeyboardButton("🏆 فعال‌ترین‌های چت", callback_data="menu_top"),
+                ],
+                [
+                    InlineKeyboardButton("⭐ محبوب‌ترین‌ها (کارما)", callback_data="menu_topkarma"),
+                    InlineKeyboardButton("🗓 تقویم و ساعت رسمی", callback_data="menu_datetime"),
+                ],
+                [
+                    InlineKeyboardButton("📜 قوانین گروه", callback_data="menu_rules"),
+                    InlineKeyboardButton("❓ راهنمای دستورات", callback_data="menu_help"),
+                ],
+                [
+                    InlineKeyboardButton("❌ بستن منو", callback_data="menu_close"),
+                ]
+            ])
+            try:
+                await query.edit_message_text(text, parse_mode="HTML", reply_markup=kb)
+            except Exception:
+                pass
+            return
+
+        elif data == "menu_profile":
+            from bot.handlers.commands import get_profile_card_data
+            text, kb = await get_profile_card_data(user, chat, context)
+            try:
+                await query.edit_message_text(text, parse_mode="HTML", reply_markup=kb)
+            except Exception:
+                pass
+            return
+
+        elif data == "menu_top":
+            from bot.utils.helpers import to_persian_digits
+            top_users = await db.get_top_users(chat.id, limit=10)
+            rank_icons = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
+            lines = [
+                "🏆 <b>فعال‌ترین و برترین کاربران گروه بر اساس فعالیت:</b>",
+                "━━━━━━━━━━━━━━━━━━━━━━━━\n",
+                "<blockquote>",
+            ]
+            if top_users:
+                for i, u in enumerate(top_users):
+                    icon = rank_icons[i] if i < len(rank_icons) else f"#{i+1}"
+                    pts_fa = to_persian_digits(f"{u['points']:,}")
+                    u_name = u["full_name"] or f"کاربر {u['user_id']}"
+                    lines.append(f"{icon} <b>{u_name}</b> — <b>{pts_fa}</b> امتیاز فعالیت")
+            else:
+                lines.append("هنوز فعالیتی ثبت نشده است.")
+            lines.append("</blockquote>\n")
+            kb = InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton("⭐ برترین‌های کارما", callback_data="menu_topkarma"),
+                    InlineKeyboardButton("🪪 پروفایل من", callback_data="menu_profile"),
+                ],
+                [
+                    InlineKeyboardButton("🔙 بازگشت به منو", callback_data="menu_main"),
+                ]
+            ])
+            try:
+                await query.edit_message_text("\n".join(lines), parse_mode="HTML", reply_markup=kb)
+            except Exception:
+                pass
+            return
+
+        elif data == "menu_topkarma":
+            from bot.utils.helpers import to_persian_digits
+            top_list = await db.get_top_karma_users(chat.id, limit=10)
+            rank_icons = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
+            lines = [
+                "⭐ <b>محبوب‌ترین و مفیدترین اعضای گروه (بر اساس کارما):</b>",
+                "━━━━━━━━━━━━━━━━━━━━━━━━\n",
+                "<blockquote>",
+            ]
+            if top_list:
+                for i, item in enumerate(top_list):
+                    icon = rank_icons[i] if i < len(rank_icons) else f"#{i+1}"
+                    k_fa = to_persian_digits(str(item["karma"]))
+                    u_name = item["name"] or f"کاربر {item['user_id']}"
+                    lines.append(f"{icon} <b>{u_name}</b> — <b>{k_fa}</b> کارما ⭐")
+            else:
+                lines.append("هنوز امتیازی برای اعضا ثبت نشده است.")
+            lines.append("</blockquote>\n")
+            lines.append("💡 <i>با ریپلای تشکر و علامت (+) به پیام دیگران، به آنها کارما دهید.</i>")
+            kb = InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton("🏆 برترین‌های پیام", callback_data="menu_top"),
+                    InlineKeyboardButton("🪪 پروفایل من", callback_data="menu_profile"),
+                ],
+                [
+                    InlineKeyboardButton("🔙 بازگشت به منو", callback_data="menu_main"),
+                ]
+            ])
+            try:
+                await query.edit_message_text("\n".join(lines), parse_mode="HTML", reply_markup=kb)
+            except Exception:
+                pass
+            return
+
+        elif data == "menu_prices":
+            from bot.core.knowledge_engine import search_price_all
+            res = await search_price_all("")
+            kb = InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton("💵 نرخ ارز و دلار", callback_data="prc_currency"),
+                    InlineKeyboardButton("🪙 طلا و انواع سکه", callback_data="prc_gold"),
+                ],
+                [
+                    InlineKeyboardButton("⚡ بازار رمزارزها (BTC/TON)", callback_data="prc_crypto"),
+                ],
+                [
+                    InlineKeyboardButton("🔙 بازگشت به منو", callback_data="menu_main"),
+                ]
+            ])
+            try:
+                await query.edit_message_text(res["text"], parse_mode="HTML", reply_markup=kb)
+            except Exception:
+                pass
+            return
+
+        elif data == "menu_datetime":
+            from bot.utils.helpers import get_datetime_response
+            txt = get_datetime_response()
+            kb = InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton("🔄 بروزرسانی زمان", callback_data="dt_refresh"),
+                    InlineKeyboardButton("🔙 بازگشت به منو", callback_data="menu_main"),
+                ]
+            ])
+            try:
+                await query.edit_message_text(txt, parse_mode="HTML", reply_markup=kb)
+            except Exception:
+                pass
+            return
+
+        elif data == "menu_rules":
+            rules_text = (
+                f"📜 <b>قوانین رسمی گروه:</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                f"<blockquote>"
+                f"۱. رعایت احترام متقابل و عدم توهین یا تمسخر اعضا\n"
+                f"۲. ممنوعیت ارسال هرگونه لینک و تبلیغات غیرمجاز\n"
+                f"۳. عدم اسپم، فوروارد رگباری و ارسال استیکرهای نامناسب\n"
+                f"۴. بحث و گفتگو در چارچوب موضوع گروه"
+                f"</blockquote>\n\n"
+                f"🛡️ <i>ربات دارای سیستم اخطار و تنبیه تصاعدی خودکار است.</i>"
+            )
+            kb = InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔙 بازگشت به منو", callback_data="menu_main")]
+            ])
+            try:
+                await query.edit_message_text(rules_text, parse_mode="HTML", reply_markup=kb)
+            except Exception:
+                pass
+            return
+
+        elif data == "menu_help":
+            from bot.handlers.commands import get_help_user_text
+            txt = get_help_user_text()
+            kb = InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔙 بازگشت به منو", callback_data="menu_main")]
+            ])
+            try:
+                await query.edit_message_text(txt, parse_mode="HTML", reply_markup=kb)
+            except Exception:
+                pass
+            return
+
+        elif data == "menu_close":
+            try:
+                await query.message.delete()
+            except Exception:
+                pass
+            return
+
+    elif data.startswith("prof_refresh_"):
+        await query.answer("🔄 در حال بروزرسانی کارت...")
+        chat = query.message.chat
+        parts = data.split("_")
+        target_uid = int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else query.from_user.id
+        try:
+            target_user = query.from_user if target_uid == query.from_user.id else (await context.bot.get_chat_member(chat.id, target_uid)).user
+            from bot.handlers.commands import get_profile_card_data
+            text, kb = await get_profile_card_data(target_user, chat, context)
+            await query.edit_message_text(text, parse_mode="HTML", reply_markup=kb)
+        except Exception:
+            pass
+        return
+
     else:
         await query.answer()
 
