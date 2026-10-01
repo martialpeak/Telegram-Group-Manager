@@ -17,6 +17,7 @@ AI_PROVIDER    = os.getenv("AI_PROVIDER", "groq")
 # Groq (primary — 14400 req/day free)
 GROQ_API_KEY   = os.getenv("GROQ_API_KEY", "")
 GROQ_MODEL     = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+GROQ_VISION_MODEL = os.getenv("GROQ_VISION_MODEL", "qwen/qwen3.8-27b")
 
 # Gemini (fallback — 1500 req/day free)
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")

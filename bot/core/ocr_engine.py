@@ -1,9 +1,9 @@
 """
 موتور پیشرفته و دوگانه استخراج متن از تصویر (OCR Engine)
 پشتیبانی ترکیبی از:
-۱. Google Gemini 1.5 Flash Vision (دقت ۹۹٪، تشخیص دست‌نویس، تصحیح خودکار، استخراج فاکتور)
-۲. Groq Llama 3.2 Vision (سرعت رعدآسا)
-۳. RapidOCR ONNX (موتور آفلاین و محلی بدون نیاز به کلید API یا اینترنت بین‌الملل)
+۱. Groq Vision (مدل‌های فوق‌سریع Qwen 3.8 27B و Llama 4 Scout)
+۲. Google Gemini Vision (مدل‌های پردقت Gemini 2.0 Flash و 1.5 Flash)
+۳. موتور آفلاین و محلی (Tesseract فارسی و RapidOCR ONNX)
 """
 
 import asyncio
@@ -21,10 +21,16 @@ except ImportError:
     HAS_PIL = False
     Image = None
     ImageOps = None
+
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
-from config import GEMINI_API_KEY, GEMINI_MODEL, GROQ_API_KEY
+from config import GEMINI_API_KEY, GEMINI_MODEL, GROQ_API_KEY, AI_PROVIDER
+try:
+    from config import GROQ_VISION_MODEL
+except ImportError:
+    GROQ_VISION_MODEL = "qwen/qwen3.8-27b"
+
 from bot.utils.helpers import to_persian_digits
 
 logger = logging.getLogger(__name__)
@@ -44,6 +50,19 @@ def cache_ocr_image(key: str, data: bytes):
 
 def get_cached_ocr_image(key: str) -> Optional[bytes]:
     return _ocr_image_cache.get(key)
+
+
+def _detect_mime_type(data: bytes) -> str:
+    """تشخیص نوع فایل تصویر بر اساس بایت‌های هدر"""
+    if data.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    elif data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    elif data.startswith(b"GIF8"):
+        return "image/gif"
+    elif data.startswith(b"RIFF") and b"WEBP" in data[:16]:
+        return "image/webp"
+    return "image/jpeg"
 
 
 # موتور محلی RapidOCR به صورت lazy load
@@ -70,7 +89,12 @@ def preprocess_image(image_bytes: bytes, max_dimension: int = 2560) -> bytes:
     try:
         img = Image.open(io.BytesIO(image_bytes))
         # تصحیح جهت چرخش بر اساس EXIF
-        img = ImageOps.exif_transpose(img)
+        try:
+            transposed = ImageOps.exif_transpose(img)
+            if transposed is not None:
+                img = transposed
+        except Exception:
+            pass
 
         # تبدیل به حالت RGB
         if img.mode not in ("RGB", "L"):
@@ -91,45 +115,64 @@ def preprocess_image(image_bytes: bytes, max_dimension: int = 2560) -> bytes:
         return image_bytes
 
 
-# ─── ۱. موتور محلی RapidOCR (آفلاین) ────────────────────────────────────────
+# ─── ۱. موتور آفلاین و محلی (Tesseract فارسی + RapidOCR) ───────────────────
 
-def _run_rapidocr_sync(image_bytes: bytes) -> Optional[str]:
-    engine = _get_local_engine()
-    if not engine:
-        return None
+def _run_local_ocr_sync(image_bytes: bytes) -> Optional[str]:
+    """تلاش برای خواندن آفلاین با اولویت Tesseract فارسی و سپس RapidOCR"""
+    # ۱. اولویت Tesseract در صورت نصب در سیستم عامل (دارای دیتابیس فارسی)
     try:
-        result, elapse = engine(image_bytes)
-        if not result:
-            return None
+        import subprocess
+        proc = subprocess.run(
+            ["tesseract", "stdin", "stdout", "-l", "fas+eng", "--psm", "3"],
+            input=image_bytes,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=15,
+        )
+        if proc.returncode == 0:
+            out = proc.stdout.decode("utf-8", errors="replace").strip()
+            if out and len(out) > 3:
+                return out
+    except Exception:
+        pass
 
-        # تجمیع متن خطوط استخراج‌شده
-        lines = [item[1].strip() for item in result if item and len(item) > 1 and item[1].strip()]
-        return "\n".join(lines) if lines else None
-    except Exception as e:
-        logger.warning(f"RapidOCR execution failed: {e}")
-        return None
+    # ۲. RapidOCR
+    engine = _get_local_engine()
+    if engine:
+        try:
+            result, elapse = engine(image_bytes)
+            if result:
+                lines = [item[1].strip() for item in result if item and len(item) > 1 and item[1].strip()]
+                if lines:
+                    return "\n".join(lines)
+        except Exception as e:
+            logger.warning(f"RapidOCR execution failed: {e}")
+
+    return None
 
 
-async def _ocr_rapidocr(image_bytes: bytes) -> Optional[str]:
+async def _ocr_local(image_bytes: bytes) -> Optional[str]:
     loop = asyncio.get_running_loop()
-    return await loop.run_in_executor(None, _run_rapidocr_sync, image_bytes)
+    return await loop.run_in_executor(None, _run_local_ocr_sync, image_bytes)
 
 
-# ─── ۲. موتور ابری Google Gemini 1.5 Flash Vision ────────────────────────────
+# ─── ۲. موتور ابری Google Gemini Vision ───────────────────────────────────────
 
 async def _ocr_gemini(image_bytes: bytes, mode: str = "full") -> Optional[str]:
     if not GEMINI_API_KEY:
         return None
 
-    import google.generativeai as genai
-    genai.configure(api_key=GEMINI_API_KEY)
+    try:
+        import google.generativeai as genai
+    except ImportError:
+        logger.warning("google.generativeai package not installed")
+        return None
 
-    model_name = GEMINI_MODEL or "gemini-1.5-flash"
-    model = genai.GenerativeModel(model_name)
+    genai.configure(api_key=GEMINI_API_KEY)
 
     prompts = {
         "full": (
-            "تو یک دستیار پیشرفته و بی‌نقص OCR متن فارسی و انگلیسی هستی. "
+            "تو یک متخصص بی‌نقص OCR متن فارسی و انگلیسی هستی. "
             "تمام متون موجود در این تصویر را با دقت ۱۰۰٪ و بدون اضافه کردن هیچ توضیح، مقدمه یا موخره‌ای، کلمه به کلمه استخراج کن. "
             "پاراگراف‌ها و سطربندی را عیناً حفظ کن. اعداد فارسی یا انگلیسی را دقیقاً همانطور که در تصویر هستند بنویس."
         ),
@@ -139,7 +182,7 @@ async def _ocr_gemini(image_bytes: bytes, mode: str = "full") -> Optional[str]:
         ),
         "receipt": (
             "این تصویر یک رسید، فاکتور یا فیش واریزی بانکی است. "
-            "لطفاً اطلاعات کلیدی آن را با دقت صد در صد و به صورت فرمت مرتب زیر استخراج کن:\n"
+            "اطلاعات کلیدی آن را با دقت صد در صد و به صورت فرمت مرتب زیر استخراج کن:\n"
             "🧾 <b>اطلاعات تراکنش مالی:</b>\n"
             "• <b>نوع عملیات:</b> [انتقال کارت به کارت / پایا / خرید / ساتنا]\n"
             "• <b>مبلغ پرداختی:</b> [مبلغ به ریال و تومان]\n"
@@ -161,80 +204,162 @@ async def _ocr_gemini(image_bytes: bytes, mode: str = "full") -> Optional[str]:
     }
 
     prompt = prompts.get(mode, prompts["full"])
+    mime_type = _detect_mime_type(image_bytes)
 
-    try:
-        if HAS_PIL and Image:
+    if HAS_PIL and Image:
+        try:
             content_part = Image.open(io.BytesIO(image_bytes))
-        else:
-            content_part = {"mime_type": "image/jpeg", "data": image_bytes}
-        loop = asyncio.get_running_loop()
-        response = await loop.run_in_executor(
-            None,
-            lambda: model.generate_content(
-                [prompt, content_part],
-                generation_config=genai.types.GenerationConfig(
-                    temperature=0.1,
-                    max_output_tokens=3000,
+        except Exception:
+            content_part = {"mime_type": mime_type, "data": image_bytes}
+    else:
+        content_part = {"mime_type": mime_type, "data": image_bytes}
+
+    models_to_try = [
+        GEMINI_MODEL,
+        "gemini-2.0-flash",
+        "gemini-1.5-flash",
+        "gemini-2.5-flash",
+        "gemini-1.5-flash-8b",
+        "gemini-1.5-pro",
+    ]
+    models = list(dict.fromkeys(m for m in models_to_try if m))
+
+    loop = asyncio.get_running_loop()
+    for model_name in models:
+        try:
+            model = genai.GenerativeModel(model_name)
+            response = await loop.run_in_executor(
+                None,
+                lambda m=model: m.generate_content(
+                    [prompt, content_part],
+                    generation_config=genai.types.GenerationConfig(
+                        temperature=0.1,
+                        max_output_tokens=3000,
+                    ),
                 ),
             )
-        )
-        ans = response.text.strip() if response and response.text else None
-        return ans
-    except Exception as e:
-        logger.warning(f"Gemini Vision OCR failed: {e}")
-        return None
+            ans = None
+            if response and response.candidates:
+                first_cand = response.candidates[0]
+                if first_cand.content and first_cand.content.parts:
+                    ans = "".join(p.text for p in first_cand.content.parts if hasattr(p, "text") and p.text).strip()
+            if not ans and response:
+                try:
+                    ans = response.text.strip()
+                except Exception:
+                    pass
+            if ans and len(ans) > 2:
+                logger.info(f"✅ Gemini Vision OCR succeeded using model: {model_name}")
+                return ans
+        except Exception as e:
+            logger.warning(f"Gemini Vision model '{model_name}' failed: {e}")
+            continue
+
+    return None
 
 
-# ─── ۳. موتور ابری Groq Vision (Llama-3.2) ──────────────────────────────────
+# ─── ۳. موتور ابری Groq Vision ───────────────────────────────────────────────
 
 async def _ocr_groq(image_bytes: bytes, mode: str = "full") -> Optional[str]:
     if not GROQ_API_KEY:
         return None
 
-    from groq import Groq
+    try:
+        from groq import Groq
+    except ImportError:
+        logger.warning("groq library not installed")
+        return None
+
     client = Groq(api_key=GROQ_API_KEY)
 
     b64_img = base64.b64encode(image_bytes).decode("utf-8")
-    data_url = f"data:image/jpeg;base64,{b64_img}"
+    mime_type = _detect_mime_type(image_bytes)
+    data_url = f"data:{mime_type};base64,{b64_img}"
 
-    sys_prompt = "You are an expert Persian and English OCR transcription engine. Transcribe all text accurately without commentary."
-    user_prompt = "Extract all text from this image accurately. Preserve formatting and paragraphs. Do not add intro or outro."
-
+    sys_instruction = "You are an expert Persian and English OCR transcription engine. Transcribe all text accurately without commentary."
     if mode == "receipt":
-        user_prompt = "Extract all financial receipt details from this image in Persian (Amount, Tracking ID, Card numbers, Date/Time)."
-    elif mode == "summary":
-        user_prompt = "Summarize the key information and text from this image in bullet points in Persian."
-    elif mode == "translate":
-        user_prompt = "Extract the text from this image and translate it to fluent Persian."
-
-    try:
-        loop = asyncio.get_running_loop()
-        response = await loop.run_in_executor(
-            None,
-            lambda: client.chat.completions.create(
-                model="llama-3.2-11b-vision-preview",
-                messages=[
-                    {"role": "system", "content": sys_prompt},
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": user_prompt},
-                            {"type": "image_url", "image_url": {"url": data_url}},
-                        ],
-                    },
-                ],
-                temperature=0.1,
-                max_tokens=2500,
-            )
+        user_prompt = (
+            f"{sys_instruction}\n\n"
+            "این تصویر یک رسید، فاکتور یا فیش واریزی بانکی است. "
+            "اطلاعات کلیدی آن را با دقت صد در صد و به صورت فرمت مرتب زیر استخراج کن:\n"
+            "🧾 <b>اطلاعات تراکنش مالی:</b>\n"
+            "• <b>نوع عملیات:</b> [انتقال کارت به کارت / پایا / خرید / ساتنا]\n"
+            "• <b>مبلغ پرداختی:</b> [مبلغ به ریال و تومان]\n"
+            "• <b>کد پیگیری / شماره ارجاع:</b> [کد]\n"
+            "• <b>شماره کارت/حساب مقصد:</b> [شماره و نام صاحب حساب اگر مشخص است]\n"
+            "• <b>شماره کارت مبدأ:</b> [شماره کارت]\n"
+            "• <b>تاریخ و زمان:</b> [تاریخ و ساعت دقیق]\n"
+            "• <b>وضعیت تراکنش:</b> [موفق / ناموفق / در حال پردازش]\n\n"
+            "اگر موردی در تصویر خوانا نبود بنویس «نامشخص». فقط همین قالب را تحویل بده."
         )
-        ans = response.choices[0].message.content.strip()
-        return ans if ans and len(ans) > 2 else None
-    except Exception as e:
-        logger.warning(f"Groq Vision OCR failed: {e}")
-        return None
+    elif mode == "summary":
+        user_prompt = (
+            f"{sys_instruction}\n\n"
+            "متن موجود در این تصویر را با دقت بخوان و نکات مهم، پیام اصلی و خلاصه مفید آن را "
+            "در قالب چند بند کوتاه و خوانا (Bullet Points) به زبان فارسی استخراج کن."
+        )
+    elif mode == "translate":
+        user_prompt = (
+            f"{sys_instruction}\n\n"
+            "متن موجود در این تصویر را استخراج کرده و آن را به زبان فارسی روان، دقیق و خوانا ترجمه کن. "
+            "ابتدا ترجمه فارسی و سپس در صورت تمایل متن اصلی را بنویس."
+        )
+    elif mode == "clean":
+        user_prompt = (
+            f"{sys_instruction}\n\n"
+            "متن تصویر را با دقت بسیار بالا استخراج کرده و غلط‌های املایی، "
+            "فواصل حروف و نشانه‌گذاری‌های ناقص را طبق زبان فارسی معیار تصحیح و مرتب کن. فقط متن تصحیح‌شده را برگردان."
+        )
+    else:
+        user_prompt = (
+            f"{sys_instruction}\n\n"
+            "تمام متون موجود در این تصویر (فارسی و انگلیسی) را با دقت ۱۰۰٪ و کلمه به کلمه استخراج کن. "
+            "پاراگراف‌ها و سطربندی را عیناً حفظ کن. اعداد فارسی یا انگلیسی را دقیقاً همانطور که در تصویر هستند بنویس. "
+            "هیچ متن اضافه، مقدمه یا سلام ننویس."
+        )
+
+    models_to_try = [
+        GROQ_VISION_MODEL,
+        "qwen/qwen3.8-27b",
+        "meta-llama/llama-4-scout-17b-16e-instruct",
+        "llama-3.2-11b-vision-preview",
+        "llama-3.2-90b-vision-preview",
+    ]
+    models = list(dict.fromkeys(m for m in models_to_try if m))
+
+    loop = asyncio.get_running_loop()
+    for model_name in models:
+        try:
+            response = await loop.run_in_executor(
+                None,
+                lambda m=model_name: client.chat.completions.create(
+                    model=m,
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": user_prompt},
+                                {"type": "image_url", "image_url": {"url": data_url}},
+                            ],
+                        },
+                    ],
+                    temperature=0.1,
+                    max_completion_tokens=3000,
+                ),
+            )
+            if response and response.choices and response.choices[0].message:
+                ans = response.choices[0].message.content.strip()
+                if ans and len(ans) > 2:
+                    logger.info(f"✅ Groq Vision OCR succeeded using model: {model_name}")
+                    return ans
+        except Exception as e:
+            logger.warning(f"Groq Vision model '{model_name}' failed: {e}")
+            continue
+
+    return None
 
 
-# ─── ۴. تابع جامع استخراج متن (پایپ‌لاین هوشمند دوگانه) ─────────────────────
+# ─── ۴. تابع جامع استخراج متن (پایپ‌لاین هوشمند چندگانه) ────────────────────
 
 async def extract_text_from_image(
     image_bytes: bytes,
@@ -258,44 +383,53 @@ async def extract_text_from_image(
         text_result = await _ocr_gemini(clean_bytes, mode=mode)
         if text_result:
             used_provider = "gemini"
-            provider_title = "🤖 هوش مصنوعی پیشرفته (Gemini Vision)"
+            provider_title = "🤖 هوش مصنوعی (Gemini Vision)"
 
     # ۲. درخواست اختصاصی Groq
     elif provider == "groq":
         text_result = await _ocr_groq(clean_bytes, mode=mode)
         if text_result:
             used_provider = "groq"
-            provider_title = "⚡ هوش مصنوعی پرسرعت (Groq Vision)"
+            provider_title = "⚡ هوش مصنوعی (Groq Vision)"
 
     # ۳. درخواست اختصاصی موتور محلی
     elif provider == "local":
-        text_result = await _ocr_rapidocr(clean_bytes)
+        text_result = await _ocr_local(clean_bytes)
         if text_result:
             used_provider = "local"
-            provider_title = "💻 موتور آفلاین و محلی (RapidOCR)"
+            provider_title = "💻 موتور آفلاین و محلی"
 
     # ۴. حالت خودکار (Auto Hybrid Fallback Pipeline)
     else:
-        # اولویت ۱: Gemini 1.5 Flash Vision (بالاترین کیفیت)
-        if GEMINI_API_KEY:
-            text_result = await _ocr_gemini(clean_bytes, mode=mode)
-            if text_result:
-                used_provider = "gemini"
-                provider_title = "🤖 هوش مصنوعی پیشرفته (Gemini Vision)"
+        # تعیین اولویت بر اساس AI_PROVIDER تعریف‌شده در .env
+        is_groq_primary = (AI_PROVIDER or "groq").lower() == "groq"
 
-        # اولویت ۲: Groq Vision (در صورت بروز مشکل در جمینای)
-        if not text_result and GROQ_API_KEY:
-            text_result = await _ocr_groq(clean_bytes, mode=mode)
-            if text_result:
-                used_provider = "groq"
-                provider_title = "⚡ هوش مصنوعی پرسرعت (Groq Vision)"
+        primary = ("groq", _ocr_groq, "⚡ هوش مصنوعی (Groq Vision)") if is_groq_primary else ("gemini", _ocr_gemini, "🤖 هوش مصنوعی (Gemini Vision)")
+        secondary = ("gemini", _ocr_gemini, "🤖 هوش مصنوعی (Gemini Vision)") if is_groq_primary else ("groq", _ocr_groq, "⚡ هوش مصنوعی (Groq Vision)")
 
-        # اولویت ۳: موتور محلی و آفلاین RapidOCR
+        # تلاش اول: موتور هوش مصنوعی اصلی
+        p_name, p_func, p_title = primary
+        if (GROQ_API_KEY if p_name == "groq" else GEMINI_API_KEY):
+            text_result = await p_func(clean_bytes, mode=mode)
+            if text_result:
+                used_provider = p_name
+                provider_title = p_title
+
+        # تلاش دوم: موتور هوش مصنوعی جایگزین
         if not text_result:
-            text_result = await _ocr_rapidocr(clean_bytes)
+            s_name, s_func, s_title = secondary
+            if (GROQ_API_KEY if s_name == "groq" else GEMINI_API_KEY):
+                text_result = await s_func(clean_bytes, mode=mode)
+                if text_result:
+                    used_provider = s_name
+                    provider_title = s_title
+
+        # تلاش سوم: موتور محلی
+        if not text_result:
+            text_result = await _ocr_local(clean_bytes)
             if text_result:
                 used_provider = "local"
-                provider_title = "💻 موتور آفلاین و محلی (RapidOCR)"
+                provider_title = "💻 موتور آفلاین و محلی"
 
     elapsed = round(time.time() - start_time, 2)
 
@@ -309,9 +443,24 @@ async def extract_text_from_image(
             "elapsed_seconds": elapsed,
         }
     else:
+        if not GROQ_API_KEY and not GEMINI_API_KEY:
+            fail_msg = (
+                "❌ <b>کلید API هوش مصنوعی تنظیم نشده است!</b>\n\n"
+                "برای فعال‌سازی استخراج متن (OCR)، لطفاً در فایل <code>.env</code> سرور، حداقل یکی از مقادیر زیر را وارد کنید:\n"
+                "• <code>GROQ_API_KEY</code> (رایگان از console.groq.com)\n"
+                "• <code>GEMINI_API_KEY</code> (رایگان از aistudio.google.com)"
+            )
+        else:
+            fail_msg = (
+                "❌ هیچ متنی در این تصویر شناسایی نشد یا تصویر ناخوانا است.\n\n"
+                "💡 <b>پیشنهاد:</b>\n"
+                "• مطمئن شوید تصویر دارای متن خوانا و وضوح کافی است.\n"
+                "• می‌توانید با کلیدهای زیر مجدداً پردازش را امتحان فرمایید."
+            )
+
         return {
             "success": False,
-            "text": "❌ هیچ متنی در این تصویر شناسایی نشد یا تصویر ناخوانا است.",
+            "text": fail_msg,
             "provider": "none",
             "provider_title": "ناموفق",
             "mode": mode,
@@ -335,12 +484,12 @@ def build_ocr_keyboard(file_id: str, current_mode: str = "full", current_prov: s
             InlineKeyboardButton("📝 متن کامل چاپی", callback_data=f"ocr_m_full_{f_short}"),
         ],
         [
-            InlineKeyboardButton("💻 موتور آفلاین محلی", callback_data=f"ocr_p_local_{f_short}"),
-            InlineKeyboardButton("🤖 موتور هوش مصنوعی", callback_data=f"ocr_p_gemini_{f_short}"),
+            InlineKeyboardButton("✨ ویرایش و تصحیح", callback_data=f"ocr_m_clean_{f_short}"),
+            InlineKeyboardButton("⚡ اسکن مجدد هوشمند", callback_data=f"ocr_p_auto_{f_short}"),
         ],
         [
             InlineKeyboardButton("🔙 بازگشت به منوی اصلی", callback_data="menu_main"),
-        ]
+        ],
     ]
     return InlineKeyboardMarkup(rows)
 
@@ -357,25 +506,26 @@ def format_ocr_response(result: dict, mode: str = "full") -> str:
     mode_fa = mode_labels.get(mode, "استخراج متن")
     prov_fa = result.get("provider_title", "موتور هوشمند")
     sec_fa = to_persian_digits(str(result.get("elapsed_seconds", "0")))
+    success = result.get("success", False)
 
     text_content = result.get("text", "")
 
-    # اگر حالت رسید نیست، داخل blockquote برای خوانایی بهتر قرار گیرد
     lines = [
-        f"🔍 <b>نتیجه خواندن تصویر ({mode_fa})</b>",
+        f"🔍 <b>نتیجه پردازش تصویر ({mode_fa})</b>",
         "━━━━━━━━━━━━━━━━━━━━━━━━\n",
     ]
 
-    if mode == "receipt":
+    if not success:
+        lines.append(text_content)
+    elif mode == "receipt":
         lines.append(text_content)
     else:
-        # پاکسازی کدهای نمایشی
         lines.append("<blockquote>")
         lines.append(html.escape(text_content))
         lines.append("</blockquote>")
 
     lines.append("\n━━━━━━━━━━━━━━━━━━━━━━━━")
-    lines.append(f"⚙️ <b>موتور:</b> {prov_fa} | ⏱ <b>زمان پردازش:</b> {sec_fa} ثانیه")
-    lines.append("👇 <i>برای تغییر نوع پردازش یا موتور، از کلیدهای زیر استفاده کنید:</i>")
+    lines.append(f"⚙️ <b>موتور:</b> {prov_fa} | ⏱ <b>زمان:</b> {sec_fa} ثانیه")
+    lines.append("👇 <i>برای تغییر نوع پردازش، از کلیدهای زیر استفاده کنید:</i>")
 
     return "\n".join(lines)

@@ -857,7 +857,7 @@ async def on_general_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
             get_cached_ocr_image,
         )
 
-        parts = data.split("_")
+        parts = data.split("_", 3)
         # فرمت: ocr_m_<mode>_<file_id> یا ocr_p_<prov>_<file_id>
         action_type = parts[1] if len(parts) > 1 else ""
         val = parts[2] if len(parts) > 2 else ""
