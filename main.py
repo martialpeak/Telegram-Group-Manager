@@ -39,6 +39,7 @@ async def _daily_scheduler():
             await _expire_warnings_job()
             await db.cleanup_old_conversations(days=30)
             await db.cleanup_old_message_logs(days=90)
+            await db.cleanup_old_announcements(days=60)
             logger.info("🗑️ پاکسازی روزانه DB انجام شد.")
         except Exception as e:
             logger.warning(f"daily scheduler error: {e}")
@@ -47,9 +48,10 @@ async def _daily_scheduler():
 async def _announcements_scheduler(application):
     """
     بررسی دوره‌ای و اعلان خودکار آفرهای بازی رایگان و اخبار فناوری به گروه‌های عضو
+    با مکانیزم ضد اسپم و تاریخچه عدم تکرار (Deduplication)
     """
     import asyncio
-    from bot.core.news_deals import get_free_games, get_tech_news
+    from bot.core.news_deals import get_free_games, get_tech_news, has_persian_chars
     from telegram import InlineKeyboardMarkup, InlineKeyboardButton
 
     await asyncio.sleep(120)  # تأخیر ۲ دقیقه‌ای اولیه پس از شروع
@@ -59,30 +61,41 @@ async def _announcements_scheduler(application):
             # ۱. بررسی آفرهای بازی رایگان برای گروه‌های عضو
             game_chats = await db.get_subscribed_announcement_chats("games")
             if game_chats:
-                games = await get_free_games(limit=1)
+                games = await get_free_games(limit=6)
                 if games:
-                    latest = games[0]
-                    g_title = latest["title"]
-                    text = (
-                        "🎁 <b>آفر جدید و بازی رایگان ویژه!</b>\n"
-                        "━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-                        f"🕹 <b>{g_title}</b>\n"
-                        "<blockquote>"
-                        f"📱 <b>پلتفرم:</b> <b>{latest['platform']}</b>\n"
-                        f"💰 <b>ارزش اصلی:</b> <b>{latest['worth']}</b> ➔ <b>۱۰۰٪ رایگان!</b>\n"
-                        f"⏰ <b>مهلت دریافت:</b>\n   <b>{latest['end_date_shamsi']}</b>\n"
-                        f"🔗 <a href=\"{latest['link']}\">جهت دریافت رایگان اینجا کلیک کنید</a>"
-                        "</blockquote>\n\n"
-                        "💡 <i>نکته: بازی پس از فعال‌سازی برای همیشه در اکانت شما باقی می‌ماند.</i>"
-                    )
-                    kb = InlineKeyboardMarkup([
-                        [InlineKeyboardButton("📥 دریافت مستقیم بازی", url=latest["link"])],
-                        [InlineKeyboardButton("🎮 مشاهده سایر بازی‌های رایگان", callback_data="menu_games")],
-                    ])
                     for chat_id in game_chats:
                         try:
-                            st = await db.get_announcement_settings(chat_id)
-                            if st.get("last_game_title") != g_title:
+                            # یافتن اولین بازی که در ۱۴ روز گذشته برای این گروه ارسال نشده است
+                            target_game = None
+                            target_key = None
+                            for g in games:
+                                g_key = db.normalize_item_key(g.get("title", ""))
+                                if not g_key:
+                                    continue
+                                already_sent = await db.is_already_announced(chat_id, "game", g_key, days=14)
+                                if not already_sent:
+                                    target_game = g
+                                    target_key = g_key
+                                    break
+
+                            if target_game and target_key:
+                                g_title = target_game["title"]
+                                text = (
+                                    "🎁 <b>آفر جدید و بازی رایگان ویژه!</b>\n"
+                                    "━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                                    f"🕹 <b>{g_title}</b>\n"
+                                    "<blockquote>"
+                                    f"📱 <b>پلتفرم:</b> <b>{target_game['platform']}</b>\n"
+                                    f"💰 <b>ارزش اصلی:</b> <b>{target_game['worth']}</b> ➔ <b>۱۰۰٪ رایگان!</b>\n"
+                                    f"⏰ <b>مهلت دریافت:</b>\n   <b>{target_game['end_date_shamsi']}</b>\n"
+                                    f"🔗 <a href=\"{target_game['link']}\">جهت دریافت رایگان اینجا کلیک کنید</a>"
+                                    "</blockquote>\n\n"
+                                    "💡 <i>نکته: بازی پس از فعال‌سازی برای همیشه در اکانت شما باقی می‌ماند.</i>"
+                                )
+                                kb = InlineKeyboardMarkup([
+                                    [InlineKeyboardButton("📥 دریافت مستقیم بازی", url=target_game["link"])],
+                                    [InlineKeyboardButton("🎮 مشاهده سایر بازی‌های رایگان", callback_data="menu_games")],
+                                ])
                                 await application.bot.send_message(
                                     chat_id=chat_id,
                                     text=text,
@@ -90,48 +103,57 @@ async def _announcements_scheduler(application):
                                     reply_markup=kb,
                                     disable_web_page_preview=True,
                                 )
-                                await db.update_last_announced(chat_id, "game", g_title)
-                                await asyncio.sleep(1.5)
+                                await db.record_announcement(chat_id, "game", target_key, title=g_title)
+                                logger.info(f"📢 آفر بازی '{g_title}' با موفقیت به گروه {chat_id} ارسال شد.")
+                                await asyncio.sleep(2.0)
                         except Exception as ce:
                             logger.warning(f"Could not send game announcement to {chat_id}: {ce}")
 
             # ۲. بررسی اخبار فناوری و هوش مصنوعی برای گروه‌های عضو
             news_chats = await db.get_subscribed_announcement_chats("news")
             if news_chats:
-                from bot.core.news_deals import has_persian_chars
-                news_items = await get_tech_news(limit=4)
-                # اولویت قطعی با اخباری است که به فارسی ترجمه شده باشند
-                valid_item = None
-                for it in news_items:
-                    if has_persian_chars(it.get("title", "")):
-                        valid_item = it
-                        break
-                if valid_item:
-                    n_item = valid_item
-                    n_title = n_item["title"]
-                    source_label = f"🌐 {n_item['source']} (ترجمه هوشمند)" if n_item.get("is_foreign") else f"🇮🇷 {n_item['source']}"
-                    n_text = (
-                        "📢 <b>فوری / تازه‌ترین خبر فناوری و هوش مصنوعی:</b>\n"
-                        "━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-                        f"📌 <b>{n_title}</b>\n"
-                    )
-                    if n_item.get("is_foreign") and n_item.get("orig_title") and n_item["orig_title"] != n_title:
-                        n_text += f"<i>🌐 تیتر اصلی: {n_item['orig_title']}</i>\n"
-                    n_text += (
-                        "<blockquote>"
-                        f"📝 {n_item['desc']}...\n\n"
-                        f"🏷 <i>دسته‌بندی: {n_item['tag']} | منبع: {source_label}</i>\n"
-                        f"🔗 <a href=\"{n_item['link']}\">مطالعه کامل خبر</a>"
-                        "</blockquote>"
-                    )
-                    n_kb = InlineKeyboardMarkup([
-                        [InlineKeyboardButton("📰 مطالعه کامل خبر", url=n_item["link"])],
-                        [InlineKeyboardButton("🌐 سایر اخبار امروز", callback_data="news_cat_all")],
-                    ])
+                news_items = await get_tech_news(limit=6)
+                persian_news = [it for it in news_items if has_persian_chars(it.get("title", ""))]
+                if persian_news:
                     for chat_id in news_chats:
                         try:
-                            st = await db.get_announcement_settings(chat_id)
-                            if st.get("last_news_title") != n_title:
+                            # یافتن اولین خبر تازه‌ای که در ۷ روز اخیر برای این گروه ارسال نشده است
+                            target_news = None
+                            target_news_key = None
+                            for n in persian_news:
+                                # کلید یکتا بر اساس URL یا تیتر انگلیسی نرمال‌شده (مقاوم در برابر تغییرات ترجمه)
+                                n_key = (n.get("link") or "").strip()
+                                if not n_key:
+                                    n_key = db.normalize_item_key(n.get("orig_title") or n.get("title", ""))
+                                if not n_key:
+                                    continue
+                                already_sent = await db.is_already_announced(chat_id, "news", n_key, days=7)
+                                if not already_sent:
+                                    target_news = n
+                                    target_news_key = n_key
+                                    break
+
+                            if target_news and target_news_key:
+                                n_title = target_news["title"]
+                                source_label = f"🌐 {target_news['source']} (ترجمه هوشمند)" if target_news.get("is_foreign") else f"🇮🇷 {target_news['source']}"
+                                n_text = (
+                                    "📢 <b>فوری / تازه‌ترین خبر فناوری و هوش مصنوعی:</b>\n"
+                                    "━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                                    f"📌 <b>{n_title}</b>\n"
+                                )
+                                if target_news.get("is_foreign") and target_news.get("orig_title") and target_news["orig_title"] != n_title:
+                                    n_text += f"<i>🌐 تیتر اصلی: {target_news['orig_title']}</i>\n"
+                                n_text += (
+                                    "<blockquote>"
+                                    f"📝 {target_news['desc']}...\n\n"
+                                    f"🏷 <i>دسته‌بندی: {target_news['tag']} | منبع: {source_label}</i>\n"
+                                    f"🔗 <a href=\"{target_news['link']}\">مطالعه کامل خبر</a>"
+                                    "</blockquote>"
+                                )
+                                n_kb = InlineKeyboardMarkup([
+                                    [InlineKeyboardButton("📰 مطالعه کامل خبر", url=target_news["link"])],
+                                    [InlineKeyboardButton("🌐 سایر اخبار امروز", callback_data="news_cat_all")],
+                                ])
                                 await application.bot.send_message(
                                     chat_id=chat_id,
                                     text=n_text,
@@ -139,15 +161,16 @@ async def _announcements_scheduler(application):
                                     reply_markup=n_kb,
                                     disable_web_page_preview=True,
                                 )
-                                await db.update_last_announced(chat_id, "news", n_title)
-                                await asyncio.sleep(1.5)
+                                await db.record_announcement(chat_id, "news", target_news_key, title=n_title)
+                                logger.info(f"📢 خبر فناوری '{n_title}' با موفقیت به گروه {chat_id} ارسال شد.")
+                                await asyncio.sleep(2.0)
                         except Exception as ce:
                             logger.warning(f"Could not send news announcement to {chat_id}: {ce}")
 
         except Exception as e:
             logger.warning(f"announcements scheduler error: {e}")
 
-        await asyncio.sleep(7200)  # هر ۲ ساعت یکبار
+        await asyncio.sleep(14400)  # هر ۴ ساعت یکبار
 
 
 async def post_init(application):

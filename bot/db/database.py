@@ -4,6 +4,7 @@
 
 import aiosqlite
 import logging
+import re
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
@@ -206,6 +207,18 @@ async def init_db():
             last_news_title TEXT,
             updated_at      TEXT DEFAULT (datetime('now'))
         );
+
+        -- تاریخچه اعلان‌های ارسال شده برای جلوگیری قطعی از ارسال اسپم و پیام‌های تکراری
+        CREATE TABLE IF NOT EXISTS announcement_history (
+            chat_id      INTEGER NOT NULL,
+            item_type    TEXT NOT NULL,
+            item_key     TEXT NOT NULL,
+            title        TEXT,
+            announced_at TEXT DEFAULT (datetime('now')),
+            PRIMARY KEY (chat_id, item_type, item_key)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_announcement_history ON announcement_history(chat_id, item_type, announced_at);
 
         CREATE INDEX IF NOT EXISTS idx_karma_chat_user ON user_karma(chat_id, karma);
         CREATE INDEX IF NOT EXISTS idx_karma_cooldown  ON karma_log(from_user_id, to_user_id, chat_id, created_at);
@@ -1309,6 +1322,75 @@ async def update_last_announced(chat_id: int, field: str, value: str):
                 ON CONFLICT(chat_id) DO UPDATE
                 SET {col}=?, updated_at=datetime('now')""",
             (chat_id, value, value),
+        )
+        await db.commit()
+
+
+def normalize_item_key(text: str) -> str:
+    """
+    نرمال‌سازی شناسه آفر یا خبر جهت جلوگیری قطعی از ارسال تکراری:
+    حذف فاصله‌های اضافه، برچسب‌های مرجع مانند (giveaway), (indiegala), (steam),
+    علائم نگارشی و یکسان‌سازی حروف فارسی و انگلیسی
+    """
+    if not text:
+        return ""
+    k = text.lower().strip()
+    k = re.sub(r"\(giveaway\)|\(indiegala\)|\(epic games\)|\(steam\)|\(drm-free\)|giveaway", "", k, flags=re.I)
+    k = re.sub(r"[^\w\s\u0600-\u06FF]", "", k)
+    k = re.sub(r"\s+", " ", k).strip()
+    return k
+
+
+async def is_already_announced(chat_id: int, item_type: str, item_key: str, days: int = 14) -> bool:
+    """
+    بررسی اینکه آیا این آیتم (بازی یا خبر) در بازه زمانی مشخص قبلاً برای گروه ارسال شده یا خیر.
+    برای بازی‌ها پیش‌فرض ۱۴ روز و برای اخبار پیش‌فرض ۷ روز است.
+    """
+    if not item_key:
+        return False
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute(
+            """SELECT 1 FROM announcement_history 
+               WHERE chat_id=? AND item_type=? AND item_key=? 
+               AND datetime(announced_at) >= datetime('now', ?)""",
+            (chat_id, item_type, item_key, f"-{days} days")
+        )
+        row = await cur.fetchone()
+        return bool(row)
+
+
+async def record_announcement(chat_id: int, item_type: str, item_key: str, title: str = ""):
+    """
+    ثبت آیتم ارسال شده در جدول تاریخچه اعلان‌ها (announcement_history)
+    همچنین ستون‌های سازگاری last_game_title و last_news_title را در group_announcements به‌روز می‌کند.
+    """
+    if not item_key:
+        return
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            """INSERT INTO announcement_history (chat_id, item_type, item_key, title, announced_at)
+               VALUES (?, ?, ?, ?, datetime('now'))
+               ON CONFLICT(chat_id, item_type, item_key) DO UPDATE
+               SET announced_at=datetime('now'), title=excluded.title""",
+            (chat_id, item_type, item_key, title)
+        )
+        col = "last_game_title" if item_type == "game" else "last_news_title"
+        await db.execute(
+            f"""INSERT INTO group_announcements (chat_id, {col}, updated_at)
+                VALUES (?, ?, datetime('now'))
+                ON CONFLICT(chat_id) DO UPDATE
+                SET {col}=?, updated_at=datetime('now')""",
+            (chat_id, title or item_key, title or item_key),
+        )
+        await db.commit()
+
+
+async def cleanup_old_announcements(days: int = 60):
+    """پاکسازی اعلان‌های قدیمی ثبت‌شده بیش از ۶۰ روز جهت سبک نگه‌داشتن دیتابیس"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "DELETE FROM announcement_history WHERE datetime(announced_at) < datetime('now', ?)",
+            (f"-{days} days",)
         )
         await db.commit()
 

@@ -74,27 +74,56 @@ async def get_free_games(limit: int = 5) -> list[dict]:
             if resp.status_code == 200:
                 data = resp.json()
                 elements = data.get("data", {}).get("Catalog", {}).get("searchStore", {}).get("elements", [])
+                now_dt = datetime.now(timezone.utc)
                 for el in elements:
                     promos = el.get("promotions")
-                    if promos:
-                        offers = promos.get("promotionalOffers", [])
-                        if offers:
-                            offer_list = offers[0].get("promotionalOffers", [])
-                            if offer_list and offer_list[0].get("discountSetting", {}).get("discountPercentage") == 0:
-                                title = el.get("title", "")
-                                slug = el.get("productSlug") or el.get("urlSlug") or ""
-                                link = f"https://store.epicgames.com/p/{slug}" if slug else "https://store.epicgames.com/free-games"
-                                orig_p = el.get("price", {}).get("totalPrice", {}).get("originalPrice", 0) / 100
-                                end_d = offer_list[0].get("endDate")
-                                games.append({
-                                    "title": title,
-                                    "platform": "💻 کامپیوتر (Epic Games)",
-                                    "worth": f"${orig_p:.2f}" if orig_p else "پولی",
-                                    "link": link,
-                                    "end_date": end_d,
-                                    "end_date_shamsi": parse_date_to_shamsi(end_d),
-                                    "source": "Epic Games",
-                                })
+                    if not promos:
+                        continue
+                    
+                    # بررسی تمام پیشنهادات تخفیف برای پیدا کردن آفر ۱۰۰٪ رایگان فعال
+                    is_active_free = False
+                    end_d = None
+                    for offer_group in promos.get("promotionalOffers", []):
+                        for offer in offer_group.get("promotionalOffers", []):
+                            discount = offer.get("discountSetting", {})
+                            if discount.get("discountPercentage") == 0:
+                                s_str = offer.get("startDate")
+                                e_str = offer.get("endDate")
+                                if s_str and e_str:
+                                    try:
+                                        s_dt = datetime.fromisoformat(s_str.replace("Z", "+00:00"))
+                                        e_dt = datetime.fromisoformat(e_str.replace("Z", "+00:00"))
+                                        if s_dt <= now_dt <= e_dt:
+                                            is_active_free = True
+                                            end_d = e_str
+                                            break
+                                    except Exception:
+                                        is_active_free = True
+                                        end_d = e_str
+                                        break
+                                else:
+                                    is_active_free = True
+                                    end_d = e_str
+                                    break
+                        if is_active_free:
+                            break
+
+                    if is_active_free:
+                        title = el.get("title", "").strip()
+                        if not title:
+                            continue
+                        slug = el.get("productSlug") or el.get("urlSlug") or ""
+                        link = f"https://store.epicgames.com/p/{slug}" if slug else "https://store.epicgames.com/free-games"
+                        orig_p = el.get("price", {}).get("totalPrice", {}).get("originalPrice", 0) / 100
+                        games.append({
+                            "title": title,
+                            "platform": "💻 کامپیوتر (Epic Games)",
+                            "worth": f"${orig_p:.2f}" if orig_p else "پولی",
+                            "link": link,
+                            "end_date": end_d,
+                            "end_date_shamsi": parse_date_to_shamsi(end_d),
+                            "source": "Epic Games",
+                        })
     except Exception as e:
         logger.warning(f"Epic Games freebies fetch error: {e}")
 
@@ -106,7 +135,7 @@ async def get_free_games(limit: int = 5) -> list[dict]:
             if resp.status_code == 200:
                 gp_list = resp.json()
                 for item in gp_list:
-                    if len(games) >= limit + 3:
+                    if len(games) >= limit + 4:
                         break
                     plat = item.get("platforms", "")
                     plat_fa = "💻 کامپیوتر (PC)"
@@ -121,15 +150,24 @@ async def get_free_games(limit: int = 5) -> list[dict]:
                     elif "Xbox" in plat:
                         plat_fa = "🎮 ایکس‌باکس (Xbox)"
 
-                    title = item.get("title", "")
-                    # جلوگیری از بازی‌های تکراری
-                    if any(g["title"].lower() in title.lower() or title.lower() in g["title"].lower() for g in games):
+                    title = item.get("title", "").strip()
+                    # تمیزسازی تیتر برای یکسان‌سازی عناوین و حذف برچسب‌های اضافه
+                    clean_title = re.sub(r"\s*\((IndieGala|Epic Games|Steam|itch\.io|DRM-Free|PC)\)\s*Giveaway", "", title, flags=re.I).strip()
+                    clean_title = re.sub(r"\s*Giveaway$", "", clean_title, flags=re.I).strip()
+                    display_title = clean_title or title
+
+                    # جلوگیری از بازی‌های تکراری با بازی‌های قبلاً اضافه شده
+                    if any(
+                        display_title.lower() in g["title"].lower() or g["title"].lower() in display_title.lower()
+                        for g in games
+                    ):
                         continue
 
                     end_d = item.get("end_date")
                     link = item.get("open_giveaway_url") or item.get("gamerpower_url")
                     games.append({
-                        "title": title,
+                        "title": display_title,
+                        "raw_title": title,
                         "platform": plat_fa,
                         "worth": item.get("worth", "رایگان"),
                         "link": link,

@@ -33,6 +33,8 @@ from .database import (
     # announcements
     set_announcement_setting, get_announcement_settings,
     get_subscribed_announcement_chats, update_last_announced,
+    normalize_item_key, is_already_announced, record_announcement,
+    cleanup_old_announcements,
 )
 
 __all__ = [
@@ -57,5 +59,7 @@ __all__ = [
     "add_karma", "get_karma", "get_top_karma_users", "get_user_badges",
     "set_announcement_setting", "get_announcement_settings",
     "get_subscribed_announcement_chats", "update_last_announced",
+    "normalize_item_key", "is_already_announced", "record_announcement",
+    "cleanup_old_announcements",
 ]
 
