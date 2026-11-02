@@ -200,6 +200,32 @@ async def _get_conversation_context(chat_id: int) -> str:
         return ""
 
 
+def _call_groq_with_fallback(call_fn, candidates=None):
+    """اجرای درخواست به Groq با تلاش روی مدل‌های معتبر فعال در صورت در دسترس نبودن مدل پیش‌فرض"""
+    if candidates is None:
+        candidates = [GROQ_MODEL, "qwen/qwen3.8-27b", "openai/gpt-oss-120b", "openai/gpt-oss-20b", "llama-3.3-70b-versatile"]
+    # حذف مدل‌های تکراری با حفظ ترتیب
+    seen = set()
+    uniq_candidates = []
+    for c in candidates:
+        if c and c not in seen:
+            seen.add(c)
+            uniq_candidates.append(c)
+
+    last_err = None
+    for model in uniq_candidates:
+        try:
+            return call_fn(model)
+        except Exception as e:
+            last_err = e
+            err_str = str(e)
+            if "model_not_found" in err_str or "404" in err_str or "does not exist" in err_str:
+                continue
+            raise
+    if last_err:
+        raise last_err
+
+
 async def _analyze_groq(
     text: str, false_positives: str = "", conversation_context: str = ""
 ) -> dict:
@@ -210,15 +236,17 @@ async def _analyze_groq(
     loop = asyncio.get_running_loop()
     response = await loop.run_in_executor(
         None,
-        lambda: _groq_client.chat.completions.create(
-            model=GROQ_MODEL,
-            messages=[
-                {"role": "system", "content": prompt},
-                {"role": "user",   "content": user_content},
-            ],
-            temperature=0.1,
-            max_tokens=300,
-            response_format={"type": "json_object"},
+        lambda: _call_groq_with_fallback(
+            lambda m: _groq_client.chat.completions.create(
+                model=m,
+                messages=[
+                    {"role": "system", "content": prompt},
+                    {"role": "user",   "content": user_content},
+                ],
+                temperature=0.1,
+                max_tokens=300,
+                response_format={"type": "json_object"},
+            )
         )
     )
     content = response.choices[0].message.content.strip()
@@ -294,15 +322,17 @@ async def translate_text(text: str, target_lang: str) -> str | None:
             loop = _asyncio.get_running_loop()
             response = await loop.run_in_executor(
                 None,
-                lambda: _groq_client.chat.completions.create(
-                    model=GROQ_MODEL,
-                    messages=[
-                        {"role": "system", "content": prompt},
-                        {"role": "user", "content": text},
-                    ],
-                    temperature=0.2,
-                    max_tokens=1000,
-                ),
+                lambda: _call_groq_with_fallback(
+                    lambda m: _groq_client.chat.completions.create(
+                        model=m,
+                        messages=[
+                            {"role": "system", "content": prompt},
+                            {"role": "user", "content": text},
+                        ],
+                        temperature=0.2,
+                        max_tokens=1000,
+                    )
+                )
             )
             return response.choices[0].message.content.strip()
         except Exception as e:
